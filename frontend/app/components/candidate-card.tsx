@@ -1,7 +1,5 @@
 "use client"
 
-import Link from "next/link"
-
 import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -27,6 +25,7 @@ import {
   MoreHorizontal,
   Edit,
   Trash,
+  Link,
 } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import CandidateProfileEdit from "./candidate-profile-edit"
@@ -78,6 +77,11 @@ export default function CandidateCard({
   const [isExpanded, setIsExpanded] = useState(false)
   const [isEditOpen, setIsEditOpen] = useState(false)
 
+  // Safety check for candidate object
+  if (!candidate || typeof candidate !== 'object') {
+    return null;
+  }
+
   const getStageColor = (stage: string) => {
     switch (stage) {
       case "Applied":
@@ -105,19 +109,20 @@ export default function CandidateCard({
             <Avatar className="h-10 w-10">
               <AvatarImage src={candidate.avatar || "/placeholder.svg"} />
               <AvatarFallback>
-                {candidate.name
+                {(candidate.name || 'Unknown')
                   .split(" ")
                   .map((n) => n[0])
-                  .join("")}
+                  .join("")
+                  .toUpperCase()}
               </AvatarFallback>
             </Avatar>
             <div>
-              <CardTitle className="text-lg font-semibold">{candidate.name}</CardTitle>
-              <CardDescription className="text-sm text-muted-foreground">{candidate.jobTitle}</CardDescription>
+              <CardTitle className="text-lg font-semibold">{candidate.name || 'Unknown'}</CardTitle>
+              <CardDescription className="text-sm text-muted-foreground">{candidate.jobTitle || 'Unknown Position'}</CardDescription>
             </div>
           </div>
           <div className="flex items-center space-x-2">
-            <Badge className={`${getStageColor(candidate.stage)} text-xs`}>{candidate.stage}</Badge>
+            <Badge className={`${getStageColor(candidate.stage || 'Unknown')} text-xs`}>{candidate.stage || 'Unknown'}</Badge>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -143,16 +148,16 @@ export default function CandidateCard({
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           <div className="flex items-center space-x-1">
             <Star className="h-4 w-4 text-yellow-500" />
-            <span>{candidate.rating.toFixed(1)} Rating</span>
+            <span>{typeof candidate.rating === 'number' ? candidate.rating.toFixed(1) : '0.0'} Rating</span>
           </div>
           <div className="flex items-center space-x-1">
             <Calendar className="h-4 w-4" />
-            <span>Last Activity: {candidate.lastActivity}</span>
+            <span>Last Activity: {candidate.lastActivity || 'Unknown'}</span>
           </div>
         </div>
 
-        <Progress value={candidate.progress} className="w-full h-2" />
-        <p className="text-sm text-muted-foreground text-right">{candidate.progress}% Complete</p>
+        <Progress value={typeof candidate.progress === 'number' ? candidate.progress : 0} className="w-full h-2" />
+        <p className="text-sm text-muted-foreground text-right">{typeof candidate.progress === 'number' ? candidate.progress : 0}% Complete</p>
 
         <div className="grid grid-cols-2 gap-2 text-sm">
           <div className="flex items-center space-x-2">
@@ -196,21 +201,30 @@ export default function CandidateCard({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
                 <div className="flex items-center space-x-2">
                   <Briefcase className="h-4 w-4 text-muted-foreground" />
-                  <span>Total Experience: {candidate.totalExperience} years</span>
+                  <span>Total Experience: {typeof candidate.totalExperience === 'number' ? candidate.totalExperience : 0} years</span>
                 </div>
                 <div className="flex items-center space-x-2">
                   <Briefcase className="h-4 w-4 text-muted-foreground" />
-                  <span>Relevant Experience: {candidate.relevantExperience} years</span>
+                  <span>Relevant Experience: {typeof candidate.relevantExperience === 'number' ? candidate.relevantExperience : 0} years</span>
                 </div>
               </div>
               <div className="space-y-1">
                 <p className="text-sm font-medium">Skill Breakdown:</p>
                 <div className="flex flex-wrap gap-2">
-                  {candidate.skillExperience.map((skill, index) => (
-                    <Badge key={index} variant="secondary" className="text-xs">
-                      {skill.skill} ({skill.years} yrs)
-                    </Badge>
-                  ))}
+                  {Array.isArray(candidate.skillExperience) && candidate.skillExperience.length > 0 ? (
+                    candidate.skillExperience.map((skill, index) => {
+                      if (!skill || typeof skill !== 'object') {
+                        return null;
+                      }
+                      return (
+                        <Badge key={index} variant="secondary" className="text-xs">
+                          {skill.skill || 'Unknown skill'} ({skill.years || 0} yrs)
+                        </Badge>
+                      );
+                    }).filter(Boolean)
+                  ) : (
+                    <span className="text-sm text-muted-foreground">No skill data available</span>
+                  )}
                 </div>
               </div>
             </div>
@@ -249,19 +263,24 @@ export default function CandidateCard({
 
             <div className="space-y-2">
               <h3 className="font-semibold text-md">Notes & Feedback</h3>
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap">{candidate.notes}</p>
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap">{candidate.feedbackSummary}</p>
+              <p className="text-sm text-muted-foreground whitespace-pre-wrap">{candidate.notes || 'No notes available'}</p>
+              <p className="text-sm text-muted-foreground whitespace-pre-wrap">{candidate.feedbackSummary || 'No feedback summary available'}</p>
             </div>
 
             <div className="space-y-2">
               <h3 className="font-semibold text-md">Interview History</h3>
-              {candidate.interviewHistory.length > 0 ? (
+              {Array.isArray(candidate.interviewHistory) && candidate.interviewHistory.length > 0 ? (
                 <ul className="list-disc list-inside text-sm text-muted-foreground">
-                  {candidate.interviewHistory.map((interview, index) => (
-                    <li key={index}>
-                      {interview.date}: {interview.type} - Outcome: {interview.outcome}
-                    </li>
-                  ))}
+                  {candidate.interviewHistory.map((interview, index) => {
+                    if (!interview || typeof interview !== 'object') {
+                      return null;
+                    }
+                    return (
+                      <li key={index}>
+                        {interview.date || 'Unknown date'}: {interview.type || 'Unknown type'} - Outcome: {interview.outcome || 'Unknown outcome'}
+                      </li>
+                    );
+                  }).filter(Boolean)}
                 </ul>
               ) : (
                 <p className="text-sm text-muted-foreground">No interview history available.</p>

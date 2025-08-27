@@ -1,47 +1,49 @@
 ---
 # Environment
 env_name: production
-deploy_user: deploy
-deploy_group: deploy
+deploy_user: hrms
+deploy_group: hrms
 
 # Application settings
 app_name: recruit_platform
-app_root: /opt/{{ app_name }}
-app_repo: https://github.com/yourorg/recruit-platform.git
+app_root: /home/hrms/{{ app_name }}
+app_repo: /home/infotribo/work/recruit
 app_branch: main
 
 # Domain and SSL
-domain_name: recruit.yourdomain.com
-use_ssl: true
+domain_name: 
+use_ssl: false
 ssl_email: admin@yourdomain.com
 
 # Backend settings
 backend_dir: "{{ app_root }}/backend"
-backend_port: 8000
+backend_port: 9101
 backend_workers: 4
-django_settings_module: config.settings.production
-django_secret_key: "{{ vault_django_secret_key }}"
+django_settings_module: recruitment_backend.settings
+django_secret_key: "{{ vault_django_secret_key | default('temp-dev-secret-key-change-in-production') }}"
 django_allowed_hosts:
-  - "{{ domain_name }}"
-  - "www.{{ domain_name }}"
+  - "{{ domain_name | default('localhost') }}"
+  - "www.{{ domain_name | default('localhost') }}"
+  - "127.0.0.1"
+  - "{{ ansible_default_ipv4.address }}"
 
 # Frontend settings
 frontend_dir: "{{ app_root }}/frontend"
-frontend_port: 3000
+frontend_port: 9200
 frontend_instances: 2
-next_public_api_url: "https://{{ domain_name }}/api"
+next_public_api_url: "http://{{ ansible_default_ipv4.address }}:9100"
 
 # Database settings
 db_name: recruit_prod
 db_user: recruit_user
-db_password: "{{ vault_db_password }}"
-db_host: "{{ hostvars['db1']['ansible_host'] }}"
+db_password: "{{ vault_db_password | default('temp-dev-password') }}"
+db_host: "{{ hostvars['db1']['ansible_host'] | default('127.0.0.1') }}"
 db_port: 5432
 
 # Redis settings
-redis_host: "{{ hostvars['redis1']['ansible_host'] }}"
+redis_host: "{{ hostvars['redis1']['ansible_host'] | default('127.0.0.1') }}"
 redis_port: 6379
-redis_password: "{{ vault_redis_password }}"
+redis_password: "{{ vault_redis_password | default('temp-redis-password') }}"
 
 # Nginx settings
 nginx_worker_processes: auto
@@ -55,7 +57,7 @@ backup_schedule: "0 2 * * *"  # 2 AM daily
 
 # Monitoring
 enable_monitoring: true
-sentry_dsn: "{{ vault_sentry_dsn }}"
+sentry_dsn: "{{ vault_sentry_dsn | default('') }}"
 
 # System packages
 system_packages:
@@ -75,6 +77,7 @@ system_packages:
   - python3-certbot-nginx
   - supervisor
   - ufw
+  - locales
 
 # Python packages
 python_packages:
@@ -85,3 +88,11 @@ python_packages:
 
 # Node.js version
 nodejs_version: "20.x"
+
+# Ansible environment variables
+ansible_python_interpreter: auto_silent
+ansible_ssh_private_key_file: /home/infotribo/off_laptop/work/cldb/cldb01/cldb01
+ansible_env:
+  LC_ALL: en_US.UTF-8
+  LANG: en_US.UTF-8
+  LANGUAGE: en_US.UTF-8

@@ -1,0 +1,90 @@
+---
+- name: Deploy Recruitment Platform - Simple Setup
+  hosts: webservers
+  become: yes
+  gather_facts: yes
+  
+  pre_tasks:
+    - name: Verify Ansible version
+      assert:
+        that: "ansible_version.full is version('2.9', '>=')"
+        msg: "This playbook requires Ansible 2.9 or higher"
+    
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+
+- name: Configure common dependencies
+  hosts: webservers
+  become: yes
+  roles:
+    - common
+
+- name: Configure database
+  hosts: webservers
+  become: yes
+  roles:
+    - database
+  tags:
+    - database
+    - db
+
+- name: Deploy backend application
+  hosts: webservers
+  become: yes
+  roles:
+    - backend
+  tags:
+    - backend
+    - app
+
+- name: Deploy frontend application
+  hosts: webservers
+  become: yes
+  roles:
+    - frontend
+  tags:
+    - frontend
+    - app
+
+- name: Configure Nginx
+  hosts: webservers
+  become: yes
+  roles:
+    - nginx
+  tags:
+    - nginx
+
+- name: Post-deployment tasks
+  hosts: webservers
+  become: yes
+  tasks:
+    - name: Check backend service
+      uri:
+        url: "http://localhost:{{ backend_port }}/admin/"
+        status_code: [200, 302, 404]
+      register: backend_check
+      ignore_errors: yes
+    
+    - name: Check frontend service
+      uri:
+        url: "http://localhost:{{ frontend_port }}/"
+        status_code: [200, 404]
+      register: frontend_check
+      ignore_errors: yes
+    
+    - name: Display deployment results
+      debug:
+        msg: |
+          Deployment completed!
+          Backend check: {{ backend_check.status | default('failed') }}
+          Frontend check: {{ frontend_check.status | default('failed') }}
+          
+          Next steps:
+          1. Configure domain in /etc/hosts: {{ ansible_default_ipv4.address }} {{ domain_name | default('recruit.local') }}
+          2. Access application: http://{{ ansible_default_ipv4.address }}:{{ frontend_port }}
+          3. Access backend admin: http://{{ ansible_default_ipv4.address }}:{{ backend_port }}/admin/
+  tags:
+    - post-deploy

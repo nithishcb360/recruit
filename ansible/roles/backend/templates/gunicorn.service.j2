@@ -1,6 +1,5 @@
 [Unit]
 Description={{ app_name }} backend
-Requires={{ app_name }}-backend.socket
 After=network.target
 
 [Service]
@@ -15,11 +14,11 @@ ExecStart={{ backend_dir }}/venv/bin/gunicorn \
           --max-requests 1000 \
           --max-requests-jitter 50 \
           --timeout 30 \
-          --bind unix:/run/{{ app_name }}-backend.sock \
+          --bind 127.0.0.1:{{ backend_port }} \
           --access-logfile /var/log/{{ app_name }}/gunicorn-access.log \
           --error-logfile /var/log/{{ app_name }}/gunicorn-error.log \
           --log-level info \
-          config.wsgi:application
+          recruitment_backend.wsgi:application
 
 ExecReload=/bin/kill -s HUP $MAINPID
 KillMode=mixed

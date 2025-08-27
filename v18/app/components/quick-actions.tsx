@@ -29,7 +29,7 @@ export default function QuickActions() {
             </DialogTrigger>
             <DialogContent className="max-w-4xl h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Create New Job Posting</DialogTitle>
+                <DialogTitle>Create New Jobss Posting</DialogTitle>
               </DialogHeader>
               <JobCreationForm />
             </DialogContent>

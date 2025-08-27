@@ -1,0 +1,192 @@
+---
+- name: Install PostgreSQL and dependencies
+  apt:
+    name:
+      - postgresql
+      - postgresql-contrib
+      - python3-psycopg2
+      - postgresql-client
+    state: present
+    update_cache: yes
+
+- name: Ensure PostgreSQL is running and enabled
+  systemd:
+    name: postgresql
+    state: started
+    enabled: yes
+
+- name: Detect PostgreSQL version
+  shell: "ls /etc/postgresql/ | head -1"
+  register: detected_pg_version
+  changed_when: false
+
+- name: Set PostgreSQL version fact
+  set_fact:
+    postgresql_version: "{{ detected_pg_version.stdout }}"
+
+- name: Check if PostgreSQL is accepting connections
+  wait_for:
+    port: "{{ postgresql_port }}"
+    host: "127.0.0.1"
+    timeout: 30
+
+- name: Create application database
+  postgresql_db:
+    name: "{{ db_name }}"
+    state: present
+    encoding: UTF8
+    lc_collate: en_US.UTF-8
+    lc_ctype: en_US.UTF-8
+    template: template0
+  become_user: postgres
+  register: db_created
+
+- name: Create application database user
+  postgresql_user:
+    name: "{{ db_user }}"
+    password: "{{ db_password }}"
+    state: present
+    encrypted: yes
+  become_user: postgres
+  register: user_created
+
+- name: Grant privileges to application user
+  postgresql_privs:
+    db: "{{ db_name }}"
+    privs: ALL
+    type: database
+    role: "{{ db_user }}"
+    state: present
+  become_user: postgres
+
+- name: Grant schema privileges to application user
+  postgresql_privs:
+    db: "{{ db_name }}"
+    privs: ALL
+    type: schema
+    objs: public
+    role: "{{ db_user }}"
+    state: present
+  become_user: postgres
+
+- name: Grant table privileges to application user
+  postgresql_privs:
+    db: "{{ db_name }}"
+    privs: ALL
+    type: table
+    objs: ALL_IN_SCHEMA
+    schema: public
+    role: "{{ db_user }}"
+    state: present
+  become_user: postgres
+
+- name: Grant sequence privileges to application user
+  postgresql_privs:
+    db: "{{ db_name }}"
+    privs: ALL
+    type: sequence
+    objs: ALL_IN_SCHEMA
+    schema: public
+    role: "{{ db_user }}"
+    state: present
+  become_user: postgres
+
+- name: Configure PostgreSQL for performance
+  lineinfile:
+    path: /etc/postgresql/{{ postgresql_version }}/main/postgresql.conf
+    regexp: "^#?{{ item.key }}"
+    line: "{{ item.key }} = {{ item.value }}"
+    backup: yes
+  loop:
+    - { key: "max_connections", value: "{{ postgresql_max_connections }}" }
+    - { key: "shared_buffers", value: "'{{ postgresql_shared_buffers }}'" }
+    - { key: "effective_cache_size", value: "'{{ postgresql_effective_cache_size }}'" }
+    - { key: "maintenance_work_mem", value: "'{{ postgresql_maintenance_work_mem }}'" }
+    - { key: "checkpoint_completion_target", value: "{{ postgresql_checkpoint_completion_target }}" }
+    - { key: "wal_buffers", value: "'{{ postgresql_wal_buffers }}'" }
+    - { key: "default_statistics_target", value: "{{ postgresql_default_statistics_target }}" }
+    - { key: "random_page_cost", value: "{{ postgresql_random_page_cost }}" }
+    - { key: "seq_page_cost", value: "{{ postgresql_seq_page_cost }}" }
+  notify: restart postgresql
+
+- name: Configure PostgreSQL connection settings
+  lineinfile:
+    path: /etc/postgresql/{{ postgresql_version }}/main/postgresql.conf
+    regexp: "^#?listen_addresses"
+    line: "listen_addresses = '{{ postgresql_listen_addresses }}'"
+    backup: yes
+  notify: restart postgresql
+
+- name: Update pg_hba.conf for local connections
+  lineinfile:
+    path: /etc/postgresql/{{ postgresql_version }}/main/pg_hba.conf
+    regexp: "^local\\s+all\\s+all\\s+"
+    line: "local   all             all                                     peer"
+    backup: yes
+  notify: restart postgresql
+
+- name: Add application user to pg_hba.conf
+  lineinfile:
+    path: /etc/postgresql/{{ postgresql_version }}/main/pg_hba.conf
+    line: "local   {{ db_name }}    {{ db_user }}                          md5"
+    insertafter: "^# Database administrative login by Unix domain socket"
+  notify: restart postgresql
+
+- name: Test database connection as application user
+  postgresql_query:
+    db: "{{ db_name }}"
+    login_user: "{{ db_user }}"
+    login_password: "{{ db_password }}"
+    query: "SELECT version();"
+  register: db_version_check
+  ignore_errors: yes
+
+- name: Display database connection test result
+  debug:
+    msg: "Database connection test: {{ 'SUCCESS' if db_version_check.failed == false else 'FAILED' }}"
+
+- name: Create database backup directory
+  file:
+    path: "{{ backup_dir }}/database"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: '0750'
+  when: db_backup_enabled
+
+- name: Create database backup script
+  template:
+    src: backup_database.sh.j2
+    dest: /usr/local/bin/backup_{{ app_name }}_database.sh
+    owner: postgres
+    group: postgres
+    mode: '0750'
+  when: db_backup_enabled
+
+- name: Schedule database backups
+  cron:
+    name: "Backup {{ app_name }} database"
+    user: postgres
+    hour: "{{ db_backup_time.split(':')[0] }}"
+    minute: "{{ db_backup_time.split(':')[1] }}"
+    job: "/usr/local/bin/backup_{{ app_name }}_database.sh"
+    state: "{{ 'present' if db_backup_enabled else 'absent' }}"
+
+- name: Create database restore script
+  template:
+    src: restore_database.sh.j2
+    dest: /usr/local/bin/restore_{{ app_name }}_database.sh
+    owner: postgres
+    group: postgres
+    mode: '0750'
+
+- name: Open PostgreSQL port in firewall (if needed)
+  ufw:
+    rule: allow
+    port: "{{ postgresql_port }}"
+    proto: tcp
+    src: "{{ item }}"
+  loop:
+    - "127.0.0.1"
+    - "{{ ansible_default_ipv4.address }}"
+  when: postgresql_listen_addresses != "localhost"

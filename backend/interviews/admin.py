@@ -17,7 +17,8 @@ class InterviewAdmin(admin.ModelAdmin):
     list_display = ['candidate_name', 'job_title', 'interview_type', 'scheduled_at', 'status', 'lead_interviewer', 'feedback_count']
     list_filter = ['interview_type', 'status', 'scheduled_at', 'application__job__organization']
     search_fields = ['application__candidate__first_name', 'application__candidate__last_name', 'application__job__title']
-    raw_id_fields = ['application', 'lead_interviewer', 'created_by']
+    # raw_id_fields = ['application', 'lead_interviewer', 'created_by']  # Removed for better UX
+    autocomplete_fields = ['application', 'lead_interviewer', 'created_by']  # Better than raw_id
     filter_horizontal = ['interviewers']
     readonly_fields = ['confirmed_at', 'completed_at', 'cancelled_at', 'created_at', 'updated_at']
     date_hierarchy = 'scheduled_at'
@@ -109,7 +110,8 @@ class InterviewFeedbackAdmin(admin.ModelAdmin):
     list_display = ['interview_info', 'interviewer', 'recommendation', 'overall_rating_display', 'is_submitted', 'submitted_at']
     list_filter = ['recommendation', 'overall_rating', 'is_submitted', 'interview__interview_type', 'submitted_at']
     search_fields = ['interview__application__candidate__first_name', 'interview__application__candidate__last_name', 'interviewer__first_name', 'interviewer__last_name']
-    raw_id_fields = ['interview', 'interviewer']
+    # raw_id_fields = ['interview', 'interviewer']  # Removed for better UX
+    autocomplete_fields = ['interview', 'interviewer']  # Better than raw_id
     readonly_fields = ['submitted_at', 'updated_at']
     date_hierarchy = 'submitted_at'
     
@@ -173,7 +175,8 @@ class FeedbackTemplateAdmin(admin.ModelAdmin):
     list_display = ['name', 'organization', 'is_active', 'is_default', 'created_by', 'created_at']
     list_filter = ['is_active', 'is_default', 'organization', 'created_at']
     search_fields = ['name', 'description', 'organization__name']
-    raw_id_fields = ['organization', 'created_by']
+    # raw_id_fields = ['organization', 'created_by']  # Removed for better UX
+    autocomplete_fields = ['created_by']  # Better than raw_id for user lookup
     readonly_fields = ['created_at', 'updated_at']
     
     fieldsets = (

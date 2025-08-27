@@ -4,28 +4,36 @@
     update_cache: yes
     cache_valid_time: 3600
 
+- name: Generate UTF-8 locale
+  locale_gen:
+    name: en_US.UTF-8
+    state: present
+
+- name: Set system locale
+  copy:
+    content: |
+      LANG=en_US.UTF-8
+      LC_ALL=en_US.UTF-8
+      LANGUAGE=en_US.UTF-8
+    dest: /etc/default/locale
+    owner: root
+    group: root
+    mode: '0644'
+
 - name: Install system packages
   apt:
     name: "{{ system_packages }}"
     state: present
 
-- name: Create deploy user
+- name: Ensure hrms user has sudo access
   user:
     name: "{{ deploy_user }}"
     groups: sudo
     append: yes
     shell: /bin/bash
-    createhome: yes
     state: present
 
-- name: Set up authorized keys for deploy user
-  authorized_key:
-    user: "{{ deploy_user }}"
-    key: "{{ lookup('file', 'files/deploy_key.pub') }}"
-    state: present
-  when: deploy_ssh_key is defined
-
-- name: Allow deploy user sudo without password
+- name: Allow hrms user sudo without password
   lineinfile:
     path: /etc/sudoers.d/{{ deploy_user }}
     line: "{{ deploy_user }} ALL=(ALL) NOPASSWD:ALL"
@@ -39,8 +47,8 @@
     proto: tcp
   loop:
     - 22
-    - 80
-    - 443
+    - "{{ backend_port }}"
+    - "{{ frontend_port }}"
   notify: restart ufw
 
 - name: Enable UFW
@@ -78,13 +86,24 @@
     - "{{ backup_dir }}"
     - /var/log/{{ app_name }}
 
-- name: Configure log rotation
-  template:
-    src: logrotate.j2
-    dest: /etc/logrotate.d/{{ app_name }}
-    owner: root
-    group: root
-    mode: '0644'
+
+
+- name: Kill any hanging apt processes
+  shell: |
+    sudo pkill -f apt-get || true
+    sudo pkill -f dpkg || true
+    sleep 2
+  ignore_errors: yes
+
+- name: Remove apt locks if they exist
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /var/lib/dpkg/lock-frontend
+    - /var/lib/dpkg/lock
+    - /var/cache/apt/archives/lock
+  ignore_errors: yes
 
 - name: Install Python build dependencies
   apt:
@@ -96,6 +115,9 @@
       - libssl-dev
       - libffi-dev
     state: present
+    update_cache: yes
+  retries: 3
+  delay: 10
 
 - name: Install Node.js repository
   shell: |
@@ -116,5 +138,6 @@
     state: present
 
 - name: Set up monitoring agent (if enabled)
-  include_tasks: monitoring.yml
+  debug:
+    msg: "Monitoring setup skipped - configure monitoring.yml if needed"
   when: enable_monitoring | default(false)

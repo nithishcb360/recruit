@@ -1,0 +1,21 @@
+Software Engineer Job Description
+
+We are looking for a skilled Software Engineer to join our team.
+
+Responsibilities:
+- Develop web applications
+- Write clean code
+- Collaborate with team members
+- Participate in code reviews
+
+Requirements:
+- Bachelor's degree in Computer Science
+- 3+ years of experience in software development
+- Proficiency in Python and JavaScript
+- Experience with React and Django
+- Strong problem-solving skills
+
+Benefits:
+- Competitive salary
+- Health insurance
+- Flexible working hours

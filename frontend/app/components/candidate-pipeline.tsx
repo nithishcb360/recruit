@@ -186,12 +186,15 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
 
   // Enhanced filtering and sorting
   const filteredAndSortedCandidates = candidates.filter((candidate) => {
+    if (!candidate || typeof candidate !== 'object') {
+      return false;
+    }
     const matchesSearch = searchTerm
-      ? candidate.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        candidate.jobTitle.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        candidate.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        candidate.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        candidate.notes.toLowerCase().includes(searchTerm.toLowerCase())
+      ? (candidate.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (candidate.jobTitle || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (candidate.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (candidate.location || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (candidate.notes || '').toLowerCase().includes(searchTerm.toLowerCase())
       : true
     const matchesJob = filterJob && filterJob !== 'all'
       ? candidate.jobTitle === jobs.find((job) => String(job.id) === filterJob)?.title
@@ -209,25 +212,25 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
     
     switch (sortBy) {
       case 'name':
-        aValue = a.name.toLowerCase()
-        bValue = b.name.toLowerCase()
+        aValue = (a.name || '').toLowerCase()
+        bValue = (b.name || '').toLowerCase()
         break
       case 'stage':
         const stageOrder = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'Rejected']
-        aValue = stageOrder.indexOf(a.stage)
-        bValue = stageOrder.indexOf(b.stage)
+        aValue = stageOrder.indexOf(a.stage || '')
+        bValue = stageOrder.indexOf(b.stage || '')
         break
       case 'rating':
-        aValue = a.rating
-        bValue = b.rating
+        aValue = a.rating || 0
+        bValue = b.rating || 0
         break
       case 'lastActivity':
       default:
-        aValue = new Date(a.lastActivity === '1d ago' ? Date.now() - 86400000 : 
-                         a.lastActivity === '2d ago' ? Date.now() - 172800000 :
+        aValue = new Date((a.lastActivity || '') === '1d ago' ? Date.now() - 86400000 : 
+                         (a.lastActivity || '') === '2d ago' ? Date.now() - 172800000 :
                          Date.now() - 604800000).getTime()
-        bValue = new Date(b.lastActivity === '1d ago' ? Date.now() - 86400000 : 
-                         b.lastActivity === '2d ago' ? Date.now() - 172800000 :
+        bValue = new Date((b.lastActivity || '') === '1d ago' ? Date.now() - 86400000 : 
+                         (b.lastActivity || '') === '2d ago' ? Date.now() - 172800000 :
                          Date.now() - 604800000).getTime()
         break
     }

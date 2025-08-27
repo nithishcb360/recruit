@@ -79,21 +79,22 @@ export function useJobsAnalytics() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchJobs = async () => {
-      try {
-        setLoading(true);
-        const data = await getJobsAnalytics();
-        setJobs(data);
-      } catch (err: any) {
-        setError(err.detail || 'Failed to fetch jobs analytics');
-      } finally {
-        setLoading(false);
-      }
-    };
+  const fetchJobs = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await getJobsAnalytics();
+      setJobs(data);
+    } catch (err: any) {
+      setError(err.detail || 'Failed to fetch jobs analytics');
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchJobs();
   }, []);
 
-  return { jobs, loading, error };
+  return { jobs, loading, error, refetch: fetchJobs };
 }

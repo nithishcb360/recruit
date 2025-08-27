@@ -169,3 +169,43 @@ export async function createDepartment(data: {
 }): Promise<Department> {
   return apiClient.post<Department>('/departments/', data);
 }
+
+// JD Upload/Parse API
+export interface ParsedJD {
+  description: string;
+  requirements: string;
+  responsibilities: string;
+  raw_content: string;
+}
+
+export async function parseJD(file: File): Promise<ParsedJD> {
+  const formData = new FormData();
+  formData.append('file', file);
+  return apiClient.uploadFile<ParsedJD>('/jobs/parse_jd/', formData);
+}
+
+// AI Job Generation API
+export interface GenerateJDRequest {
+  title: string;
+  department?: string;
+  level?: string;
+  location?: string;
+  work_type?: string;
+  company_info?: string;
+}
+
+export interface GeneratedJD {
+  description: string;
+  responsibilities: string;
+  requirements: string;
+}
+
+export interface GenerateJDResponse {
+  success: boolean;
+  data: GeneratedJD;
+  ai_generated: boolean;
+}
+
+export async function generateJD(data: GenerateJDRequest): Promise<GenerateJDResponse> {
+  return apiClient.post<GenerateJDResponse>('/jobs/generate_jd/', data);
+}

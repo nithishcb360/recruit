@@ -2,6 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from drf_spectacular.utils import extend_schema
 from django.db.models import Count, Avg, Q
 from django.utils import timezone
 from datetime import timedelta
@@ -11,6 +12,7 @@ from jobs.models import Job
 from candidates.models import JobApplication, ApplicationActivity
 
 
+@extend_schema(exclude=True)
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def dashboard_metrics(request):
@@ -86,6 +88,7 @@ def dashboard_metrics(request):
     return Response(data)
 
 
+@extend_schema(exclude=True)
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def source_performance(request):
@@ -117,6 +120,7 @@ def source_performance(request):
     return Response({'results': source_data})
 
 
+@extend_schema(exclude=True)
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def recent_activity(request):
@@ -193,6 +197,7 @@ def recent_activity(request):
     return Response({'results': activities[:10]})
 
 
+@extend_schema(exclude=True)
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def jobs_analytics(request):

@@ -28,6 +28,15 @@ python manage.py migrate         # Apply migrations
 python manage.py test            # Run tests
 ```
 
+**Demo Data Management:**
+```bash
+cd backend
+python create_test_data.py       # Create sample job/candidate data
+python create_admin_test_data.py # Create admin user and org
+python manage.py populate_departments     # Populate departments
+python manage.py populate_feedback_templates  # Setup feedback forms
+```
+
 **API Documentation:** http://localhost:8000/api/docs/
 **Django Admin:** http://localhost:8000/admin/
 
@@ -39,32 +48,62 @@ python manage.py test            # Run tests
 
 ## Architecture
 
-This is a full-stack recruitment SaaS platform.
+This is a full-stack recruitment SaaS platform with multi-tenant organization isolation.
 
 ### Frontend (Next.js 15.2.4, React 19, TypeScript)
 - **Authentication:** JWT-based auth with context provider (`contexts/auth-context.tsx`)
-- **API Client:** Centralized API client with auth handling (`lib/api/`)
-- **Components:** Feature-specific components in `app/components/`
+- **API Client:** Singleton client with automatic token handling (`lib/api/client.ts`)
+- **State Management:** React Context for auth, custom hooks for data fetching
 - **UI Library:** shadcn/ui with Radix UI primitives
 - **Styling:** Tailwind CSS with responsive design
+- **File Upload:** Built-in support for resume/JD parsing (PDF, DOCX, TXT)
 
 ### Backend (Django 5.0.2, Django REST Framework)
-- **Apps:**
-  - `accounts`: User management, organizations, authentication
-  - `jobs`: Job postings, departments
-  - `candidates`: Candidate profiles, applications
-  - `interviews`: Interview scheduling, feedback
-  - `analytics`: Recruitment metrics, reporting
-- **Authentication:** JWT with djangorestframework-simplejwt
-- **API:** RESTful API with DRF viewsets
-- **Database:** SQLite (development), supports PostgreSQL
-- **CORS:** Configured for frontend access
+- **Apps Structure:**
+  - `accounts`: User/organization management, JWT auth
+  - `jobs`: Job postings, departments, AI-powered JD generation
+  - `candidates`: Candidate profiles, applications, stage management
+  - `interviews`: Scheduling, feedback forms, templates
+  - `analytics`: Metrics, reporting, source performance tracking
+- **Authentication:** JWT with automatic refresh, role-based permissions
+- **API Documentation:** Auto-generated with drf-spectacular
+- **File Processing:** PyPDF2 and python-docx for document parsing
+- **Configuration:** Environment-based settings with python-decouple
 
-**Key Features:**
-- Multi-tenant SaaS with organization isolation
-- Role-based access control (platform admin, org admin, recruiter, etc.)
-- Complete recruitment pipeline management
-- Real-time metrics and analytics
+### Data Flow Patterns
+- **API Requests:** All go through singleton ApiClient with automatic auth headers
+- **Error Handling:** Centralized error responses with toast notifications
+- **File Uploads:** Separate uploadFile method for multipart/form-data
+- **State Updates:** Optimistic updates with rollback on failure
+
+### Key Component Patterns
+- **Data Safety:** All components include null/undefined checks for properties
+- **Loading States:** Components show loading indicators during async operations
+- **Form Validation:** Client-side validation with server-side error display
+- **Toast Notifications:** Consistent success/error feedback via useToast hook
+
+### Development Patterns
+- **Type Safety:** Strict TypeScript interfaces for all API responses
+- **Component Props:** Always include safety checks for required vs optional props
+- **Array Operations:** Use .filter(Boolean) to remove null/undefined elements
+- **String Operations:** Safe access with fallbacks (e.g., `name || 'Unknown'`)
 
 **Path Aliases:**
 - Frontend: `@/*` maps to the frontend root directory
+
+## Important Notes
+
+**Component Safety Requirements:**
+- Always add null checks for object properties before accessing nested properties
+- Use fallback values for string operations (e.g., `(obj.name || '').toLowerCase()`)
+- Filter out undefined elements from arrays before rendering with `.filter(Boolean)`
+- Check `Array.isArray()` before calling array methods
+
+**File Upload Handling:**
+- Supported formats: PDF, DOCX, TXT (max 5MB)
+- Use the `uploadFile` method for multipart uploads, not regular `post`
+- Always validate file type and size on frontend before upload
+
+**Icon Usage:**
+- Use `Monitor` instead of `Screen` from lucide-react (Screen doesn't exist)
+- Always verify icon imports exist before using them

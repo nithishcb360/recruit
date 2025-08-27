@@ -55,6 +55,23 @@
     group: www-data
     mode: '0755'
 
+- name: Create site-specific config directory
+  file:
+    path: /etc/nginx/{{ app_name }}.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Create application locations configuration
+  template:
+    src: app-locations.conf.j2
+    dest: /etc/nginx/{{ app_name }}.d/locations.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart nginx
+
 - name: Test Nginx configuration
   command: nginx -t
   register: nginx_test
@@ -66,14 +83,8 @@
     state: started
     enabled: yes
 
-- name: Open HTTP port in firewall
+- name: Open Nginx port in firewall
   ufw:
     rule: allow
-    port: 80
-    proto: tcp
-
-- name: Open HTTPS port in firewall
-  ufw:
-    rule: allow
-    port: 443
+    port: 9100
     proto: tcp

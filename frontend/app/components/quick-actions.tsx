@@ -9,7 +9,11 @@ import InterviewScheduler from "@/app/components/interview-scheduler"
 import FeedbackFormBuilder from "@/app/components/feedback-form-builder"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 
-export default function QuickActions() {
+interface QuickActionsProps {
+  onJobCreated?: () => void;
+}
+
+export default function QuickActions({ onJobCreated }: QuickActionsProps) {
   const [isJobFormOpen, setIsJobFormOpen] = useState(false)
   const [isInterviewSchedulerOpen, setIsInterviewSchedulerOpen] = useState(false)
   const [isFeedbackFormBuilderOpen, setIsFeedbackFormBuilderOpen] = useState(false)
@@ -29,9 +33,9 @@ export default function QuickActions() {
             </DialogTrigger>
             <DialogContent className="max-w-4xl h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Create New Job Posting</DialogTitle>
+                <DialogTitle>Create weNew Job Posting</DialogTitle>
               </DialogHeader>
-              <JobCreationForm />
+              <JobCreationForm onJobCreated={onJobCreated} />
             </DialogContent>
           </Dialog>
 

@@ -1,6 +1,6 @@
 import { getSession } from './auth';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000') + '/api';
 
 export interface ApiError {
   detail?: string;
@@ -90,6 +90,31 @@ export class ApiClient {
   
   async delete<T>(endpoint: string): Promise<T> {
     return this.request<T>(endpoint, { method: 'DELETE' });
+  }
+  
+  async uploadFile<T>(endpoint: string, formData: FormData): Promise<T> {
+    const url = `${API_URL}${endpoint}`;
+    const session = getSession();
+    const headers: HeadersInit = {};
+    
+    if (session?.access) {
+      headers['Authorization'] = `Bearer ${session.access}`;
+    }
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({
+        detail: 'An error occurred',
+      }));
+      throw error;
+    }
+    
+    return response.json();
   }
 }
 

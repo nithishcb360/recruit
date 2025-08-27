@@ -1,0 +1,21 @@
+---
+# Database configuration defaults
+postgresql_version: "16"
+postgresql_port: 5432
+postgresql_listen_addresses: "localhost"
+postgresql_max_connections: 100
+postgresql_shared_buffers: "256MB"
+postgresql_effective_cache_size: "1GB"
+postgresql_maintenance_work_mem: "64MB"
+postgresql_checkpoint_completion_target: 0.9
+postgresql_wal_buffers: "16MB"
+postgresql_default_statistics_target: 100
+
+# Database backup settings
+db_backup_enabled: true
+db_backup_retention_days: 7
+db_backup_time: "02:00"
+
+# Performance tuning
+postgresql_random_page_cost: 1.1
+postgresql_seq_page_cost: 1.0

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(mkdir:*)",
+      "Bash(python3:*)",
+      "Bash(source:*)",
+      "Bash(pip install:*)",
+      "Bash(django-admin startproject:*)",
+      "Bash(python manage.py:*)",
+      "Bash(python:*)",
+      "Bash(chmod:*)",
+      "Bash(sed:*)",
+      "Bash(pnpm build:*)",
+      "Bash(git commit:*)",
+      "Bash(ansible:*)",
+      "Bash(grep:*)",
+      "Bash(export LC_ALL=en_US.UTF-8)",
+      "Bash(export LANG=en_US.UTF-8)",
+      "Bash(find:*)",
+      "Bash(venvScripts:*)",
+      "Bash(venv\\Scripts\\activate:*)",
+      "Bash(venv/Scripts/pip.exe install:*)",
+      "Bash(pnpm install:*)",
+      "Bash(venv/Scripts/python.exe manage.py runserver:*)",
+      "Bash(pnpm dev:*)",
+      "Bash(venv/Scripts/python.exe -c \"import django; django.setup(); print(''Django setup successful'')\")",
+      "Bash(venv/Scripts/python.exe manage.py check:*)",
+      "Bash(curl:*)",
+      "Bash(venv/Scripts/python.exe manage.py migrate:*)",
+      "Bash(venv/Scripts/python.exe manage.py spectacular:*)",
+      "Bash(venv/Scripts/python.exe test_schema.py:*)",
+      "Bash(DJANGO_LOG_LEVEL=DEBUG venv/Scripts/python.exe manage.py runserver 0.0.0.0:8000)",
+      "Bash(venv/Scripts/python.exe manage.py:*)",
+      "Bash(venv/Scripts/python.exe:*)",
+      "Bash(taskkill:*)",
+      "Bash(powershell:*)"
+    ],
+    "deny": []
+  }
+}

@@ -1,12 +1,26 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.parsers import MultiPartParser, FormParser
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
+import io
+try:
+    import PyPDF2
+    PDF_AVAILABLE = True
+except ImportError:
+    PDF_AVAILABLE = False
+
+try:
+    from docx import Document
+    DOCX_AVAILABLE = True
+except ImportError:
+    DOCX_AVAILABLE = False
 from .models import Department, Job
 from .serializers import (
     DepartmentSerializer, JobSerializer, JobCreateSerializer, JobListSerializer
 )
+from .ai_service import ai_generator
 
 
 class DepartmentViewSet(viewsets.ModelViewSet):
@@ -147,3 +161,137 @@ class JobViewSet(viewsets.ModelViewSet):
         }
         
         return Response(analytics)
+    
+    @action(detail=False, methods=['post'])
+    def generate_jd(self, request):
+        """Generate job description using OpenAI API"""
+        title = request.data.get('title', '')
+        department = request.data.get('department', '')
+        level = request.data.get('level', 'mid')
+        location = request.data.get('location', 'Remote')
+        work_type = request.data.get('work_type', 'remote')
+        company_info = request.data.get('company_info', '')
+        
+        if not title:
+            return Response(
+                {'detail': 'Job title is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Use AI service to generate job description
+            generated_content = ai_generator.generate_job_description(
+                title=title,
+                department=department,
+                level=level,
+                location=location,
+                work_type=work_type,
+                company_info=company_info
+            )
+            
+            return Response({
+                'success': True,
+                'data': generated_content,
+                'ai_generated': True
+            })
+            
+        except Exception as e:
+            return Response(
+                {'detail': f'Error generating job description: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    
+    @action(detail=False, methods=['post'], parser_classes=[MultiPartParser, FormParser])
+    def parse_jd(self, request):
+        """Parse job description from uploaded file"""
+        file = request.FILES.get('file')
+        if not file:
+            return Response(
+                {'detail': 'No file provided'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            content = ""
+            file_extension = file.name.split('.')[-1].lower()
+            
+            if file_extension == 'txt':
+                content = file.read().decode('utf-8')
+            
+            elif file_extension == 'pdf':
+                if not PDF_AVAILABLE:
+                    return Response(
+                        {'detail': 'PDF processing not available. Please upload .txt or .docx files'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                pdf_reader = PyPDF2.PdfReader(io.BytesIO(file.read()))
+                for page in pdf_reader.pages:
+                    content += page.extract_text() + "\n"
+            
+            elif file_extension in ['doc', 'docx']:
+                if not DOCX_AVAILABLE:
+                    return Response(
+                        {'detail': 'DOCX processing not available. Please upload .txt or .pdf files'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                doc = Document(io.BytesIO(file.read()))
+                for paragraph in doc.paragraphs:
+                    content += paragraph.text + "\n"
+            
+            else:
+                return Response(
+                    {'detail': 'Unsupported file format. Please upload .txt, .pdf, or .docx files'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Basic parsing to extract sections
+            description = content
+            requirements = ""
+            responsibilities = ""
+            
+            # Try to extract sections if they exist
+            content_lower = content.lower()
+            
+            # Extract requirements section
+            req_markers = ['requirements:', 'required:', 'qualifications:', 'must have:']
+            for marker in req_markers:
+                if marker in content_lower:
+                    start_idx = content_lower.index(marker)
+                    # Find next section or end
+                    end_markers = ['responsibilities:', 'duties:', 'benefits:', 'about us:', 'how to apply:']
+                    end_idx = len(content)
+                    for end_marker in end_markers:
+                        if end_marker in content_lower[start_idx:]:
+                            end_idx = start_idx + content_lower[start_idx:].index(end_marker)
+                            break
+                    requirements = content[start_idx:end_idx].strip()
+                    break
+            
+            # Extract responsibilities section
+            resp_markers = ['responsibilities:', 'duties:', 'what you will do:', 'key responsibilities:']
+            for marker in resp_markers:
+                if marker in content_lower:
+                    start_idx = content_lower.index(marker)
+                    # Find next section or end
+                    end_markers = ['requirements:', 'qualifications:', 'benefits:', 'about us:', 'how to apply:']
+                    end_idx = len(content)
+                    for end_marker in end_markers:
+                        if end_marker in content_lower[start_idx:]:
+                            end_idx = start_idx + content_lower[start_idx:].index(end_marker)
+                            break
+                    responsibilities = content[start_idx:end_idx].strip()
+                    break
+            
+            return Response({
+                'description': description.strip(),
+                'requirements': requirements,
+                'responsibilities': responsibilities,
+                'raw_content': content
+            })
+            
+        except Exception as e:
+            return Response(
+                {'detail': f'Error processing file: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

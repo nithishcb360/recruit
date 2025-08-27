@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Recruitment API Documentation</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        .endpoint { margin: 20px 0; padding: 15px; border: 1px solid #ddd; }
+        .method { font-weight: bold; color: #007bff; }
+        .url { font-family: monospace; background: #f8f9fa; padding: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Recruitment API Documentation</h1>
+    
+    <div class="endpoint">
+        <div class="method">POST</div>
+        <div class="url">/api/auth/users/login/</div>
+        <p>Authenticate user and get JWT tokens</p>
+        <strong>Request:</strong>
+        <pre>{"email": "user@example.com", "password": "password"}</pre>
+    </div>
+    
+    <div class="endpoint">
+        <div class="method">GET</div>
+        <div class="url">/api/jobs/</div>
+        <p>List all jobs</p>
+    </div>
+    
+    <div class="endpoint">
+        <div class="method">GET</div>
+        <div class="url">/api/candidates/</div>
+        <p>List all candidates</p>
+    </div>
+    
+    <div class="endpoint">
+        <div class="method">GET</div>
+        <div class="url">/api/interviews/</div>
+        <p>List all interviews</p>
+    </div>
+    
+    <p><strong>Base URL:</strong> http://localhost:8000</p>
+    <p><strong>Authentication:</strong> JWT Bearer tokens</p>
+</body>
+</html>

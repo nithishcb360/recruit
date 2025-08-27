@@ -1,8 +1,8 @@
 ---
 # Environment
 env_name: staging
-deploy_user: deploy
-deploy_group: deploy
+deploy_user: hrms
+deploy_group: hrms
 
 # Application settings
 app_name: recruit_platform
@@ -84,3 +84,11 @@ python_packages:
 
 # Node.js version
 nodejs_version: "20.x"
+
+# Ansible environment variables
+ansible_python_interpreter: auto_silent
+ansible_ssh_private_key_file: /home/infotribo/off_laptop/work/cldb/cldb01/cldb01
+ansible_env:
+  LC_ALL: en_US.UTF-8
+  LANG: en_US.UTF-8
+  LANGUAGE: en_US.UTF-8

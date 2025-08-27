@@ -1,0 +1,7 @@
+# Encrypted variables (use ansible-vault encrypt this file)
+# For now, these are placeholder values
+
+vault_django_secret_key: "your-secret-key-here-change-in-production"
+vault_db_password: "your-db-password-here"
+vault_redis_password: "your-redis-password-here"
+vault_sentry_dsn: "your-sentry-dsn-here"

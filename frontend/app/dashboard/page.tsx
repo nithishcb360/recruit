@@ -34,6 +34,7 @@ import {
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import JobCreationForm from "../components/job-creation-form"
+import QuickActions from "../components/quick-actions"
 import CandidatePipeline from "../components/candidate-pipeline"
 import IntegrationsPanel from "../components/integrations-panel"
 import AnalyticsDashboard from "../components/analytics-dashboard"
@@ -51,7 +52,7 @@ export default function RecruitmentDashboard() {
   const { metrics, loading: metricsLoading, error: metricsError } = useDashboardMetrics()
   const { sources, loading: sourcesLoading } = useSourcePerformance()
   const { activities, loading: activitiesLoading } = useRecentActivity()
-  const { jobs: jobsAnalytics, loading: jobsLoading } = useJobsAnalytics()
+  const { jobs: jobsAnalytics, loading: jobsLoading, refetch: refetchJobsAnalytics } = useJobsAnalytics()
 
   if (!user) {
     return (
@@ -428,7 +429,12 @@ export default function RecruitmentDashboard() {
           )}
 
           {/* Other tabs */}
-          {activeTab === "jobs" && <JobCreationForm />}
+          {activeTab === "jobs" && (
+            <>
+              <JobCreationForm onJobCreated={refetchJobsAnalytics} />
+              <QuickActions onJobCreated={refetchJobsAnalytics} />
+            </>
+          )}
           {activeTab === "candidates" && <CandidatePipeline selectedJobId={selectedJob} />}
           {activeTab === "integrations" && <IntegrationsPanel />}
           {activeTab === "screening" && (

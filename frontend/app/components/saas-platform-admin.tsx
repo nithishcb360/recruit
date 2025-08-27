@@ -370,10 +370,11 @@ export default function SaaSPlatformAdmin() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="organizations">Organizations</TabsTrigger>
           <TabsTrigger value="users">Users</TabsTrigger>
+          <TabsTrigger value="onboarding">Onboarding</TabsTrigger>
           <TabsTrigger value="billing">Billing</TabsTrigger>
           <TabsTrigger value="system">System</TabsTrigger>
         </TabsList>
@@ -707,6 +708,258 @@ export default function SaaSPlatformAdmin() {
               </TableBody>
             </Table>
           </Card>
+        </TabsContent>
+
+        {/* Onboarding Tab */}
+        <TabsContent value="onboarding" className="mt-6">
+          <div className="space-y-6">
+            {/* Onboarding Overview */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground">New Signups</p>
+                      <p className="text-2xl font-bold">24</p>
+                    </div>
+                    <Users className="h-8 w-8 text-blue-600" />
+                  </div>
+                  <div className="flex items-center mt-2">
+                    <TrendingUp className="h-4 w-4 text-green-600 mr-1" />
+                    <span className="text-sm text-green-600">+18% this week</span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground">Trial Conversions</p>
+                      <p className="text-2xl font-bold">73%</p>
+                    </div>
+                    <CheckCircle className="h-8 w-8 text-green-600" />
+                  </div>
+                  <div className="flex items-center mt-2">
+                    <TrendingUp className="h-4 w-4 text-green-600 mr-1" />
+                    <span className="text-sm text-green-600">+5% this month</span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground">Pending Setup</p>
+                      <p className="text-2xl font-bold text-orange-600">7</p>
+                    </div>
+                    <AlertTriangle className="h-8 w-8 text-orange-600" />
+                  </div>
+                  <div className="flex items-center mt-2">
+                    <span className="text-sm text-orange-600">Need assistance</span>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Onboarding Wizard */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Create New Organization</CardTitle>
+                <CardDescription>Set up a new organization with guided onboarding</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="org-name">Organization Name</Label>
+                      <Input id="org-name" placeholder="Enter organization name" />
+                    </div>
+                    <div>
+                      <Label htmlFor="org-domain">Domain</Label>
+                      <Input id="org-domain" placeholder="company.com" />
+                    </div>
+                    <div>
+                      <Label htmlFor="org-plan">Plan</Label>
+                      <Select>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a plan" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="starter">Starter - $29/month</SelectItem>
+                          <SelectItem value="professional">Professional - $99/month</SelectItem>
+                          <SelectItem value="enterprise">Enterprise - $299/month</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="admin-name">Admin Name</Label>
+                      <Input id="admin-name" placeholder="John Smith" />
+                    </div>
+                    <div>
+                      <Label htmlFor="admin-email">Admin Email</Label>
+                      <Input id="admin-email" type="email" placeholder="admin@company.com" />
+                    </div>
+                    <div>
+                      <Label htmlFor="admin-phone">Phone (Optional)</Label>
+                      <Input id="admin-phone" placeholder="+1-555-0123" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <Label>Initial Setup Options</Label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="flex items-center space-x-2">
+                      <Switch id="setup-sso" />
+                      <Label htmlFor="setup-sso">Enable SSO</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Switch id="setup-branding" />
+                      <Label htmlFor="setup-branding">Custom Branding</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Switch id="setup-audit" defaultChecked />
+                      <Label htmlFor="setup-audit">Audit Logging</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Switch id="setup-notifications" defaultChecked />
+                      <Label htmlFor="setup-notifications">Email Notifications</Label>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="org-notes">Setup Notes (Internal)</Label>
+                  <Textarea 
+                    id="org-notes" 
+                    placeholder="Any special requirements or notes for this organization..."
+                    className="h-20"
+                  />
+                </div>
+
+                <div className="flex justify-end space-x-3">
+                  <Button variant="outline">Save as Draft</Button>
+                  <Button onClick={() => {
+                    toast({
+                      title: "Organization Created",
+                      description: "New organization has been set up successfully. Welcome email sent.",
+                      variant: "default"
+                    })
+                  }}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Organization
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Recent Onboarding Activity */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Recent Onboarding Activity</CardTitle>
+                <CardDescription>Latest organization setups and trial activities</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex items-center space-x-4">
+                      <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                        <CheckCircle className="h-5 w-5 text-green-600" />
+                      </div>
+                      <div>
+                        <p className="font-medium">StartupXYZ completed setup</p>
+                        <p className="text-sm text-muted-foreground">Professional plan • 5 users added</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm text-muted-foreground">2 minutes ago</p>
+                      <Badge className="bg-green-100 text-green-700">Completed</Badge>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex items-center space-x-4">
+                      <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                        <Users className="h-5 w-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="font-medium">TechCorp started trial</p>
+                        <p className="text-sm text-muted-foreground">Enterprise plan trial • Admin invited</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm text-muted-foreground">1 hour ago</p>
+                      <Badge className="bg-blue-100 text-blue-700">In Progress</Badge>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex items-center space-x-4">
+                      <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
+                        <AlertTriangle className="h-5 w-5 text-orange-600" />
+                      </div>
+                      <div>
+                        <p className="font-medium">InnovateLabs needs assistance</p>
+                        <p className="text-sm text-muted-foreground">Starter plan • Setup incomplete</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm text-muted-foreground">3 hours ago</p>
+                      <Badge className="bg-orange-100 text-orange-700">Needs Help</Badge>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex items-center space-x-4">
+                      <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
+                        <Mail className="h-5 w-5 text-purple-600" />
+                      </div>
+                      <div>
+                        <p className="font-medium">Welcome email sent to GrowthCo</p>
+                        <p className="text-sm text-muted-foreground">Professional plan • Awaiting first login</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm text-muted-foreground">5 hours ago</p>
+                      <Badge variant="outline">Pending</Badge>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Onboarding Tools */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Onboarding Tools</CardTitle>
+                <CardDescription>Utilities to help with organization setup and management</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <Button variant="outline" className="h-20 flex flex-col">
+                    <Mail className="h-6 w-6 mb-2" />
+                    Send Welcome Email
+                  </Button>
+                  <Button variant="outline" className="h-20 flex flex-col">
+                    <Phone className="h-6 w-6 mb-2" />
+                    Schedule Demo
+                  </Button>
+                  <Button variant="outline" className="h-20 flex flex-col">
+                    <FileText className="h-6 w-6 mb-2" />
+                    Generate Setup Guide
+                  </Button>
+                  <Button variant="outline" className="h-20 flex flex-col">
+                    <Settings className="h-6 w-6 mb-2" />
+                    Bulk Configuration
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* Billing Tab */}

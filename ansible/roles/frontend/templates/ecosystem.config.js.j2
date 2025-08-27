@@ -1,8 +1,8 @@
 module.exports = {
   apps: [{
     name: '{{ app_name }}-frontend',
-    script: 'node_modules/.bin/next',
-    args: 'start -p {{ frontend_port }}',
+    script: 'npm',
+    args: 'start',
     instances: {{ frontend_instances }},
     exec_mode: 'cluster',
     autorestart: true,

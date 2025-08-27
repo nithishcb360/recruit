@@ -2,7 +2,10 @@ from django.contrib import admin
 from django.utils.html import format_html
 from django.urls import reverse
 from django.utils.safestring import mark_safe
+from django.contrib.auth import get_user_model
 from .models import Department, Job
+
+User = get_user_model()
 
 
 @admin.register(Department)
@@ -10,8 +13,9 @@ class DepartmentAdmin(admin.ModelAdmin):
     list_display = ['name', 'organization', 'manager', 'job_count', 'created_at']
     list_filter = ['organization', 'created_at']
     search_fields = ['name', 'organization__name', 'manager__first_name', 'manager__last_name']
-    raw_id_fields = ['organization', 'manager']
+    # raw_id_fields = ['manager']  # Removed for better UX
     readonly_fields = ['created_at', 'updated_at']
+    # autocomplete_fields = ['manager']  # Temporarily removed - using regular dropdown
     
     fieldsets = (
         ('Basic Information', {
@@ -35,9 +39,36 @@ class DepartmentAdmin(admin.ModelAdmin):
         qs = super().get_queryset(request)
         if request.user.is_superuser:
             return qs
-        if hasattr(request.user, 'organization'):
+        if hasattr(request.user, 'organization') and request.user.organization:
             return qs.filter(organization=request.user.organization)
         return qs.none()
+    
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        # Pre-populate organization field for non-superusers
+        if not request.user.is_superuser and hasattr(request.user, 'organization') and request.user.organization:
+            form.base_fields['organization'].initial = request.user.organization
+            form.base_fields['organization'].widget.attrs['readonly'] = True
+        return form
+    
+    def save_model(self, request, obj, form, change):
+        # Auto-set organization for non-superusers
+        if not request.user.is_superuser and hasattr(request.user, 'organization') and request.user.organization:
+            obj.organization = request.user.organization
+        super().save_model(request, obj, form, change)
+    
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "manager":
+            # Limit manager choices to users from the same organization
+            if hasattr(request.user, 'organization') and request.user.organization:
+                kwargs["queryset"] = User.objects.filter(organization=request.user.organization)
+            elif request.user.is_superuser:
+                # Superusers can see all users
+                kwargs["queryset"] = User.objects.all()
+            else:
+                # No organization - show no users
+                kwargs["queryset"] = User.objects.none()
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
 @admin.register(Job)
@@ -45,7 +76,8 @@ class JobAdmin(admin.ModelAdmin):
     list_display = ['title', 'organization', 'department', 'status', 'urgency', 'applications_count', 'days_open_display', 'created_at']
     list_filter = ['status', 'urgency', 'job_type', 'experience_level', 'is_remote', 'organization', 'department', 'created_at']
     search_fields = ['title', 'organization__name', 'department__name', 'location', 'description']
-    raw_id_fields = ['organization', 'department', 'hiring_manager', 'created_by']
+    # raw_id_fields = ['organization', 'department', 'hiring_manager', 'created_by']  # Removed for better UX
+    autocomplete_fields = ['department', 'hiring_manager', 'created_by']  # Better than raw_id
     filter_horizontal = ['recruiters']
     readonly_fields = ['slug', 'days_open', 'is_overdue', 'created_at', 'updated_at']
     date_hierarchy = 'created_at'

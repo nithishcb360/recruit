@@ -20,7 +20,8 @@ class CandidateAdmin(admin.ModelAdmin):
     list_display = ['full_name', 'email', 'organization', 'current_title', 'location', 'source', 'applications_count', 'created_at']
     list_filter = ['organization', 'source', 'years_of_experience', 'created_at']
     search_fields = ['first_name', 'last_name', 'email', 'current_title', 'current_company', 'location']
-    raw_id_fields = ['organization', 'referrer']
+    # raw_id_fields = ['organization', 'referrer']  # Removed for better UX
+    autocomplete_fields = ['referrer']  # Better than raw_id for user lookup
     readonly_fields = ['full_name', 'created_at', 'updated_at']
     
     fieldsets = (
@@ -68,7 +69,8 @@ class JobApplicationAdmin(admin.ModelAdmin):
     list_display = ['candidate_name', 'job_title', 'stage', 'status', 'overall_rating_display', 'applied_at', 'stage_updated_at']
     list_filter = ['stage', 'status', 'job__organization', 'job__department', 'applied_at']
     search_fields = ['candidate__first_name', 'candidate__last_name', 'candidate__email', 'job__title']
-    raw_id_fields = ['job', 'candidate']
+    # raw_id_fields = ['job', 'candidate']  # Removed for better UX
+    autocomplete_fields = ['job', 'candidate']  # Better than raw_id
     readonly_fields = ['applied_at', 'stage_updated_at', 'created_at', 'updated_at']
     date_hierarchy = 'applied_at'
     inlines = [ApplicationActivityInline]
@@ -171,7 +173,8 @@ class ApplicationActivityAdmin(admin.ModelAdmin):
     list_display = ['application_info', 'user', 'activity_type', 'description_short', 'created_at']
     list_filter = ['activity_type', 'created_at', 'application__job__organization']
     search_fields = ['application__candidate__first_name', 'application__candidate__last_name', 'description']
-    raw_id_fields = ['application', 'user']
+    # raw_id_fields = ['application', 'user']  # Removed for better UX
+    autocomplete_fields = ['application', 'user']  # Better than raw_id
     readonly_fields = ['created_at']
     date_hierarchy = 'created_at'
     

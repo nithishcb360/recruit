@@ -19,10 +19,16 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from rest_framework_simplejwt.views import TokenRefreshView
-from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
+# from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
+from simple_schema import minimal_schema
+from simple_docs_view import simple_docs_view
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    
+    # API documentation (must be first to avoid conflicts)
+    path('api/schema/', minimal_schema, name='schema'),
+    path('api/docs/', simple_docs_view, name='api-docs'),
     
     # API endpoints
     path('api/auth/', include('accounts.urls')),
@@ -33,11 +39,8 @@ urlpatterns = [
     
     # JWT token refresh
     path('api/auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-    
-    # API documentation
-    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
-    path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
 ]
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+

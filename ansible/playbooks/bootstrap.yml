@@ -1,0 +1,102 @@
+---
+- name: Bootstrap servers for Ansible deployment
+  hosts: all
+  become: yes
+  gather_facts: no
+  vars:
+    ansible_user: "{{ initial_user | default('ubuntu') }}"
+  
+  tasks:
+    - name: Wait for system to be ready
+      wait_for_connection:
+        connect_timeout: 20
+        sleep: 5
+        delay: 5
+        timeout: 300
+
+    - name: Gather facts
+      setup:
+
+    - name: Install Python if needed
+      raw: |
+        if ! command -v python3 &> /dev/null; then
+          apt-get update && apt-get install -y python3 python3-pip
+        fi
+      changed_when: false
+
+    - name: Update package cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install essential packages
+      apt:
+        name:
+          - sudo
+          - openssh-server
+          - python3
+          - python3-pip
+          - curl
+          - wget
+          - git
+        state: present
+
+    - name: Ensure hrms user exists and has sudo access
+      user:
+        name: "{{ deploy_user }}"
+        groups: sudo
+        append: yes
+        shell: /bin/bash
+        state: present
+
+    - name: Set up SSH directory for hrms user
+      file:
+        path: "/home/{{ deploy_user }}/.ssh"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: '0700'
+
+    - name: Add SSH public key to hrms user
+      authorized_key:
+        user: "{{ deploy_user }}"
+        key: "{{ lookup('file', '/home/infotribo/off_laptop/work/cldb/cldb01/cldb01') }}"
+        state: present
+
+    - name: Set SSH authorized_keys permissions
+      file:
+        path: "/home/{{ deploy_user }}/.ssh/authorized_keys"
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: '0600'
+
+    - name: Allow hrms user sudo without password
+      lineinfile:
+        path: /etc/sudoers.d/{{ deploy_user }}
+        line: "{{ deploy_user }} ALL=(ALL) NOPASSWD:ALL"
+        create: yes
+        validate: 'visudo -cf %s'
+
+    - name: Configure SSH for security
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        backup: yes
+      loop:
+        - { regexp: '^PermitRootLogin', line: 'PermitRootLogin no' }
+        - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
+        - { regexp: '^PubkeyAuthentication', line: 'PubkeyAuthentication yes' }
+      notify: restart ssh
+
+    - name: Start and enable SSH service
+      systemd:
+        name: ssh
+        state: started
+        enabled: yes
+
+  handlers:
+    - name: restart ssh
+      systemd:
+        name: ssh
+        state: restarted

@@ -13,7 +13,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { 
   Video, VideoOff, Mic, MicOff, Phone, PhoneOff, 
-  Screen, Settings, Users, Clock, MessageSquare, 
+  Monitor, Settings, Users, Clock, MessageSquare, 
   FileText, Share2, Play, Square, Volume2, VolumeX,
   Maximize, Camera, Send, Download
 } from "lucide-react"
@@ -324,7 +324,7 @@ export default function InterviewPlatform() {
                     {isScreenSharing && (
                       <div className="absolute inset-0 bg-black/80 flex items-center justify-center">
                         <div className="text-center text-white">
-                          <Screen className="h-16 w-16 mx-auto mb-4" />
+                          <Monitor className="h-16 w-16 mx-auto mb-4" />
                           <h3 className="text-xl font-semibold">Screen Sharing Active</h3>
                           <p className="text-sm opacity-75">Your screen is being shared with participants</p>
                         </div>
@@ -362,7 +362,7 @@ export default function InterviewPlatform() {
                         size="sm"
                         onClick={toggleScreenShare}
                       >
-                        <Screen className="h-4 w-4" />
+                        <Monitor className="h-4 w-4" />
                       </Button>
                       <Button
                         variant={isRecording ? "destructive" : "outline"}
@@ -404,12 +404,12 @@ export default function InterviewPlatform() {
                   {interviewQuestions.map((question) => (
                     <div key={question.id} className="p-4 border rounded-lg">
                       <div className="flex items-center justify-between mb-2">
-                        <Badge variant="outline">{question.category}</Badge>
+                        <Badge variant="outline">{question.category || 'General'}</Badge>
                         <Button size="sm" variant="outline">
                           Mark as Asked
                         </Button>
                       </div>
-                      <p className="text-sm">{question.question}</p>
+                      <p className="text-sm">{question.question || 'No question available'}</p>
                     </div>
                   ))}
                 </CardContent>
@@ -529,11 +529,11 @@ export default function InterviewPlatform() {
                   <Avatar className="h-8 w-8">
                     <AvatarImage src={participant.avatar} />
                     <AvatarFallback>
-                      {participant.name.split(' ').map(n => n[0]).join('')}
+                      {(participant.name || 'Unknown').split(' ').map(n => n[0]).join('')}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{participant.name}</p>
+                    <p className="text-sm font-medium truncate">{participant.name || 'Unknown'}</p>
                     <div className="flex items-center space-x-1">
                       <div className={`w-2 h-2 rounded-full ${participant.isOnline ? 'bg-green-500' : 'bg-gray-400'}`}></div>
                       <span className="text-xs text-muted-foreground">
@@ -573,7 +573,7 @@ export default function InterviewPlatform() {
                     <div key={message.id} className={`text-xs ${
                       message.type === 'system' ? 'text-muted-foreground italic' : ''
                     }`}>
-                      <span className="font-medium">{message.sender}:</span> {message.message}
+                      <span className="font-medium">{message.sender || 'Unknown'}:</span> {message.message || ''}
                     </div>
                   ))}
                 </div>
