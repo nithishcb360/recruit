@@ -20,7 +20,7 @@ export default function QuickActions({ onJobCreated }: QuickActionsProps) {
 
   return (
     <Card className="shadow-sm">
-      <CardHeader className="pb-2">
+      {/* <CardHeader className="pb-2">
         <CardTitle className="text-sm font-semibold text-gray-900">Quick Actions</CardTitle>
       </CardHeader>
       <CardContent className="p-3 pt-0">
@@ -67,7 +67,7 @@ export default function QuickActions({ onJobCreated }: QuickActionsProps) {
             </DialogContent>
           </Dialog>
         </div>
-      </CardContent>
+      </CardContent> */}
     </Card>
   )
 }

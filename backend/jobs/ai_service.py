@@ -14,7 +14,12 @@ class AIJobDescriptionGenerator:
     def __init__(self):
         api_key = config('OPENAI_API_KEY', default='')
         if api_key:
-            self.client = OpenAI(api_key=api_key)
+            try:
+                # Initialize OpenAI client with just the API key
+                self.client = OpenAI(api_key=api_key)
+            except Exception as e:
+                logger.warning(f"Failed to initialize OpenAI client: {str(e)}")
+                self.client = None
         else:
             self.client = None
         self.model = "gpt-3.5-turbo"
