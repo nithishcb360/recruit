@@ -1,0 +1,12 @@
+John Doe
+john.doe@example.com
+(555) 123-4567
+
+Experience: 5 years
+
+Skills: Python, JavaScript, React, Django
+
+Education: Bachelor's degree in Computer Science
+
+Current Company: Tech Corp
+Current Position: Software Developer
