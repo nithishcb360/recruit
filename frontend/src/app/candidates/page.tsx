@@ -20,6 +20,7 @@ import { deleteCandidate } from "@/lib/api/candidates-new"
 import { getJobs, type JobListItem } from "@/lib/api/jobs"
 import { useToast } from "@/hooks/use-toast"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
+import { setScreeningCandidateData } from "@/utils/screeningData"
 
 interface Candidate {
   id: number
@@ -764,15 +765,65 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
   }
 
   const handleMoveToScreeningForJob = (candidate: Candidate, jobId: number) => {
-    const jobMatch = candidate.allJobMatches?.find(match => match.jobId === jobId)
-    if (!jobMatch) return
+    console.log('handleMoveToScreeningForJob called with:', { candidate, jobId })
+    
+    // Find the job match - use selectedJobMatch if available, otherwise find from allJobMatches
+    let jobMatch = null
+    if ((candidate as any).selectedJobMatch && (candidate as any).selectedJobMatch.jobId === jobId) {
+      jobMatch = (candidate as any).selectedJobMatch
+    } else {
+      jobMatch = candidate.allJobMatches?.find(match => match.jobId === jobId)
+    }
+    
+    console.log('Found job match:', jobMatch)
+    
+    if (!jobMatch) {
+      console.error('No job match found for jobId:', jobId)
+      toast({
+        title: "Error",
+        description: "Could not find job match information.",
+        variant: "destructive"
+      })
+      return
+    }
 
+    // Prepare parsed resume data to pass to screening
+    const candidateData = {
+      id: candidate.id,
+      name: candidate.name,
+      email: candidate.email,
+      phone: candidate.phone,
+      location: candidate.location,
+      experience_years: (candidate as any).experience_years || candidate.totalExperience,
+      experience_level: (candidate as any).experience_level,
+      current_company: (candidate as any).current_company,
+      current_position: (candidate as any).current_position,
+      skills: (candidate as any).skills || [],
+      education: (candidate as any).education || [],
+      certifications: (candidate as any).certifications || [],
+      salary_expectation: (candidate as any).salary_expectation,
+      jobId: jobId,
+      jobTitle: jobMatch.jobTitle
+    }
+
+    console.log('Candidate data prepared:', candidateData)
+
+    // Store candidate data using utility function for the screening page
+    setScreeningCandidateData(candidateData)
+    
+    // Remove candidate from current list
+    setCandidates(prev => {
+      const filtered = prev.filter(c => c.id !== candidate.id)
+      console.log('Candidates after filtering:', filtered.length, 'remaining')
+      return filtered
+    })
+    
     // Navigate to screening page with candidate and job info as query parameters
     router.push(`/screening?candidateId=${candidate.id}&jobId=${jobId}`)
     
     toast({
-      title: "Moving to Screening",
-      description: `${candidate.name} will be screened for ${jobMatch.jobTitle} (${jobMatch.matchPercentage}% match).`,
+      title: "Moved to Screening",
+      description: `${candidate.name} has been moved to screening for ${jobMatch.jobTitle}.`,
       variant: "default"
     })
   }

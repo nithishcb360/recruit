@@ -3,6 +3,7 @@ import os
 import docx
 import pdfplumber
 from typing import Dict, List, Any, Optional
+from .enhanced_experience_extractor import EnhancedExperienceExtractor
 
 
 class ResumeParser:
@@ -60,7 +61,8 @@ class ResumeParser:
         if not text:
             return {'error': 'Could not extract text from file'}
         
-        return {
+        # Extract basic information
+        parsed_data = {
             'name': self._extract_name(text),
             'email': self._extract_email(text),
             'phone': self._extract_phone(text),
@@ -69,6 +71,20 @@ class ResumeParser:
             'education': self._extract_education(text),
             'text': text[:1000]  # First 1000 characters for preview
         }
+        
+        # Enhanced experience extraction as fallback
+        if not parsed_data['experience'].get('years') or parsed_data['experience']['years'] == 0:
+            try:
+                enhanced_extractor = EnhancedExperienceExtractor()
+                enhanced_years = enhanced_extractor.extract_total_experience(text)
+                if enhanced_years > 0:
+                    parsed_data['experience']['years'] = enhanced_years
+                    parsed_data['experience']['extraction_method'] = 'enhanced'
+                    print(f"Enhanced extraction found {enhanced_years} years of experience")
+            except Exception as e:
+                print(f"Enhanced experience extraction failed: {e}")
+        
+        return parsed_data
 
     def _extract_text(self, file_path: str) -> str:
         """Extract text from PDF or DOCX file."""
