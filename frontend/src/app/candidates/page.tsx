@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -237,6 +238,7 @@ const calculateJobMatchPercentage = (candidate: any, job: Job) => {
 
 export default function CandidatePipeline({ selectedJobId = null }: CandidatePipelineProps) {
   const { toast } = useToast()
+  const router = useRouter()
   const [applications, setApplications] = useState<JobApplication[]>([])
   const [jobs, setJobs] = useState<JobListItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -658,12 +660,6 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
         setIsDeleteDialogOpen(false)
         setCandidateToDelete(null)
         console.log('Deletion completed successfully')
-      } else {
-        // API deletion failed
-        const errorText = await response.text()
-        console.error('API deletion failed:', response.status, errorText)
-        throw new Error(`Failed to delete candidate: ${response.status} ${errorText}`)
-      }
       
     } catch (error: any) {
       console.error('Error deleting candidate:', error)
@@ -757,20 +753,23 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
     // Navigate to screening page with candidate and best job match
     const bestJob = candidate.bestJobMatch
     
+    // Navigate to screening page
+    router.push(`/screening?candidateId=${candidate.id}&jobId=${bestJob.jobId}`)
+    
     toast({
       title: "Moving to Screening",
       description: `${candidate.name} will be screened for ${bestJob.jobTitle} (${bestJob.matchPercentage}% match).`,
       variant: "default"
     })
-    
-    // You can implement navigation to screening page here
-    // router.push(`/screening?job=${bestJob.jobId}&candidate=${candidate.id}`)
   }
 
   const handleMoveToScreeningForJob = (candidate: Candidate, jobId: number) => {
     const jobMatch = candidate.allJobMatches?.find(match => match.jobId === jobId)
     if (!jobMatch) return
 
+    // Navigate to screening page with candidate and job info as query parameters
+    router.push(`/screening?candidateId=${candidate.id}&jobId=${jobId}`)
+    
     toast({
       title: "Moving to Screening",
       description: `${candidate.name} will be screened for ${jobMatch.jobTitle} (${jobMatch.matchPercentage}% match).`,

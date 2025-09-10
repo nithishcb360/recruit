@@ -10,8 +10,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator
+  DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { 
   MapPin,
@@ -179,48 +178,6 @@ export default function CandidateCard({
                 sideOffset={8}
               >
                 <div className="p-2 space-y-1">
-                  <DropdownMenuItem 
-                    onClick={() => onViewDetails(candidate.id)}
-                    className="flex items-center px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 rounded-lg cursor-pointer transition-all duration-200 group"
-                  >
-                    <div className="w-8 h-8 bg-blue-100 group-hover:bg-blue-200 rounded-lg flex items-center justify-center mr-3 transition-colors duration-200">
-                      👁️
-                    </div>
-                    <span>View Details</span>
-                  </DropdownMenuItem>
-                  
-                  <DropdownMenuItem 
-                    onClick={() => onEditCandidate(candidate)}
-                    className="flex items-center px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-green-50 hover:text-green-700 rounded-lg cursor-pointer transition-all duration-200 group"
-                  >
-                    <div className="w-8 h-8 bg-green-100 group-hover:bg-green-200 rounded-lg flex items-center justify-center mr-3 transition-colors duration-200">
-                      ✏️
-                    </div>
-                    <span>Edit Candidate</span>
-                  </DropdownMenuItem>
-                  
-                  <DropdownMenuItem 
-                    onClick={() => onAddNote(candidate)}
-                    className="flex items-center px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-yellow-50 hover:text-yellow-700 rounded-lg cursor-pointer transition-all duration-200 group"
-                  >
-                    <div className="w-8 h-8 bg-yellow-100 group-hover:bg-yellow-200 rounded-lg flex items-center justify-center mr-3 transition-colors duration-200">
-                      📝
-                    </div>
-                    <span>Add Note</span>
-                  </DropdownMenuItem>
-                  
-                  <DropdownMenuItem 
-                    onClick={() => onScheduleInterview(candidate)}
-                    className="flex items-center px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-purple-50 hover:text-purple-700 rounded-lg cursor-pointer transition-all duration-200 group"
-                  >
-                    <div className="w-8 h-8 bg-purple-100 group-hover:bg-purple-200 rounded-lg flex items-center justify-center mr-3 transition-colors duration-200">
-                      📅
-                    </div>
-                    <span>Schedule Interview</span>
-                  </DropdownMenuItem>
-                  
-                  <DropdownMenuSeparator className="my-2 border-gray-200" />
-                  
                   <DropdownMenuItem 
                     onClick={() => onDeleteCandidate(candidate.id)}
                     className="flex items-center px-3 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-700 rounded-lg cursor-pointer transition-all duration-200 group"
