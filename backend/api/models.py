@@ -1,0 +1,297 @@
+from django.db import models
+from django.utils import timezone
+from django.contrib.auth.models import User
+
+
+class DashboardStats(models.Model):
+    total_users = models.IntegerField(default=0)
+    active_users = models.IntegerField(default=0)
+    total_revenue = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    orders_today = models.IntegerField(default=0)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Dashboard Statistics"
+        verbose_name_plural = "Dashboard Statistics"
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return f"Dashboard Stats - {self.updated_at.strftime('%Y-%m-%d %H:%M')}"
+
+
+class Task(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('in_progress', 'In Progress'),
+        ('completed', 'Completed'),
+        ('cancelled', 'Cancelled'),
+    ]
+    
+    PRIORITY_CHOICES = [
+        ('low', 'Low'),
+        ('medium', 'Medium'),
+        ('high', 'High'),
+        ('urgent', 'Urgent'),
+    ]
+
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default='medium')
+    assigned_to = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
+    due_date = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.title
+
+
+class ActivityLog(models.Model):
+    ACTION_CHOICES = [
+        ('create', 'Created'),
+        ('update', 'Updated'),
+        ('delete', 'Deleted'),
+        ('login', 'Logged In'),
+        ('logout', 'Logged Out'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES)
+    description = models.CharField(max_length=500)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    timestamp = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ['-timestamp']
+
+    def __str__(self):
+        return f"{self.user.username} - {self.action} - {self.timestamp.strftime('%Y-%m-%d %H:%M')}"
+
+
+class Department(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class Job(models.Model):
+    JOB_TYPE_CHOICES = [
+        ('full_time', 'Full Time'),
+        ('part_time', 'Part Time'),
+        ('contract', 'Contract'),
+        ('freelance', 'Freelance'),
+        ('internship', 'Internship'),
+        ('temporary', 'Temporary'),
+    ]
+    
+    EXPERIENCE_LEVEL_CHOICES = [
+        ('entry', 'Entry Level'),
+        ('junior', 'Junior'),
+        ('mid', 'Mid Level'),
+        ('senior', 'Senior'),
+        ('lead', 'Lead'),
+        ('principal', 'Principal'),
+        ('director', 'Director'),
+        ('vp', 'VP'),
+    ]
+    
+    WORK_TYPE_CHOICES = [
+        ('remote', 'Remote'),
+        ('onsite', 'On-site'),
+        ('hybrid', 'Hybrid'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('active', 'Active'),
+        ('paused', 'Paused'),
+        ('closed', 'Closed'),
+        ('archived', 'Archived'),
+    ]
+    
+    URGENCY_CHOICES = [
+        ('low', 'Low'),
+        ('medium', 'Medium'),
+        ('high', 'High'),
+        ('urgent', 'Urgent'),
+    ]
+
+    # Basic job information
+    title = models.CharField(max_length=200)
+    department = models.ForeignKey(Department, on_delete=models.CASCADE, related_name='jobs')
+    description = models.TextField()
+    requirements = models.TextField()
+    responsibilities = models.TextField(blank=True)
+    
+    # Job details
+    job_type = models.CharField(max_length=20, choices=JOB_TYPE_CHOICES, default='full_time')
+    experience_level = models.CharField(max_length=20, choices=EXPERIENCE_LEVEL_CHOICES, default='mid')
+    location = models.CharField(max_length=200, default='Remote')
+    work_type = models.CharField(max_length=20, choices=WORK_TYPE_CHOICES, default='remote')
+    is_remote = models.BooleanField(default=True)
+    
+    # Salary information
+    salary_min = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    salary_max = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    salary_currency = models.CharField(max_length=3, default='USD')
+    show_salary = models.BooleanField(default=False)
+    
+    # Skills and requirements
+    required_skills = models.JSONField(default=list, blank=True)
+    preferred_skills = models.JSONField(default=list, blank=True)
+    
+    # Job management
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    urgency = models.CharField(max_length=20, choices=URGENCY_CHOICES, default='medium')
+    openings = models.PositiveIntegerField(default=1)
+    sla_days = models.PositiveIntegerField(default=30)
+    
+    # Publishing options
+    publish_internal = models.BooleanField(default=True)
+    publish_external = models.BooleanField(default=False)
+    publish_company_website = models.BooleanField(default=True)
+    
+    # Screening questions
+    screening_questions = models.JSONField(default=list, blank=True)
+    
+    # Metadata
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_jobs', null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+    published_at = models.DateTimeField(null=True, blank=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['status']),
+            models.Index(fields=['department']),
+            models.Index(fields=['created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.title} - {self.department.name}"
+
+    @property
+    def is_active(self):
+        return self.status == 'active'
+    
+    @property
+    def salary_range_display(self):
+        if self.salary_min and self.salary_max:
+            return f"{self.salary_currency} {self.salary_min:,.0f} - {self.salary_max:,.0f}"
+        elif self.salary_min:
+            return f"{self.salary_currency} {self.salary_min:,.0f}+"
+        elif self.salary_max:
+            return f"Up to {self.salary_currency} {self.salary_max:,.0f}"
+        return None
+
+
+class Candidate(models.Model):
+    STATUS_CHOICES = [
+        ('new', 'New'),
+        ('screening', 'Screening'),
+        ('interviewing', 'Interviewing'),
+        ('offered', 'Offered'),
+        ('hired', 'Hired'),
+        ('rejected', 'Rejected'),
+        ('withdrawn', 'Withdrawn'),
+    ]
+    
+    EXPERIENCE_LEVEL_CHOICES = [
+        ('entry', 'Entry Level'),
+        ('junior', 'Junior'),
+        ('mid', 'Mid Level'),
+        ('senior', 'Senior'),
+        ('lead', 'Lead'),
+        ('principal', 'Principal'),
+    ]
+
+    # Personal information
+    first_name = models.CharField(max_length=100)
+    last_name = models.CharField(max_length=100)
+    email = models.EmailField()
+    phone = models.CharField(max_length=20, blank=True)
+    location = models.CharField(max_length=200, blank=True)
+    
+    # Resume information
+    resume_file = models.FileField(upload_to='resumes/', null=True, blank=True)
+    resume_text = models.TextField(blank=True)
+    
+    # Parsed resume data
+    skills = models.JSONField(default=list, blank=True)
+    experience_years = models.PositiveIntegerField(null=True, blank=True)
+    experience_level = models.CharField(max_length=20, choices=EXPERIENCE_LEVEL_CHOICES, default='mid')
+    education = models.JSONField(default=list, blank=True)
+    certifications = models.JSONField(default=list, blank=True)
+    
+    # Work information
+    current_company = models.CharField(max_length=200, blank=True)
+    current_position = models.CharField(max_length=200, blank=True)
+    salary_expectation = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    availability = models.CharField(max_length=100, blank=True)
+    
+    # Status and tracking
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='new')
+    source = models.CharField(max_length=100, default='Direct Application')
+    rating = models.PositiveIntegerField(null=True, blank=True)
+    
+    # Metadata
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.first_name} {self.last_name}"
+    
+    @property
+    def full_name(self):
+        return f"{self.first_name} {self.last_name}"
+
+
+class JobApplication(models.Model):
+    STATUS_CHOICES = [
+        ('applied', 'Applied'),
+        ('screening', 'Screening'),
+        ('interviewing', 'Interviewing'),
+        ('offered', 'Offered'),
+        ('hired', 'Hired'),
+        ('rejected', 'Rejected'),
+        ('withdrawn', 'Withdrawn'),
+    ]
+
+    candidate = models.ForeignKey(Candidate, on_delete=models.CASCADE, related_name='applications')
+    job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name='applications')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='applied')
+    rating = models.PositiveIntegerField(null=True, blank=True, help_text="Rating from 1-5")
+    cover_letter = models.TextField(blank=True)
+    notes = models.TextField(blank=True)
+    
+    # Interview scheduling
+    interview_date = models.DateTimeField(null=True, blank=True)
+    interviewer = models.CharField(max_length=200, blank=True)
+    
+    # Timestamps
+    applied_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ['candidate', 'job']
+        ordering = ['-applied_at']
+
+    def __str__(self):
+        return f"{self.candidate.full_name} - {self.job.title}"

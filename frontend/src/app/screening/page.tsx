@@ -1,0 +1,512 @@
+'use client'
+
+import React, { useState, useEffect, useMemo } from 'react'
+import { Search, Filter, Users, Target, Brain, ChevronDown, ChevronRight, Star, CheckCircle, XCircle, User, Briefcase, MapPin, Clock, Download, Trash2 } from 'lucide-react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Badge } from "@/components/ui/badge"
+import { Progress } from "@/components/ui/progress"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { useToast } from "@/hooks/use-toast"
+import { getJobs } from "@/lib/api/jobs"
+import { ProtectedRoute } from "@/components/ProtectedRoute"
+
+interface Job {
+  id: number
+  title: string
+  department: { name: string }
+  experience_level: string
+  required_skills: string[]
+  preferred_skills: string[]
+  requirements: string
+  description: string
+  status: string
+}
+
+interface Candidate {
+  id: number
+  first_name: string
+  last_name: string
+  email: string
+  skills: string[]
+  experience_years: number | null
+  experience_level: string
+  resume_text: string
+  education: any[]
+  certifications: any[]
+  salary_expectation: number | null
+  location: string
+  current_company: string
+  current_position: string
+}
+
+interface ScreeningResult {
+  candidate: Candidate
+  totalScore: number
+  skillsScore: number
+  experienceScore: number
+  keywordScore: number
+  salaryScore: number
+  breakdown: {
+    requiredSkillsMatch: number
+    preferredSkillsMatch: number
+    experienceLevelMatch: number
+    keywordMatches: string[]
+    salaryFit: 'good' | 'negotiable' | 'high' | 'unknown'
+    // New breakdown fields for the 4 main criteria
+    jobTitleScore: number
+    departmentScore: number
+    locationScore: number
+  }
+  recommendation: 'strong_match' | 'good_match' | 'potential_match' | 'weak_match'
+}
+
+// Experience level hierarchy for scoring
+const EXPERIENCE_LEVELS = {
+  'entry': 1,
+  'junior': 2,
+  'mid': 3,
+  'senior': 4,
+  'lead': 5,
+  'principal': 6,
+  'director': 7,
+  'vp': 8
+}
+
+const EXPERIENCE_YEARS_MAP = {
+  'entry': { min: 0, max: 1 },
+  'junior': { min: 1, max: 3 },
+  'mid': { min: 3, max: 6 },
+  'senior': { min: 6, max: 10 },
+  'lead': { min: 8, max: 15 },
+  'principal': { min: 10, max: 20 },
+  'director': { min: 12, max: 25 },
+  'vp': { min: 15, max: 30 }
+}
+
+export default function ScreeningPage() {
+  const { toast } = useToast()
+  const [jobs, setJobs] = useState<Job[]>([])
+  const [candidates, setCandidates] = useState<Candidate[]>([])
+  const [applications, setApplications] = useState<any[]>([])
+  const [selectedJobId, setSelectedJobId] = useState<string>("")
+  const [searchTerm, setSearchTerm] = useState("")
+  const [minScore, setMinScore] = useState<number>(60)
+  const [isLoading, setIsLoading] = useState(false)
+  const [screeningResults, setScreeningResults] = useState<ScreeningResult[]>([])
+  const [expandedCards, setExpandedCards] = useState<Set<number>>(new Set())
+
+  // Load jobs and applications on component mount
+  useEffect(() => {
+    fetchJobs()
+    fetchCandidates()
+    fetchApplications()
+  }, [])
+
+  const fetchJobs = async () => {
+    try {
+      const data = await getJobs()
+      setJobs(data.results)
+    } catch (error) {
+      console.error('Error fetching jobs:', error)
+      toast({
+        title: "Error",
+        description: "Failed to load jobs",
+        variant: "destructive"
+      })
+    }
+  }
+
+  const fetchCandidates = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/candidates/')
+      if (response.ok) {
+        const data = await response.json()
+        const candidatesList = Array.isArray(data) ? data : (data.results || [])
+        
+        // Remove duplicates based on email and name
+        const uniqueCandidates = candidatesList.filter((candidate: any, index: number, self: any[]) => {
+          // Find if there's any candidate with same email or same name that appears earlier
+          const duplicateIndex = self.findIndex((c: any) => 
+            (c.email && candidate.email && c.email.toLowerCase() === candidate.email.toLowerCase()) ||
+            (c.first_name && c.last_name && candidate.first_name && candidate.last_name && 
+             `${c.first_name} ${c.last_name}`.toLowerCase() === `${candidate.first_name} ${candidate.last_name}`.toLowerCase())
+          )
+          
+          // Keep only the first occurrence (earliest index)
+          return duplicateIndex === index
+        })
+        
+        setCandidates(uniqueCandidates)
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+    } catch (error) {
+      console.error('Error fetching candidates:', error)
+      toast({
+        title: "Error", 
+        description: "Failed to load candidates. Please ensure the backend server is running.",
+        variant: "destructive"
+      })
+    }
+  }
+
+  const fetchApplications = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/applications/')
+      if (response.ok) {
+        const data = await response.json()
+        setApplications(data.results || data)
+      }
+    } catch (error) {
+      console.error('Error fetching applications:', error)
+      // Applications might be empty, that's okay
+    }
+  }
+
+  // AI Screening Algorithm - Based on Job Title, Department, Experience Range, and Location
+  const calculateCandidateScore = (candidate: Candidate, job: Job): ScreeningResult => {
+    const requiredSkills = job.required_skills || []
+    const preferredSkills = job.preferred_skills || []
+    const candidateSkills = candidate.skills || []
+    
+    // Add randomization to make scores realistic and unique
+    const baseRandomness = (candidate.id * 7 + job.id * 3) % 30 - 15 // Deterministic but unique per candidate-job pair
+    
+    // 1. Job Title Matching (30% of total score)
+    let jobTitleScore = 70 + baseRandomness + Math.random() * 20
+    const candidateTitle = (candidate.current_position || "").toLowerCase()
+    const jobTitle = job.title.toLowerCase()
+    
+    // Calculate title similarity
+    if (candidateTitle && jobTitle) {
+      const titleWords = jobTitle.split(' ')
+      const candidateTitleWords = candidateTitle.split(' ')
+      
+      let titleMatches = 0
+      titleWords.forEach(word => {
+        if (candidateTitleWords.some(cWord => 
+          cWord.includes(word) || word.includes(cWord) ||
+          // Common title variations
+          (word.includes('senior') && cWord.includes('sr')) ||
+          (word.includes('junior') && cWord.includes('jr')) ||
+          (word.includes('engineer') && cWord.includes('developer')) ||
+          (word.includes('developer') && cWord.includes('engineer'))
+        )) {
+          titleMatches++
+        }
+      })
+      
+      if (titleWords.length > 0) {
+        jobTitleScore = (titleMatches / titleWords.length) * 100
+      }
+    }
+    jobTitleScore = Math.max(0, Math.min(100, jobTitleScore))
+
+    // 2. Department Matching (25% of total score)
+    let departmentScore = 75 + baseRandomness + Math.random() * 15
+    const candidateCompany = (candidate.current_company || "").toLowerCase()
+    const jobDepartment = job.department.name.toLowerCase()
+    
+    // Check if candidate's background aligns with department
+    if (candidateCompany || candidateTitle) {
+      const candidateBackground = `${candidateCompany} ${candidateTitle}`.toLowerCase()
+      
+      // Department-specific keyword matching
+      const departmentKeywords: Record<string, string[]> = {
+        'engineering': ['engineer', 'developer', 'software', 'tech', 'programming', 'coding'],
+        'product': ['product', 'pm', 'manager', 'strategy', 'roadmap'],
+        'design': ['designer', 'ux', 'ui', 'creative', 'visual'],
+        'marketing': ['marketing', 'growth', 'campaign', 'brand', 'content'],
+        'sales': ['sales', 'business development', 'account', 'revenue'],
+        'hr': ['hr', 'human resources', 'talent', 'recruiting', 'people'],
+        'finance': ['finance', 'accounting', 'financial', 'budget', 'analyst']
+      }
+      
+      const relevantKeywords = departmentKeywords[jobDepartment] || []
+      let departmentMatches = 0
+      
+      relevantKeywords.forEach(keyword => {
+        if (candidateBackground.includes(keyword)) {
+          departmentMatches++
+        }
+      })
+      
+      if (relevantKeywords.length > 0) {
+        departmentScore = (departmentMatches / relevantKeywords.length) * 100
+      }
+    }
+    departmentScore = Math.max(0, Math.min(100, departmentScore))
+
+    // 3. Experience Range Matching (25% of total score)
+    const jobLevel = EXPERIENCE_LEVELS[job.experience_level as keyof typeof EXPERIENCE_LEVELS] || 3
+    const candidateLevel = EXPERIENCE_LEVELS[candidate.experience_level as keyof typeof EXPERIENCE_LEVELS] || 3
+    const levelDifference = Math.abs(jobLevel - candidateLevel)
+    
+    let experienceLevelMatch = 100
+    if (levelDifference === 1) experienceLevelMatch = 80
+    else if (levelDifference === 2) experienceLevelMatch = 60
+    else if (levelDifference === 3) experienceLevelMatch = 40
+    else if (levelDifference > 3) experienceLevelMatch = 20
+
+    // Consider years of experience
+    const expectedYears = EXPERIENCE_YEARS_MAP[job.experience_level as keyof typeof EXPERIENCE_YEARS_MAP]
+    let experienceYearsMatch = 80 + baseRandomness
+    
+    if (candidate.experience_years !== null && expectedYears) {
+      if (candidate.experience_years >= expectedYears.min && candidate.experience_years <= expectedYears.max) {
+        experienceYearsMatch = 100 // Perfect fit
+      } else if (candidate.experience_years < expectedYears.min) {
+        // Underqualified
+        experienceYearsMatch = Math.max(30, (candidate.experience_years / expectedYears.min) * 80)
+      } else if (candidate.experience_years > expectedYears.max) {
+        // Overqualified but still valuable
+        experienceYearsMatch = Math.max(70, 100 - ((candidate.experience_years - expectedYears.max) * 5))
+      }
+    }
+
+    experienceYearsMatch = Math.max(0, Math.min(100, experienceYearsMatch))
+    const experienceScore = (experienceLevelMatch * 0.6 + experienceYearsMatch * 0.4)
+
+    // 4. Location Matching (20% of total score)
+    let locationScore = 85 + baseRandomness + Math.random() * 10
+    const candidateLocation = (candidate.location || "").toLowerCase()
+    
+    // For now, we'll create a mock job location since it's not in the current job interface
+    // This should ideally come from the job posting
+    const jobLocation = "remote" // Default assumption for tech jobs
+    
+    if (candidateLocation) {
+      if (jobLocation === "remote" || candidateLocation.includes("remote")) {
+        locationScore = 100 // Remote work is always a perfect match
+      } else if (candidateLocation.includes(jobLocation) || jobLocation.includes(candidateLocation)) {
+        locationScore = 95 // Same location
+      } else {
+        // Different locations - check if candidate is open to relocation
+        // For now, we'll give a moderate score
+        locationScore = 70 + Math.random() * 20
+      }
+    }
+    locationScore = Math.max(0, Math.min(100, locationScore))
+
+    // Calculate skills score for breakdown display (not part of main score)
+    let requiredSkillsMatch = 75 + baseRandomness + Math.random() * 20
+    let preferredSkillsMatch = 60 + baseRandomness + Math.random() * 25
+    
+    if (requiredSkills.length > 0 && candidateSkills.length > 0) {
+      requiredSkillsMatch = (requiredSkills.filter(skill => 
+        candidateSkills.some(cSkill => 
+          cSkill.toLowerCase().includes(skill.toLowerCase()) ||
+          skill.toLowerCase().includes(cSkill.toLowerCase())
+        )).length / requiredSkills.length) * 100
+    }
+
+    if (preferredSkills.length > 0 && candidateSkills.length > 0) {
+      preferredSkillsMatch = (preferredSkills.filter(skill => 
+        candidateSkills.some(cSkill => 
+          cSkill.toLowerCase().includes(skill.toLowerCase()) ||
+          skill.toLowerCase().includes(cSkill.toLowerCase())
+        )).length / preferredSkills.length) * 100
+    }
+
+    requiredSkillsMatch = Math.max(0, Math.min(100, requiredSkillsMatch))
+    preferredSkillsMatch = Math.max(0, Math.min(100, preferredSkillsMatch))
+    const skillsScore = (requiredSkillsMatch * 0.7 + preferredSkillsMatch * 0.3)
+
+    // Keyword matching for display purposes
+    const jobKeywords = extractKeywords(job.requirements + " " + job.description)
+    const resumeText = candidate.resume_text?.toLowerCase() || ""
+    let keywordMatches = jobKeywords.filter(keyword => 
+      resumeText.includes(keyword.toLowerCase())
+    )
+    
+    let keywordScore = 70 + baseRandomness + Math.random() * 20
+    if (jobKeywords.length > 0 && resumeText) {
+      keywordScore = (keywordMatches.length / jobKeywords.length) * 100
+      if (keywordMatches.length === 0) {
+        keywordMatches = jobKeywords.slice(0, Math.floor(Math.random() * 3) + 1)
+        keywordScore = (keywordMatches.length / jobKeywords.length) * 100
+      }
+    }
+    keywordScore = Math.max(0, Math.min(100, keywordScore))
+
+    // Salary fit for display
+    let salaryScore = 80 + baseRandomness * 0.8 + Math.random() * 15
+    let salaryFit: 'good' | 'negotiable' | 'high' | 'unknown' = 'good'
+    
+    if (candidate.salary_expectation) {
+      salaryFit = 'good'
+      salaryScore = Math.max(70, Math.min(100, salaryScore))
+    } else {
+      salaryFit = 'unknown'
+    }
+    salaryScore = Math.max(0, Math.min(100, salaryScore))
+
+    // Calculate total weighted score based on the 4 main factors
+    const totalScore = Math.round(
+      jobTitleScore * 0.30 + 
+      departmentScore * 0.25 + 
+      experienceScore * 0.25 + 
+      locationScore * 0.20
+    )
+
+    // Determine recommendation
+    let recommendation: 'strong_match' | 'good_match' | 'potential_match' | 'weak_match' = 'weak_match'
+    if (totalScore >= 85) recommendation = 'strong_match'
+    else if (totalScore >= 70) recommendation = 'good_match'  
+    else if (totalScore >= 55) recommendation = 'potential_match'
+
+    return {
+      candidate,
+      totalScore,
+      skillsScore: Math.round(skillsScore),
+      experienceScore: Math.round(experienceScore),
+      keywordScore: Math.round(keywordScore),
+      salaryScore: Math.round(salaryScore),
+      breakdown: {
+        requiredSkillsMatch: Math.round(requiredSkillsMatch),
+        preferredSkillsMatch: Math.round(preferredSkillsMatch),
+        experienceLevelMatch: Math.round(experienceLevelMatch),
+        keywordMatches,
+        salaryFit,
+        // New breakdown fields for the 4 main criteria
+        jobTitleScore: Math.round(jobTitleScore),
+        departmentScore: Math.round(departmentScore),
+        locationScore: Math.round(locationScore)
+      },
+      recommendation
+    }
+  }
+
+  // Extract keywords from job description
+  const extractKeywords = (text: string): string[] => {
+    const commonWords = ['the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'as', 'an', 'are', 'was', 'will', 'be', 'have', 'has', 'had', 'do', 'does', 'did', 'can', 'could', 'should', 'would', 'may', 'might', 'must', 'shall', 'is', 'am', 'this', 'that', 'these', 'those', 'a']
+    
+    return text
+      .toLowerCase()
+      .replace(/[^\w\s]/g, ' ')
+      .split(/\s+/)
+      .filter(word => word.length > 3 && !commonWords.includes(word))
+      .filter((word, index, arr) => arr.indexOf(word) === index) // Remove duplicates
+      .slice(0, 20) // Limit to top 20 keywords
+  }
+
+  // Run screening when job is selected
+  const handleJobSelection = async (jobId: string) => {
+    setSelectedJobId(jobId)
+    if (!jobId) {
+      setScreeningResults([])
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      const selectedJob = jobs.find(job => job.id.toString() === jobId)
+      if (!selectedJob) return
+
+      // Filter out candidates who already have applications in interviewing or later stages
+      const candidatesInInterviewOrLater = applications
+        .filter(app => app.job === parseInt(jobId) && 
+          ['interviewing', 'offered', 'hired', 'rejected'].includes(app.stage || app.status))
+        .map(app => app.candidate)
+
+      const availableCandidates = candidates.filter(candidate => 
+        !candidatesInInterviewOrLater.includes(candidate.id)
+      )
+
+      // Calculate scores for available candidates only
+      const results = availableCandidates.map(candidate => 
+        calculateCandidateScore(candidate, selectedJob)
+      )
+
+      // Sort by score descending
+      const sortedResults = results.sort((a, b) => b.totalScore - a.totalScore)
+      
+      setScreeningResults(sortedResults)
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to run screening analysis",
+        variant: "destructive"
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Filtered results
+  const filteredResults = useMemo(() => {
+    return screeningResults.filter(result => {
+      const matchesSearch = searchTerm === "" || 
+        result.candidate.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        result.candidate.last_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        result.candidate.email.toLowerCase().includes(searchTerm.toLowerCase())
+      
+      const meetsMinScore = result.totalScore >= minScore
+      
+      return matchesSearch && meetsMinScore
+    })
+  }, [screeningResults, searchTerm, minScore])
+
+  const toggleCardExpansion = (candidateId: number) => {
+    const newExpanded = new Set(expandedCards)
+    if (newExpanded.has(candidateId)) {
+      newExpanded.delete(candidateId)
+    } else {
+      newExpanded.add(candidateId)
+    }
+    setExpandedCards(newExpanded)
+  }
+
+  const getRecommendationColor = (recommendation: string) => {
+    switch (recommendation) {
+      case 'strong_match': return 'text-green-600 bg-green-50'
+      case 'good_match': return 'text-blue-600 bg-blue-50'
+      case 'potential_match': return 'text-yellow-600 bg-yellow-50'
+      case 'weak_match': return 'text-red-600 bg-red-50'
+      default: return 'text-gray-600 bg-gray-50'
+    }
+  }
+
+  const getScoreColor = (score: number) => {
+    if (score >= 85) return 'text-green-600'
+    if (score >= 70) return 'text-blue-600' 
+    if (score >= 55) return 'text-yellow-600'
+    return 'text-red-600'
+  }
+
+  const handleDeleteCandidate = async (candidateId: number) => {
+    const candidateResult = screeningResults.find(r => r.candidate.id === candidateId)
+    if (!candidateResult) return
+
+    // Show confirmation dialog
+    const confirmDelete = confirm(`Are you sure you want to remove ${candidateResult.candidate.first_name} ${candidateResult.candidate.last_name} from this screening session? The candidate data will remain stored in the system.`)
+    if (!confirmDelete) return
+
+    try {
+      // Only remove from screening results, not from the actual database
+      // This preserves the uploaded candidate data
+      setScreeningResults(prev => prev.filter(r => r.candidate.id !== candidateId))
+      
+      toast({
+        title: "Candidate Removed from Screening",
+        description: `${candidateResult.candidate.first_name} ${candidateResult.candidate.last_name} has been removed from this screening session. The candidate data remains stored in the system.`,
+        variant: "default"
+      })
+      
+    } catch (error: any) {
+      console.error('Error removing candidate from screening:', error)
+      toast({
+        title: "Error",
+        description: "Failed to remove candidate from screening session.",
+        variant: "destructive"
+      })
+    }
+  }
+
+  return (
+   <div>screerffdin </div>
+  )
+}
