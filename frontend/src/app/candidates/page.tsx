@@ -268,7 +268,15 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
   // Load real candidates from API
   const fetchCandidates = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/candidates/')
+      console.log('Attempting to fetch candidates from:', 'http://localhost:8000/api/candidates/')
+      const response = await fetch('http://localhost:8000/api/candidates/', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        // Add timeout and error handling
+        signal: AbortSignal.timeout(10000), // 10 second timeout
+      })
       if (response.ok) {
         const data = await response.json()
         const candidatesList = Array.isArray(data) ? data : (data.results || [])
@@ -325,11 +333,32 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
       }
     } catch (error) {
       console.error('Error fetching candidates:', error)
+      
+      let errorMessage = "Failed to load candidate data."
+      
+      if (error instanceof TypeError && error.message === 'Failed to fetch') {
+        errorMessage = "Cannot connect to backend server. Please ensure the Django server is running on http://localhost:8000"
+      } else if (error instanceof Error && error.name === 'TimeoutError') {
+        errorMessage = "Request timed out. Backend server may be slow or unresponsive."
+      } else if (error instanceof Error) {
+        errorMessage = `Error: ${error.message}`
+      }
+      
+      console.error('Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : 'No stack trace',
+        type: typeof error,
+        name: error instanceof Error ? error.name : 'Unknown'
+      })
+      
       toast({
-        title: "Error",
-        description: "Failed to load candidate data. Please ensure the backend server is running.",
+        title: "Connection Error",
+        description: errorMessage,
         variant: "destructive"
       })
+      
+      // Set empty candidates array to prevent UI issues
+      setCandidates([])
     }
   }
 

@@ -45,7 +45,11 @@
       "Bash(npx eslint:*)",
       "Bash(sed:*)",
       "Bash(timeout 10 curl -I http://localhost:8000/api/candidates/)",
-      "Bash(dir backend)"
+      "Bash(dir backend)",
+      "Bash(timeout:*)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Bash(npm uninstall:*)"
     ],
     "deny": [],
     "ask": []

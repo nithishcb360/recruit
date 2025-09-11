@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import DashboardStats, Task, ActivityLog, Department, Job, Candidate, JobApplication
+from .models import DashboardStats, Task, ActivityLog, Department, Job, Candidate, JobApplication, FeedbackTemplate
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -248,3 +248,32 @@ class ResumeParseSerializer(serializers.Serializer):
     experience = serializers.DictField(required=False)
     education = serializers.ListField(child=serializers.CharField(), required=False)
     text = serializers.CharField(required=False, allow_blank=True)
+
+
+class FeedbackTemplateSerializer(serializers.ModelSerializer):
+    created_by = UserSerializer(read_only=True)
+    
+    class Meta:
+        model = FeedbackTemplate
+        fields = [
+            'id', 'name', 'description', 'questions', 'sections', 'rating_criteria',
+            'status', 'is_active', 'is_default', 'created_by', 'created_at', 'updated_at'
+        ]
+
+
+class FeedbackTemplateCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FeedbackTemplate
+        fields = [
+            'name', 'description', 'questions', 'sections', 'rating_criteria',
+            'status', 'is_active', 'is_default'
+        ]
+
+
+class FeedbackTemplateUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FeedbackTemplate
+        fields = [
+            'name', 'description', 'questions', 'sections', 'rating_criteria',
+            'status', 'is_active', 'is_default'
+        ]
