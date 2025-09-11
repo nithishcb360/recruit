@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createJob, getDepartments, createDepartment, type JobCreateData, type Department, type Job, type DepartmentCreateData } from '@/lib/api/jobs';
+import { searchLocations, type Location } from '@/lib/api/locations';
 
 interface FormData {
   jobTitle: string;
@@ -49,6 +50,9 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
   const [newDepartmentName, setNewDepartmentName] = useState('');
   const [newDepartmentDescription, setNewDepartmentDescription] = useState('');
   const [isCreatingDepartment, setIsCreatingDepartment] = useState(false);
+  const [locationSuggestions, setLocationSuggestions] = useState<Location[]>([]);
+  const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
+  const [isSearchingLocations, setIsSearchingLocations] = useState(false);
 
   const steps = [
     { number: 1, name: 'Job Details', active: activeStep === 1 },
@@ -140,6 +144,11 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
       }));
     }
 
+    // Handle location search
+    if (field === 'location' && typeof value === 'string') {
+      handleLocationSearch(value);
+    }
+
     // Handle salary validation - only for number fields
     if (field === 'minSalary' && typeof value === 'number') {
       const numValue = value as number;
@@ -159,6 +168,36 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
         }));
       }
     }
+  };
+
+  const handleLocationSearch = async (query: string) => {
+    if (query.length < 3) {
+      setLocationSuggestions([]);
+      setShowLocationSuggestions(false);
+      return;
+    }
+
+    setIsSearchingLocations(true);
+    try {
+      const suggestions = await searchLocations(query);
+      setLocationSuggestions(suggestions);
+      setShowLocationSuggestions(suggestions.length > 0);
+    } catch (error) {
+      console.error('Error searching locations:', error);
+      setLocationSuggestions([]);
+      setShowLocationSuggestions(false);
+    } finally {
+      setIsSearchingLocations(false);
+    }
+  };
+
+  const handleLocationSelect = (location: Location) => {
+    setFormData(prev => ({
+      ...prev,
+      location: location.full_name || location.name
+    }));
+    setShowLocationSuggestions(false);
+    setLocationSuggestions([]);
   };
 
   const handleFieldFocus = (field: keyof FormData) => {
@@ -1249,19 +1288,47 @@ ${preferredQuals.map(qual => `• ${qual}`).join('\n')}`
 
             {/* Location and Work Type */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div>
+              <div className="relative">
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Location
                 </label>
-                <input
-                  type="text"
-                  value={formData.location}
-                  onChange={(e) => handleInputChange('location', e.target.value)}
-                  onFocus={() => handleFieldFocus('location')}
-                  onBlur={() => handleFieldBlur('location')}
-                  className={getInputClasses('location')}
-                  placeholder="e.g., Remote, New York, NY"
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={formData.location}
+                    onChange={(e) => handleInputChange('location', e.target.value)}
+                    onFocus={() => handleFieldFocus('location')}
+                    onBlur={() => setTimeout(() => setShowLocationSuggestions(false), 150)}
+                    className={getInputClasses('location')}
+                    placeholder="Type 3+ letters to search locations..."
+                    autoComplete="off"
+                  />
+                  {isSearchingLocations && (
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Location Suggestions Dropdown */}
+                {showLocationSuggestions && locationSuggestions.length > 0 && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {locationSuggestions.map((location) => (
+                      <div
+                        key={location.id}
+                        onClick={() => handleLocationSelect(location)}
+                        className="px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                      >
+                        <div className="font-medium text-gray-900">{location.name}</div>
+                        {location.state && location.country && (
+                          <div className="text-sm text-gray-600">
+                            {location.state}, {location.country}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div>
