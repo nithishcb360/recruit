@@ -9,6 +9,7 @@ router.register(r'departments', views.DepartmentViewSet)
 router.register(r'jobs', views.JobViewSet)
 router.register(r'candidates', views.CandidateViewSet)
 router.register(r'applications', views.JobApplicationViewSet)
+router.register(r'feedback-templates', views.FeedbackTemplateViewSet)
 
 urlpatterns = [
     path('', views.api_root, name='api-root'),
