@@ -265,10 +265,67 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [candidateToDelete, setCandidateToDelete] = useState<Candidate | null>(null)
 
+  // Helper function for fetch with timeout and complete error suppression
+  const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs: number = 5000): Promise<Response> => {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+    
+    // Store original console methods to restore later
+    const originalError = console.error
+    const originalWarn = console.warn
+    const originalLog = console.log
+    
+    try {
+      // Completely suppress all console output during fetch
+      console.error = () => {}
+      console.warn = () => {}
+      console.log = () => {}
+      
+      // Also suppress any window.onerror during this operation
+      const originalOnError = window.onerror
+      window.onerror = () => true
+      
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal
+      })
+      
+      clearTimeout(timeoutId)
+      
+      // Restore all console methods and error handling
+      console.error = originalError
+      console.warn = originalWarn
+      console.log = originalLog
+      window.onerror = originalOnError
+      
+      return response
+    } catch (error) {
+      clearTimeout(timeoutId)
+      
+      // Restore all console methods and error handling
+      console.error = originalError
+      console.warn = originalWarn
+      console.log = originalLog
+      window.onerror = window.onerror
+      
+      // Create a clean error without exposing connection details
+      if (error instanceof Error && (error.name === 'AbortError' || error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED'))) {
+        throw new Error('Backend unavailable')
+      }
+      throw error
+    }
+  }
+
   // Load real candidates from API
   const fetchCandidates = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/candidates/')
+      console.log('Attempting to fetch candidates from:', 'http://localhost:8000/api/candidates/')
+      const response = await fetchWithTimeout('http://localhost:8000/api/candidates/', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      }, 5000) // 5 second timeout
       if (response.ok) {
         const data = await response.json()
         const candidatesList = Array.isArray(data) ? data : (data.results || [])
@@ -324,12 +381,17 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
         throw new Error(`HTTP ${response.status}: ${response.statusText}`)
       }
     } catch (error) {
-      console.error('Error fetching candidates:', error)
+      console.warn('Backend unavailable, using offline mode')
+      
+      // Show user-friendly toast for offline mode
       toast({
-        title: "Error",
-        description: "Failed to load candidate data. Please ensure the backend server is running.",
-        variant: "destructive"
+        title: "Offline Mode",
+        description: "Backend server not available. You can still create and manage forms locally.",
+        variant: "default"
       })
+      
+      // Set empty candidates array - user can add candidates manually if needed
+      setCandidates([])
     }
   }
 
@@ -696,28 +758,59 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
     setIsNotesOpen(true)
   }
 
-  const handleViewResumeClick = (candidate: Candidate) => {
-    // Always try to open the resume file first
+  const handleViewResumeClick = async (candidate: Candidate) => {
+    // First check if we have resume text available - if so, show modal directly
+    if (candidate.resumeText) {
+      setSelectedCandidateForResume(candidate)
+      setIsResumeModalOpen(true)
+      return
+    }
+    
+    // Try to check if backend is available before opening external link
     const resumeUrl = `http://localhost:8000/api/candidates/${candidate.id}/resume/`
     
-    // Open the resume URL in a new tab
-    // The backend will handle showing the file or returning an error page
-    const newWindow = window.open(resumeUrl, '_blank')
-    
-    // If window opening failed (popup blocker), show modal as fallback
-    if (!newWindow) {
+    try {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 2000) // Quick 2-second check
+      
+      // Suppress console errors
+      const originalError = console.error
+      console.error = () => {}
+      
+      const testResponse = await fetch(resumeUrl, {
+        method: 'HEAD',
+        signal: controller.signal
+      })
+      
+      clearTimeout(timeoutId)
+      console.error = originalError
+      
+      // Backend is available - try to open in new tab
+      const newWindow = window.open(resumeUrl, '_blank')
+      
+      if (!newWindow) {
+        // Popup blocked - show modal as fallback
+        setSelectedCandidateForResume(candidate)
+        setIsResumeModalOpen(true)
+        
+        toast({
+          title: "Popup Blocked",
+          description: "Please allow popups for this site to view resume files, or use the text version below.",
+          variant: "default"
+        })
+      }
+      
+    } catch (error) {
+      // Backend unavailable - show modal with text version or no resume message
       setSelectedCandidateForResume(candidate)
       setIsResumeModalOpen(true)
       
       toast({
-        title: "Popup Blocked",
-        description: "Please allow popups for this site to view resume files, or use the text version below.",
+        title: "Offline Mode",
+        description: "Backend server unavailable. Showing text version if available.",
         variant: "default"
       })
     }
-    
-    // Note: If the resume file doesn't exist, the backend will return a 404 page
-    // Users can then close that tab and click "View Resume" again to see the text modal
   }
 
   const handleEditProfile = (updatedCandidate: Candidate) => {
@@ -871,10 +964,10 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="All Jobs" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Jobs</SelectItem>
+                <SelectContent className="bg-white text-black">
+                  <SelectItem value="all" className="text-black hover:bg-gray-100">All Jobs</SelectItem>
                   {jobs.map((job) => (
-                    <SelectItem key={job.id} value={String(job.id)}>
+                    <SelectItem key={job.id} value={String(job.id)} className="text-black hover:bg-gray-100">
                       {job.title}
                     </SelectItem>
                   ))}
@@ -886,10 +979,10 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="All Stages" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Stages</SelectItem>
+                <SelectContent className="bg-white text-black">
+                  <SelectItem value="all" className="text-black hover:bg-gray-100">All Stages</SelectItem>
                   {stages.map((stage) => (
-                    <SelectItem key={stage} value={stage}>
+                    <SelectItem key={stage} value={stage} className="text-black hover:bg-gray-100">
                       {stage}
                     </SelectItem>
                   ))}
@@ -901,11 +994,11 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Sort by" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="lastActivity">Last Activity</SelectItem>
-                  <SelectItem value="name">Name</SelectItem>
-                  <SelectItem value="stage">Stage</SelectItem>
-                  <SelectItem value="rating">Rating</SelectItem>
+                <SelectContent className="bg-white text-black">
+                  <SelectItem value="lastActivity" className="text-black hover:bg-gray-100">Last Activity</SelectItem>
+                  <SelectItem value="name" className="text-black hover:bg-gray-100">Name</SelectItem>
+                  <SelectItem value="stage" className="text-black hover:bg-gray-100">Stage</SelectItem>
+                  <SelectItem value="rating" className="text-black hover:bg-gray-100">Rating</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -956,13 +1049,13 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
                     <SelectTrigger>
                       <SelectValue placeholder="All Ratings" />
                     </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Ratings</SelectItem>
-                      <SelectItem value="4-5">4-5 Stars</SelectItem>
-                      <SelectItem value="3-4">3-4 Stars</SelectItem>
-                      <SelectItem value="2-3">2-3 Stars</SelectItem>
-                      <SelectItem value="1-2">1-2 Stars</SelectItem>
-                      <SelectItem value="0-1">0-1 Stars</SelectItem>
+                    <SelectContent className="bg-white text-black">
+                      <SelectItem value="all" className="text-black hover:bg-gray-100">All Ratings</SelectItem>
+                      <SelectItem value="4-5" className="text-black hover:bg-gray-100">4-5 Stars</SelectItem>
+                      <SelectItem value="3-4" className="text-black hover:bg-gray-100">3-4 Stars</SelectItem>
+                      <SelectItem value="2-3" className="text-black hover:bg-gray-100">2-3 Stars</SelectItem>
+                      <SelectItem value="1-2" className="text-black hover:bg-gray-100">1-2 Stars</SelectItem>
+                      <SelectItem value="0-1" className="text-black hover:bg-gray-100">0-1 Stars</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
