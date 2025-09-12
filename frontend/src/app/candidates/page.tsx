@@ -71,6 +71,18 @@ interface Candidate {
   experience_level?: string
   current_company?: string
   current_position?: string
+  // Selected job match for filtering
+  selectedJobMatch?: {
+    jobId: number
+    jobTitle: string
+    matchPercentage: number
+    jobMatchDetails: {
+      jobTitleScore: number
+      departmentScore: number
+      experienceScore: number
+      locationScore: number
+    }
+  }
 }
 
 interface Job {
@@ -127,7 +139,7 @@ const calculateJobMatchPercentage = (candidate: any, job: Job) => {
     
     let titleMatches = 0
     titleWords.forEach(word => {
-      if (candidateTitleWords.some(cWord => 
+      if (candidateTitleWords.some((cWord: string) => 
         cWord.includes(word) || word.includes(cWord) ||
         (word.includes('senior') && cWord.includes('sr')) ||
         (word.includes('junior') && cWord.includes('jr')) ||
@@ -207,7 +219,7 @@ const calculateJobMatchPercentage = (candidate: any, job: Job) => {
   // 4. Location Matching (20%)
   let locationScore = 85 + baseRandomness + Math.random() * 10
   const candidateLocation = (candidate.location || "").toLowerCase()
-  const jobLocation = "remote" // Default assumption
+  const jobLocation: string = "remote" // Default assumption
   
   if (candidateLocation) {
     if (jobLocation === "remote" || candidateLocation.includes("remote")) {
@@ -331,7 +343,7 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
         const candidatesList = Array.isArray(data) ? data : (data.results || [])
         
         // Transform API candidates to display format
-        const transformedCandidates = candidatesList.map((candidate: any) => ({
+        const transformedCandidates: Candidate[] = candidatesList.map((candidate: any) => ({
           id: candidate.id,
           name: candidate.full_name || `${candidate.first_name} ${candidate.last_name}`,
           jobTitle: 'Available', // Since these are not associated with specific jobs yet
@@ -362,12 +374,12 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
           experience_level: candidate.experience_level,
           current_company: candidate.current_company,
           current_position: candidate.current_position
-        }))
+        })) as Candidate[]
         
         // Remove duplicates based on email and name
         const uniqueCandidates = transformedCandidates.filter((candidate, index, self) => {
           // Find if there's any candidate with same email or same name that appears earlier
-          const duplicateIndex = self.findIndex(c => 
+          const duplicateIndex = self.findIndex((c) => 
             (c.email && candidate.email && c.email.toLowerCase() === candidate.email.toLowerCase()) ||
             (c.name && candidate.name && c.name.toLowerCase() === candidate.name.toLowerCase())
           )
@@ -476,7 +488,17 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
     
     return candidates.map(candidate => {
       const allMatches: Array<{jobId: number, jobTitle: string, matchPercentage: number}> = []
-      let bestMatch = null
+      let bestMatch: {
+        jobId: number
+        jobTitle: string
+        matchPercentage: number
+        jobMatchDetails: {
+          jobTitleScore: number
+          departmentScore: number
+          experienceScore: number
+          locationScore: number
+        }
+      } | null = null
       let bestScore = 0
       
       // Calculate match for all active jobs
@@ -511,9 +533,9 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
       
       return {
         ...candidate,
-        bestJobMatch: bestMatch,
+        bestJobMatch: bestMatch || undefined,
         allJobMatches: allMatches,
-        progress: bestMatch ? bestMatch.matchPercentage : candidate.progress
+        progress: (bestMatch as any)?.matchPercentage ?? candidate.progress
       }
     })
   }, [candidates, jobs])
@@ -1222,4 +1244,54 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
       </div>
     </ProtectedRoute>
   )
+}
+
+function transformApplicationToCandidate(app: JobApplication): Candidate {
+  return {
+    id: app.id,
+    applicationId: app.id,
+    name: app.candidate_details?.full_name || 'Unknown',
+    jobTitle: app.job_details?.title || 'Unknown',
+    stage: app.stage || 'applied',
+    rating: app.overall_rating || 0,
+    lastActivity: app.stage_updated_at ? formatDateHelper(app.stage_updated_at) : '1d ago',
+    email: app.candidate_details?.email || '',
+    phone: app.candidate_details?.phone || '',
+    location: app.candidate_details?.location || '',
+    totalExperience: 0,
+    relevantExperience: 0,
+    skillExperience: [],
+    expectedSalary: '',
+    noticePeriod: '',
+    resumeLink: '',
+    linkedinProfile: '',
+    notes: '',
+    interviewHistory: [],
+    feedbackSummary: '',
+    progress: getStageProgress(app.stage || 'applied')
+  }
+}
+
+function formatDateHelper(dateString: string): string {
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffTime = Math.abs(now.getTime() - date.getTime())
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+  
+  if (diffDays === 1) return '1d ago'
+  if (diffDays < 7) return `${diffDays}d ago`
+  if (diffDays < 30) return `${Math.ceil(diffDays / 7)}w ago`
+  return `${Math.ceil(diffDays / 30)}m ago`
+}
+
+function getStageProgress(stage: string): number {
+  const stageMap: Record<string, number> = {
+    'Applied': 20,
+    'Screening': 40,
+    'Interview': 60,
+    'Offer': 80,
+    'Hired': 100,
+    'Rejected': 0
+  }
+  return stageMap[stage] || 10
 }
