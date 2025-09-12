@@ -1,6 +1,6 @@
 import re
 import os
-import docx
+from docx import Document
 import pdfplumber
 from typing import Dict, List, Any, Optional
 from .enhanced_experience_extractor import EnhancedExperienceExtractor
@@ -69,6 +69,8 @@ class ResumeParser:
             'skills': self._extract_skills(text),
             'experience': self._extract_experience(text),
             'education': self._extract_education(text),
+            'current_position': self._extract_current_position(text),
+            'current_company': self._extract_current_company(text),
             'text': text[:1000]  # First 1000 characters for preview
         }
         
@@ -113,7 +115,7 @@ class ResumeParser:
 
     def _extract_docx_text(self, file_path: str) -> str:
         """Extract text from DOCX file."""
-        doc = docx.Document(file_path)
+        doc = Document(file_path)
         text = ''
         for paragraph in doc.paragraphs:
             text += paragraph.text + '\n'
@@ -339,3 +341,531 @@ class ResumeParser:
                         break
         
         return list(set(education))[:3]  # Remove duplicates, max 3
+
+    def _extract_current_position(self, text: str) -> str:
+        """Extract current job title/position from resume text, focusing on summary section."""
+        
+        # First, try to find the summary section explicitly
+        summary_position = self._extract_from_summary(text)
+        if summary_position:
+            return summary_position
+            
+        # Second, try fallback patterns
+        patterns_position = self._extract_from_patterns(text)
+        if patterns_position:
+            return patterns_position
+            
+        # Third, if still no position found, analyze experience section to infer job title
+        experience_position = self._extract_from_experience_section(text)
+        if experience_position:
+            return experience_position
+            
+        return ""
+    
+    def _extract_from_summary(self, text: str) -> str:
+        """Extract position from summary/objective section specifically."""
+        text_lines = text.split('\n')
+        summary_section = []
+        in_summary = False
+        
+        # Common summary section headers
+        summary_headers = [
+            'summary', 'professional summary', 'career summary', 'profile',
+            'objective', 'career objective', 'professional objective',
+            'about', 'overview', 'introduction', 'professional profile'
+        ]
+        
+        # First, check if the very first line might be a job title (no summary header)
+        if text_lines and text_lines[0].strip():
+            first_line = text_lines[0].strip()
+            job_title = self._extract_job_title_from_text(first_line)
+            if job_title:
+                return job_title
+        
+        # Look for explicit summary sections
+        for i, line in enumerate(text_lines):
+            line_clean = line.strip().lower()
+            
+            # Check if we're entering a summary section
+            if any(header in line_clean for header in summary_headers):
+                if len(line_clean) < 50:  # Header line, not content
+                    in_summary = True
+                    continue
+            
+            # Check if we're leaving summary section (new section header)
+            if in_summary and line_clean and not line_clean.startswith('-') and not line_clean.startswith('•'):
+                # Check if this might be a new section
+                common_sections = ['experience', 'education', 'skills', 'employment', 'work history', 'qualifications', 'certifications']
+                if any(section in line_clean for section in common_sections) and len(line_clean) < 30:
+                    break
+            
+            # Collect summary content
+            if in_summary and line.strip():
+                summary_section.append(line.strip())
+                if len(summary_section) > 10:  # Limit to prevent overreading
+                    break
+        
+        # Extract job title from summary content
+        if summary_section:
+            summary_text = ' '.join(summary_section)
+            return self._extract_job_title_from_text(summary_text)
+        
+        # If no explicit summary found, check first few lines as potential summary
+        if not summary_section and len(text_lines) > 1:
+            # Treat first 3 lines as summary if they contain descriptive content
+            potential_summary = []
+            for i, line in enumerate(text_lines[:3]):
+                if line.strip() and len(line.strip()) > 20:  # Skip short lines
+                    potential_summary.append(line.strip())
+            
+            if potential_summary:
+                summary_text = ' '.join(potential_summary)
+                return self._extract_job_title_from_text(summary_text)
+        
+        return ""
+    
+    def _extract_job_title_from_text(self, text: str) -> str:
+        """Extract job title from a given text using patterns."""
+        
+        # First, try to extract job title from the very beginning of text (like "React.js Developer")
+        text_stripped = text.strip()
+        if text_stripped:
+            # Check if text starts with a job title pattern
+            first_line = text_stripped.split('\n')[0].strip()
+            
+            # Patterns for job titles at the beginning of text
+            beginning_patterns = [
+                # Technology-specific developers (React.js Developer, Node.js Developer, etc.)
+                r'^([a-zA-Z]+\.?[a-zA-Z]*\.?\s+developer)(?=\s)',
+                r'^([a-zA-Z]+\.?[a-zA-Z]*\.?\s+engineer)(?=\s)',
+                
+                # Standard job titles at beginning
+                r'^((?:senior|sr\.?|lead|principal|chief)\s+(?:software\s+)?(?:engineer|developer|architect|analyst|consultant|manager))(?=\s)',
+                r'^((?:software|web|mobile|full[\s-]?stack|backend|frontend|front[\s-]?end|back[\s-]?end)\s+(?:engineer|developer))(?=\s)',
+                r'^((?:data|business|systems?|security|devops|cloud)\s+(?:engineer|analyst|architect|scientist|specialist))(?=\s)',
+                r'^((?:product|project|technical|engineering)\s+manager)(?=\s)',
+                r'^((?:ui|ux|product)\s+designer)(?=\s)',
+                r'^((?:qa|quality\s+assurance)\s+(?:engineer|analyst|tester))(?=\s)',
+                
+                # Generic titles at beginning
+                r'^(developer|engineer|architect|analyst|consultant|designer|manager|specialist|scientist|researcher)(?=\s)',
+            ]
+            
+            for pattern in beginning_patterns:
+                match = re.search(pattern, first_line, re.IGNORECASE)
+                if match:
+                    job_title = match.group(1).strip()
+                    if len(job_title) > 3 and len(job_title) < 60:
+                        # Proper capitalization
+                        return ' '.join(word.capitalize() for word in job_title.split())
+        
+        # Enhanced job title patterns for summary extraction (fallback)
+        position_patterns = [
+            # Direct job title mentions
+            r'(?:i\s+am\s+a|i\s+am\s+an|i\s+work\s+as\s+a|i\s+work\s+as\s+an)\s+([^,.]{10,50})',
+            r'(?:experienced|skilled|professional)\s+([^,.]{10,50}?)(?:\s+with|\s+having)',
+            r'(?:as\s+a|as\s+an)\s+([^,.]{10,50}?)(?:\s+at|\s+with|\s+,)',
+            
+            # Common job titles with context
+            r'(?:senior|sr\.?|lead|principal|chief)\s+(?:software\s+)?(?:engineer|developer|architect|analyst|consultant|manager)',
+            r'(?:software|web|mobile|full[\s-]?stack|backend|frontend|front[\s-]?end|back[\s-]?end)\s+(?:engineer|developer)',
+            r'(?:data|business|systems?|security|devops|cloud)\s+(?:engineer|analyst|architect|scientist|specialist)',
+            r'(?:product|project|technical|engineering)\s+manager',
+            r'(?:ui|ux|product)\s+designer',
+            r'(?:qa|quality\s+assurance)\s+(?:engineer|analyst|tester)',
+            
+            # Single titles in context
+            r'(?:^|\s)(developer|engineer|analyst|consultant|architect|designer|manager|specialist|scientist|researcher)(?=\s+with|\s+at|\s+having|\s*,|\s*\.)',
+        ]
+        
+        text_lower = text.lower()
+        
+        # Try each pattern
+        for pattern in position_patterns:
+            matches = re.findall(pattern, text_lower, re.IGNORECASE)
+            if matches:
+                # Clean and format the first match
+                job_title = matches[0].strip()
+                if len(job_title) > 3 and len(job_title) < 60:
+                    # Capitalize properly
+                    return ' '.join(word.capitalize() for word in job_title.split())
+        
+        return ""
+    
+    def _extract_from_patterns(self, text: str) -> str:
+        """Fallback extraction from general patterns."""
+        text_lines = text.split('\n')
+        
+        # Look in the first 10 lines for job titles (usually in header)
+        for line in text_lines[:10]:
+            line_clean = line.strip()
+            if len(line_clean) > 3 and len(line_clean) < 100:
+                job_title = self._extract_job_title_from_text(line_clean)
+                if job_title:
+                    return job_title
+        
+        # Look for current position indicators throughout the text
+        current_indicators = [
+            r'current\s*(?:position|role|job)\s*:?\s*([^\n]{10,80})',
+            r'currently\s*(?:working\s*as|employed\s*as)\s*([^\n]{10,80})',
+            r'present\s*position\s*:?\s*([^\n]{10,80})',
+            r'(?:present|current)\s*[-–]\s*([^\n]{10,80})',
+        ]
+        
+        text_lower = text.lower()
+        for pattern in current_indicators:
+            matches = re.findall(pattern, text_lower)
+            if matches:
+                position = matches[0].strip()
+                if len(position) > 5 and len(position) < 80:
+                    # Clean up the position
+                    position = re.sub(r'^\W+|\W+$', '', position)  # Remove leading/trailing non-word chars
+                    return position.title()
+        
+        return ''
+
+    def _extract_from_experience_section(self, text: str) -> str:
+        """Extract job title by analyzing experience section, skills section, and mentioned technologies/roles."""
+        
+        # Find experience section
+        text_lines = text.split('\n')
+        experience_content = []
+        skills_content = []
+        in_experience = False
+        in_skills = False
+        
+        # Experience section headers
+        experience_headers = [
+            'experience', 'work experience', 'professional experience', 'employment',
+            'work history', 'career history', 'professional background'
+        ]
+        
+        # Skills section headers
+        skills_headers = [
+            'skills', 'technical skills', 'key skills', 'core skills', 'competencies',
+            'technologies', 'tools', 'programming languages', 'frameworks'
+        ]
+        
+        for line in text_lines:
+            line_clean = line.strip().lower()
+            
+            # Check if we're entering experience section
+            if any(header in line_clean for header in experience_headers):
+                if len(line_clean) < 50:  # Header line
+                    in_experience = True
+                    in_skills = False
+                    continue
+            
+            # Check if we're entering skills section
+            if any(header in line_clean for header in skills_headers):
+                if len(line_clean) < 50:  # Header line
+                    in_skills = True
+                    in_experience = False
+                    continue
+            
+            # Stop at other major sections
+            if (in_experience or in_skills) and line_clean:
+                stop_sections = ['education', 'projects', 'certifications', 'awards', 'contact', 'references']
+                if any(section in line_clean for section in stop_sections) and len(line_clean) < 30:
+                    in_experience = False
+                    in_skills = False
+                    continue
+            
+            # Collect experience content
+            if in_experience and line.strip():
+                experience_content.append(line.strip())
+                if len(experience_content) > 20:  # Limit content
+                    break
+                    
+            # Collect skills content
+            if in_skills and line.strip():
+                skills_content.append(line.strip())
+                if len(skills_content) > 15:  # Limit content
+                    in_skills = False
+        
+        # If no explicit experience section, use first part of resume
+        if not experience_content:
+            experience_content = [line.strip() for line in text_lines[5:15] if line.strip()]
+        
+        # Combine experience and skills content for analysis
+        combined_content = experience_content + skills_content
+        combined_text = ' '.join(combined_content).lower()
+        
+        return self._infer_job_title_from_technologies_and_skills(combined_text)
+    
+    def _infer_job_title_from_technologies_and_skills(self, text: str) -> str:
+        """Infer job title based on technologies, tools, and skills mentioned in experience and skills sections."""
+        
+        # Enhanced technology and skills to job title mapping
+        tech_mappings = {
+            # Frontend Technologies
+            'react': 'React Developer',
+            'reactjs': 'React Developer',
+            'react.js': 'React Developer',
+            'angular': 'Angular Developer', 
+            'angularjs': 'Angular Developer',
+            'vue': 'Vue.js Developer',
+            'vue.js': 'Vue.js Developer',
+            'vuejs': 'Vue.js Developer',
+            'javascript': 'Frontend Developer',
+            'typescript': 'Frontend Developer',
+            'html': 'Frontend Developer',
+            'html5': 'Frontend Developer',
+            'css': 'Frontend Developer',
+            'css3': 'Frontend Developer',
+            'scss': 'Frontend Developer',
+            'sass': 'Frontend Developer',
+            'bootstrap': 'Frontend Developer',
+            'tailwind': 'Frontend Developer',
+            'jquery': 'Frontend Developer',
+            'webpack': 'Frontend Developer',
+            'next.js': 'Next.js Developer',
+            'nextjs': 'Next.js Developer',
+            'nuxt': 'Vue.js Developer',
+            'gatsby': 'React Developer',
+            
+            # Backend Technologies  
+            'node.js': 'Node.js Developer',
+            'nodejs': 'Node.js Developer',
+            'node': 'Node.js Developer',
+            'python': 'Python Developer',
+            'java': 'Java Developer',
+            'c#': 'C# Developer',
+            'csharp': 'C# Developer',
+            'php': 'PHP Developer',
+            'ruby': 'Ruby Developer',
+            'go': 'Go Developer',
+            'golang': 'Go Developer',
+            'rust': 'Rust Developer',
+            'scala': 'Scala Developer',
+            'kotlin': 'Kotlin Developer',
+            'django': 'Python Developer',
+            'flask': 'Python Developer',
+            'fastapi': 'Python Developer',
+            'spring': 'Java Developer',
+            'spring boot': 'Java Developer',
+            'express': 'Node.js Developer',
+            'express.js': 'Node.js Developer',
+            'laravel': 'PHP Developer',
+            'symfony': 'PHP Developer',
+            'rails': 'Ruby Developer',
+            'ruby on rails': 'Ruby Developer',
+            '.net': 'C# Developer',
+            'dotnet': 'C# Developer',
+            'asp.net': 'C# Developer',
+            
+            # Full Stack Indicators
+            'full stack': 'Full Stack Developer',
+            'fullstack': 'Full Stack Developer',
+            'full-stack': 'Full Stack Developer',
+            'mern': 'MERN Stack Developer',
+            'mean': 'MEAN Stack Developer',
+            'lamp': 'Full Stack Developer',
+            
+            # Mobile Technologies
+            'android': 'Android Developer',
+            'ios': 'iOS Developer',
+            'react native': 'React Native Developer',
+            'flutter': 'Flutter Developer',
+            'dart': 'Flutter Developer',
+            'swift': 'iOS Developer',
+            'objective-c': 'iOS Developer',
+            'xamarin': 'Xamarin Developer',
+            'cordova': 'Mobile Developer',
+            'phonegap': 'Mobile Developer',
+            'ionic': 'Mobile Developer',
+            
+            # Data & Analytics
+            'r': 'Data Analyst',
+            'sql': 'Database Developer',
+            'mysql': 'Database Developer', 
+            'postgresql': 'Database Developer',
+            'postgres': 'Database Developer',
+            'mongodb': 'Database Developer',
+            'redis': 'Database Developer',
+            'elasticsearch': 'Database Developer',
+            'pandas': 'Data Analyst',
+            'numpy': 'Data Analyst',
+            'scipy': 'Data Scientist',
+            'scikit-learn': 'Machine Learning Engineer',
+            'sklearn': 'Machine Learning Engineer',
+            'machine learning': 'Machine Learning Engineer',
+            'deep learning': 'Machine Learning Engineer',
+            'artificial intelligence': 'AI Engineer',
+            'tensorflow': 'Machine Learning Engineer',
+            'pytorch': 'Machine Learning Engineer',
+            'keras': 'Machine Learning Engineer',
+            'data science': 'Data Scientist',
+            'data analysis': 'Data Analyst',
+            'data visualization': 'Data Analyst',
+            'tableau': 'Data Analyst',
+            'power bi': 'Business Intelligence Analyst',
+            'excel': 'Data Analyst',
+            'spark': 'Data Engineer',
+            'hadoop': 'Data Engineer',
+            'kafka': 'Data Engineer',
+            'airflow': 'Data Engineer',
+            
+            # DevOps & Cloud
+            'aws': 'Cloud Engineer',
+            'amazon web services': 'Cloud Engineer',
+            'azure': 'Cloud Engineer',
+            'microsoft azure': 'Cloud Engineer',
+            'google cloud': 'Cloud Engineer',
+            'gcp': 'Cloud Engineer',
+            'docker': 'DevOps Engineer',
+            'kubernetes': 'DevOps Engineer',
+            'k8s': 'DevOps Engineer',
+            'jenkins': 'DevOps Engineer',
+            'gitlab ci': 'DevOps Engineer',
+            'github actions': 'DevOps Engineer',
+            'terraform': 'DevOps Engineer',
+            'ansible': 'DevOps Engineer',
+            'chef': 'DevOps Engineer',
+            'puppet': 'DevOps Engineer',
+            'vagrant': 'DevOps Engineer',
+            'linux': 'System Administrator',
+            'ubuntu': 'System Administrator',
+            'centos': 'System Administrator',
+            'bash': 'System Administrator',
+            'shell scripting': 'System Administrator',
+            
+            # Testing & QA
+            'selenium': 'Test Automation Engineer',
+            'cypress': 'Test Automation Engineer',
+            'jest': 'Test Automation Engineer',
+            'junit': 'Test Automation Engineer',
+            'pytest': 'Test Automation Engineer',
+            'testing': 'QA Engineer',
+            'quality assurance': 'QA Engineer',
+            'qa': 'QA Engineer',
+            'automation testing': 'Test Automation Engineer',
+            'manual testing': 'QA Engineer',
+            
+            # Other Specializations
+            'unity': 'Game Developer',
+            'unreal engine': 'Game Developer',
+            'unreal': 'Game Developer',
+            'c++': 'C++ Developer',
+            'game development': 'Game Developer',
+            'wordpress': 'WordPress Developer',
+            'shopify': 'Shopify Developer',
+            'magento': 'Magento Developer',
+            'drupal': 'Drupal Developer',
+            'salesforce': 'Salesforce Developer',
+            'sap': 'SAP Developer',
+            'oracle': 'Oracle Developer',
+            'blockchain': 'Blockchain Developer',
+            'solidity': 'Blockchain Developer',
+            'ethereum': 'Blockchain Developer',
+            'web3': 'Web3 Developer',
+            'cryptocurrency': 'Blockchain Developer',
+            
+            # Design & UI/UX
+            'ui': 'UI Designer',
+            'ux': 'UX Designer',
+            'ui/ux': 'UI/UX Designer',
+            'figma': 'UI/UX Designer',
+            'sketch': 'UI Designer',
+            'adobe xd': 'UI Designer',
+            'photoshop': 'Graphic Designer',
+            'illustrator': 'Graphic Designer',
+            'after effects': 'Motion Designer',
+            'web design': 'Web Designer',
+            'graphic design': 'Graphic Designer',
+            
+            # Security
+            'cybersecurity': 'Security Engineer',
+            'information security': 'Security Engineer',
+            'penetration testing': 'Security Engineer',
+            'ethical hacking': 'Security Engineer',
+            'security': 'Security Engineer'
+        }
+        
+        # Count technology mentions
+        tech_scores = {}
+        for tech, job_title in tech_mappings.items():
+            if tech in text:
+                tech_scores[job_title] = tech_scores.get(job_title, 0) + 1
+        
+        # Special combinations for better accuracy
+        if 'react' in text and 'node' in text:
+            tech_scores['Full Stack Developer'] = tech_scores.get('Full Stack Developer', 0) + 3
+        
+        if 'angular' in text and ('java' in text or 'spring' in text):
+            tech_scores['Full Stack Developer'] = tech_scores.get('Full Stack Developer', 0) + 3
+            
+        if 'python' in text and ('django' in text or 'flask' in text):
+            tech_scores['Python Developer'] = tech_scores.get('Python Developer', 0) + 2
+            
+        # Look for explicit developer mentions in experience
+        developer_mentions = [
+            r'worked as.*?([a-zA-Z\s]+developer)',
+            r'role.*?([a-zA-Z\s]+developer)',
+            r'position.*?([a-zA-Z\s]+developer)',
+            r'([a-zA-Z\s]+developer).*?experience',
+            r'([a-zA-Z\s]+engineer).*?experience'
+        ]
+        
+        for pattern in developer_mentions:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            for match in matches:
+                match_clean = match.strip()
+                if len(match_clean) > 5 and len(match_clean) < 40:
+                    # High priority for explicit mentions
+                    title = ' '.join(word.capitalize() for word in match_clean.split())
+                    tech_scores[title] = tech_scores.get(title, 0) + 5
+        
+        # Return the highest scoring job title
+        if tech_scores:
+            best_title = max(tech_scores.keys(), key=lambda k: tech_scores[k])
+            return best_title
+            
+        return ""
+
+    def _extract_current_company(self, text: str) -> str:
+        """Extract current company from resume text."""
+        # Company name indicators
+        company_patterns = [
+            r'currently\s*(?:working\s*)?(?:at|with|for)\s*([^\n]{5,50})',
+            r'present\s*(?:employer|company)\s*:?\s*([^\n]{5,50})',
+            r'current\s*(?:employer|company)\s*:?\s*([^\n]{5,50})',
+            r'working\s*at\s*([^\n]{5,50})',
+            r'employed\s*(?:at|by)\s*([^\n]{5,50})',
+        ]
+        
+        text_lower = text.lower()
+        for pattern in company_patterns:
+            matches = re.findall(pattern, text_lower)
+            if matches:
+                company = matches[0].strip()
+                if len(company) > 2 and len(company) < 60:
+                    # Clean up the company name
+                    company = re.sub(r'^\W+|\W+$', '', company)  # Remove leading/trailing non-word chars
+                    # Capitalize properly
+                    words = company.split()
+                    capitalized = []
+                    for word in words:
+                        if word.lower() in ['inc', 'corp', 'ltd', 'llc', 'co', 'company', 'technologies', 'tech', 'systems', 'solutions', 'services']:
+                            capitalized.append(word.title())
+                        else:
+                            capitalized.append(word.capitalize())
+                    return ' '.join(capitalized)
+        
+        # Look for company indicators near date ranges
+        lines = text.split('\n')
+        for i, line in enumerate(lines):
+            line_lower = line.lower()
+            # Look for present/current indicators
+            if any(indicator in line_lower for indicator in ['present', 'current']):
+                # Look in surrounding lines for company names
+                search_lines = lines[max(0, i-3):i+4]  # Check 3 lines before and after
+                for search_line in search_lines:
+                    search_line_clean = search_line.strip()
+                    # Common company suffixes
+                    company_suffixes = ['inc', 'corp', 'ltd', 'llc', 'pvt', 'limited', 'company', 'technologies', 'systems', 'solutions', 'services']
+                    if any(suffix in search_line.lower() for suffix in company_suffixes) and len(search_line_clean) > 3:
+                        if len(search_line_clean) < 80:  # Reasonable company name length
+                            return search_line_clean
+        
+        return ''
