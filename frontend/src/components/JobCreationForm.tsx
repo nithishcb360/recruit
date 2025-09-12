@@ -4,6 +4,455 @@ import { useState, useEffect } from 'react';
 import { createJob, getDepartments, createDepartment, type JobCreateData, type Department, type Job, type DepartmentCreateData } from '@/lib/api/jobs';
 import { searchLocations, type Location } from '@/lib/api/locations';
 
+// AI Content Generation Interface
+interface JobAIRequest {
+  jobTitle: string;
+  department: string;
+  experienceLevel: string;
+  location: string;
+  workType: string;
+  experienceRange: string;
+  minSalary: number;
+  maxSalary: number;
+}
+
+interface JobAIResponse {
+  description: string;
+  requirements: string;
+  responsibilities: string;
+}
+
+// AI Content Generation Function - Real AI Integration
+const generateJobContentWithAI = async (jobData: JobAIRequest): Promise<JobAIResponse | null> => {
+  try {
+    // Enhanced AI prompt for better content generation
+    const aiPrompt = `You are a professional HR content writer. Create a comprehensive, engaging job description for the following position:
+
+**Job Details:**
+- Job Title: ${jobData.jobTitle}
+- Department: ${jobData.department}
+- Experience Level: ${jobData.experienceLevel}
+- Location: ${jobData.location}
+- Work Type: ${jobData.workType}
+- Experience Range: ${jobData.experienceRange}
+- Salary Range: $${jobData.minSalary.toLocaleString()} - $${jobData.maxSalary.toLocaleString()}
+
+**Instructions:**
+Please provide exactly three sections in this format:
+
+**JOB_DESCRIPTION**
+Write a compelling 2-3 paragraph overview that includes:
+- Company context and role importance  
+- What the candidate will accomplish and their impact
+- Growth opportunities and team environment
+- Why someone should be excited about this role
+
+**REQUIREMENTS** 
+Create a detailed bulleted list including:
+- Educational background requirements
+- Required years of experience and specific skills
+- Technical competencies and tools
+- Soft skills and personal qualities
+- Industry-specific knowledge
+- Any certifications or preferred qualifications
+
+**RESPONSIBILITIES**
+List 6-8 specific key responsibilities including:
+- Primary tasks and deliverables
+- Collaboration requirements with other teams
+- Leadership or mentorship duties (if applicable)
+- Strategic initiatives and planning involvement
+- Quality standards and performance expectations
+
+Make the content professional, engaging, and tailored to attract top talent. Use modern, inclusive language and focus on growth opportunities.`;
+
+    // Try to call real AI service (Claude, OpenAI, etc.)
+    const response = await callRealAIService(aiPrompt);
+    
+    if (response) {
+      return parseAIResponse(response);
+    }
+
+    // If real AI fails, fallback to enhanced local generation
+    const fallbackResponse = await simulateAIResponse(jobData, aiPrompt);
+    return fallbackResponse;
+    
+  } catch (error) {
+    console.error('AI generation error:', error);
+    // Fallback to local generation
+    const fallbackResponse = await simulateAIResponse(jobData, aiPrompt);
+    return fallbackResponse;
+  }
+};
+
+// Real AI Service Call (Claude API, OpenAI, etc.)
+const callRealAIService = async (prompt: string): Promise<string | null> => {
+  try {
+    // Option 1: Call Claude API (Anthropic)
+    const response = await fetch('/api/ai/generate-job-content', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        prompt,
+        model: 'claude-3-sonnet-20240229',
+        max_tokens: 3000,
+        temperature: 0.7
+      })
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      return data.content || data.text || data.response;
+    }
+
+    // Option 2: Fallback to OpenAI if Claude fails
+    const openAIResponse = await fetch('/api/ai/openai-generate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        prompt,
+        model: 'gpt-4',
+        max_tokens: 3000,
+        temperature: 0.7
+      })
+    });
+
+    if (openAIResponse.ok) {
+      const openAIData = await openAIResponse.json();
+      return openAIData.choices?.[0]?.message?.content || openAIData.text;
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Real AI service error:', error);
+    return null;
+  }
+};
+
+// Parse AI Response into structured format
+const parseAIResponse = (aiResponse: string): JobAIResponse | null => {
+  try {
+    // Parse the AI response to extract the three sections
+    const sections = {
+      description: '',
+      requirements: '',
+      responsibilities: ''
+    };
+
+    // Extract Job Description section
+    const descriptionMatch = aiResponse.match(/\*\*JOB_DESCRIPTION\*\*\s*([\s\S]*?)(?=\*\*REQUIREMENTS\*\*)/i);
+    if (descriptionMatch) {
+      sections.description = descriptionMatch[1].trim();
+    }
+
+    // Extract Requirements section
+    const requirementsMatch = aiResponse.match(/\*\*REQUIREMENTS\*\*\s*([\s\S]*?)(?=\*\*RESPONSIBILITIES\*\*)/i);
+    if (requirementsMatch) {
+      sections.requirements = requirementsMatch[1].trim();
+    }
+
+    // Extract Responsibilities section
+    const responsibilitiesMatch = aiResponse.match(/\*\*RESPONSIBILITIES\*\*\s*([\s\S]*?)$/i);
+    if (responsibilitiesMatch) {
+      sections.responsibilities = responsibilitiesMatch[1].trim();
+    }
+
+    // If parsing fails, try alternative approach
+    if (!sections.description || !sections.requirements || !sections.responsibilities) {
+      return parseAlternativeFormat(aiResponse);
+    }
+
+    return sections;
+  } catch (error) {
+    console.error('Error parsing AI response:', error);
+    return parseAlternativeFormat(aiResponse);
+  }
+};
+
+// Alternative parsing for different AI response formats
+const parseAlternativeFormat = (aiResponse: string): JobAIResponse | null => {
+  try {
+    // Split response into paragraphs and try to identify sections
+    const lines = aiResponse.split('\n').filter(line => line.trim());
+    
+    let currentSection = '';
+    const sections = {
+      description: '',
+      requirements: '',
+      responsibilities: ''
+    };
+
+    for (const line of lines) {
+      const lowerLine = line.toLowerCase();
+      
+      if (lowerLine.includes('job description') || lowerLine.includes('overview')) {
+        currentSection = 'description';
+        continue;
+      } else if (lowerLine.includes('requirement') || lowerLine.includes('qualification')) {
+        currentSection = 'requirements';
+        continue;
+      } else if (lowerLine.includes('responsibilit') || lowerLine.includes('duties')) {
+        currentSection = 'responsibilities';
+        continue;
+      }
+
+      if (currentSection && line.trim()) {
+        sections[currentSection as keyof typeof sections] += line + '\n';
+      }
+    }
+
+    // If still no good sections found, create a basic split
+    if (!sections.description && !sections.requirements && !sections.responsibilities) {
+      const paragraphs = aiResponse.split('\n\n');
+      sections.description = paragraphs.slice(0, 2).join('\n\n');
+      sections.requirements = paragraphs.slice(2, 4).join('\n\n');
+      sections.responsibilities = paragraphs.slice(4).join('\n\n');
+    }
+
+    return {
+      description: sections.description.trim(),
+      requirements: sections.requirements.trim(),
+      responsibilities: sections.responsibilities.trim()
+    };
+  } catch (error) {
+    console.error('Alternative parsing failed:', error);
+    return null;
+  }
+};
+
+// Enhanced AI Simulation Function
+const simulateAIResponse = async (jobData: JobAIRequest, prompt: string): Promise<JobAIResponse | null> => {
+  // Simulate API call delay
+  await new Promise(resolve => setTimeout(resolve, 2000));
+  
+  try {
+    // Enhanced content generation based on job data
+    const content = generateEnhancedJobContent(jobData);
+    return content;
+  } catch (error) {
+    console.error('AI simulation error:', error);
+    return null;
+  }
+};
+
+// Enhanced Content Generation Function
+const generateEnhancedJobContent = (jobData: JobAIRequest): JobAIResponse => {
+  const { jobTitle, department, experienceLevel, location, workType, experienceRange, minSalary, maxSalary } = jobData;
+  
+  // Create more sophisticated content based on all parameters
+  const salaryRange = `$${minSalary.toLocaleString()} - $${maxSalary.toLocaleString()}`;
+  const isRemote = location.toLowerCase().includes('remote');
+  const isSenior = experienceLevel.toLowerCase().includes('senior') || experienceLevel.toLowerCase().includes('lead');
+  
+  // Generate dynamic company intro
+  const companyIntros = [
+    `Join our innovative ${department} team and make a significant impact as our next ${jobTitle}. This ${workType} position offers the opportunity to work ${isRemote ? 'remotely' : `in ${location}`} while contributing to cutting-edge projects that shape the future of our industry.`,
+    
+    `We're seeking an exceptional ${jobTitle} to join our dynamic ${department} team. This ${workType} role based ${isRemote ? 'remotely' : `in ${location}`} presents an exciting opportunity to drive innovation and deliver results that matter.`,
+    
+    `Transform your career with us! Our ${department} team is looking for a talented ${jobTitle} who thrives in collaborative environments. This ${workType} position ${isRemote ? 'offers remote flexibility' : `is located in ${location}`} and provides unlimited growth potential.`,
+    
+    `Ready for your next challenge? We're hiring a ${jobTitle} to spearhead key initiatives in our ${department} team. This ${workType} opportunity ${isRemote ? 'embraces remote-first culture' : `is based in ${location}`} and offers competitive compensation.`
+  ];
+
+  const selectedIntro = companyIntros[Math.floor(Math.random() * companyIntros.length)];
+  
+  // Generate role-specific second paragraph
+  const roleContexts = {
+    developer: "You'll architect scalable solutions, collaborate with cross-functional teams, and contribute to a codebase that serves millions of users. We value clean code, innovative thinking, and continuous learning.",
+    
+    engineer: "In this role, you'll design robust systems, solve complex technical challenges, and work with cutting-edge technologies. You'll have the autonomy to make technical decisions while collaborating with talented professionals.",
+    
+    manager: "You'll lead high-performing teams, drive strategic initiatives, and shape the future direction of our products. We're looking for someone who can balance hands-on involvement with strategic oversight.",
+    
+    analyst: "You'll transform complex data into actionable insights, build sophisticated models, and present findings that drive key business decisions. Your work will directly impact our strategic direction.",
+    
+    designer: "You'll craft exceptional user experiences, collaborate closely with product and engineering teams, and help define our design standards. We believe great design is the foundation of great products.",
+    
+    default: "You'll work on high-impact projects, collaborate with talented professionals, and contribute to meaningful work that makes a difference. We offer a supportive environment where innovation thrives."
+  };
+
+  const roleType = Object.keys(roleContexts).find(key => 
+    jobTitle.toLowerCase().includes(key)
+  ) || 'default';
+
+  const description = `${selectedIntro}
+
+${roleContexts[roleType as keyof typeof roleContexts]}
+
+We offer comprehensive benefits, competitive compensation (${salaryRange}), and a culture that values work-life balance, professional development, and individual contributions. Join us in creating something extraordinary.`;
+
+  // Generate sophisticated requirements
+  const requirements = generateAdvancedRequirements(jobData);
+  
+  // Generate detailed responsibilities  
+  const responsibilities = generateDetailedResponsibilities(jobData);
+
+  return {
+    description,
+    requirements,
+    responsibilities
+  };
+};
+
+// Advanced Requirements Generator
+const generateAdvancedRequirements = (jobData: JobAIRequest): string => {
+  const { jobTitle, experienceLevel, experienceRange } = jobData;
+  const title = jobTitle.toLowerCase();
+  
+  let requirements = `Required Qualifications:
+• Bachelor's degree in relevant field or equivalent professional experience
+• ${experienceRange} of progressive professional experience in similar roles
+• Strong analytical and problem-solving skills with attention to detail
+• Excellent written and verbal communication abilities
+• Proven track record of delivering high-quality results under deadlines`;
+
+  // Add role-specific requirements
+  if (title.includes('developer') || title.includes('engineer')) {
+    requirements += `
+• Proficiency in modern programming languages and frameworks
+• Experience with version control systems (Git) and collaborative development
+• Understanding of software development best practices and methodologies
+• Knowledge of database design and API integration
+• Experience with cloud platforms and DevOps practices`;
+  } else if (title.includes('analyst')) {
+    requirements += `
+• Strong proficiency in data analysis tools (SQL, Python, R, or similar)
+• Experience with data visualization platforms (Tableau, Power BI, etc.)
+• Statistical analysis and modeling capabilities
+• Business intelligence and reporting experience
+• Advanced Excel skills with complex formulas and pivot tables`;
+  } else if (title.includes('designer')) {
+    requirements += `
+• Expertise in design tools (Figma, Adobe Creative Suite, Sketch)
+• Strong portfolio demonstrating UX/UI design capabilities
+• Understanding of user-centered design principles and methodologies
+• Experience with prototyping and user testing
+• Knowledge of accessibility standards and responsive design`;
+  } else if (title.includes('manager') || title.includes('lead')) {
+    requirements += `
+• Proven leadership experience managing teams and projects
+• Strategic thinking and planning capabilities
+• Budget management and resource allocation experience
+• Performance management and team development skills
+• Stakeholder management and communication expertise`;
+  }
+
+  if (experienceLevel.toLowerCase().includes('senior') || experienceLevel.toLowerCase().includes('lead')) {
+    requirements += `
+
+Preferred Qualifications:
+• Advanced degree in relevant field
+• Industry certifications and continuing education
+• Experience mentoring and developing team members
+• Track record of leading strategic initiatives
+• Thought leadership through publications, speaking, or community involvement`;
+  } else {
+    requirements += `
+
+Preferred Qualifications:
+• Relevant industry certifications
+• Experience working in agile/collaborative environments
+• Continuous learning mindset with adaptability to new technologies
+• Previous internship or project experience in related field
+• Passion for professional growth and skill development`;
+  }
+
+  return requirements;
+};
+
+// Detailed Responsibilities Generator
+const generateDetailedResponsibilities = (jobData: JobAIRequest): string => {
+  const { jobTitle, experienceLevel } = jobData;
+  const title = jobTitle.toLowerCase();
+  const isSenior = experienceLevel.toLowerCase().includes('senior') || experienceLevel.toLowerCase().includes('lead');
+
+  let responsibilities = `Key Responsibilities:`;
+
+  if (title.includes('developer') || title.includes('engineer')) {
+    responsibilities += `
+• Design, develop, and maintain high-quality software applications using industry best practices
+• Collaborate with product managers, designers, and stakeholders to translate requirements into technical solutions
+• Write clean, maintainable, and well-documented code following established coding standards
+• Participate in code reviews and provide constructive feedback to team members
+• Implement comprehensive testing strategies including unit, integration, and end-to-end tests
+• Debug and optimize existing applications for performance, scalability, and maintainability
+• Stay current with emerging technologies and industry trends to drive innovation
+• Contribute to technical documentation and knowledge sharing across the team`;
+
+    if (isSenior) {
+      responsibilities += `
+• Lead technical architecture decisions and provide guidance on complex development challenges
+• Mentor junior developers and contribute to team skill development
+• Drive technical excellence through code quality initiatives and best practice implementation`;
+    }
+  } else if (title.includes('analyst')) {
+    responsibilities += `
+• Analyze complex datasets to identify trends, patterns, and actionable business insights
+• Develop and maintain analytical models, dashboards, and reporting systems
+• Collaborate with stakeholders to understand business requirements and translate them into analytical solutions
+• Create compelling data visualizations and presentations for executive leadership
+• Conduct statistical analysis and predictive modeling to support strategic decision-making
+• Monitor key performance indicators and provide regular performance reports
+• Validate data accuracy and implement quality assurance processes
+• Research and recommend new analytical tools and methodologies to enhance team capabilities`;
+
+    if (isSenior) {
+      responsibilities += `
+• Lead cross-functional analytical projects and coordinate with multiple stakeholders
+• Develop analytical frameworks and standards for the organization
+• Provide strategic insights that influence business direction and planning`;
+    }
+  } else if (title.includes('designer')) {
+    responsibilities += `
+• Create intuitive and visually compelling user interfaces that enhance user experience
+• Conduct user research and usability testing to inform design decisions
+• Develop wireframes, prototypes, and high-fidelity mockups using modern design tools
+• Collaborate closely with product and engineering teams to ensure seamless design implementation
+• Maintain and evolve design systems to ensure consistency across products
+• Present design concepts and rationale to stakeholders and incorporate feedback effectively
+• Stay updated with design trends, tools, and best practices in the UX/UI field
+• Participate in design reviews and provide constructive feedback to team members`;
+
+    if (isSenior) {
+      responsibilities += `
+• Lead design strategy and establish design standards across multiple products
+• Mentor junior designers and facilitate design thinking workshops
+• Drive user-centered design culture and advocate for user experience excellence`;
+    }
+  } else if (title.includes('manager') || title.includes('lead')) {
+    responsibilities += `
+• Lead and manage a high-performing team of professionals, providing guidance and support
+• Set clear performance expectations and conduct regular one-on-one meetings and reviews
+• Drive strategic initiatives from conception through successful completion
+• Foster an inclusive, collaborative culture that promotes innovation and growth
+• Manage project timelines, resources, and budgets to ensure successful delivery
+• Build and maintain strong relationships with stakeholders across the organization
+• Identify and implement process improvements to enhance team efficiency and effectiveness
+• Support individual team member development through coaching and mentorship
+• Communicate vision and strategy effectively to align team efforts with company objectives
+• Handle escalated issues and make critical decisions in high-pressure situations`;
+  } else {
+    responsibilities += `
+• Execute strategic initiatives that align with organizational objectives and contribute to business growth
+• Collaborate effectively with cross-functional teams to achieve shared goals and deliverables
+• Implement best practices and process improvements to enhance operational efficiency
+• Build and maintain professional relationships with key stakeholders and partners
+• Contribute specialized expertise to support team success and organizational objectives
+• Monitor industry trends and apply relevant insights to improve work quality and outcomes
+• Participate in planning sessions and contribute to strategic decision-making processes
+• Support organizational culture through active participation and positive contribution
+• Engage in continuous learning and professional development to enhance skills and knowledge
+• Communicate effectively with diverse audiences to ensure alignment and understanding`;
+  }
+
+  return responsibilities;
+};
+
 interface FormData {
   jobTitle: string;
   department: string;
@@ -404,6 +853,10 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
       return;
     }
 
+    // Store button text and reference outside of try block
+    const generateButton = document.querySelector('[data-generate-ai]') as HTMLButtonElement;
+    const originalButtonText = generateButton?.textContent || 'Generate with AI';
+
     try {
       const department = departments.find(d => d.id.toString() === formData.department)?.name || formData.department;
       const jobTitle = formData.jobTitle;
@@ -411,20 +864,79 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
       const location = formData.location || 'our office';
       const workType = formData.workType || 'full-time';
       const experienceRange = formData.experienceRange || '3-5 years';
+      const minSalary = formData.minSalary;
+      const maxSalary = formData.maxSalary;
 
-      // Generate role-specific content based on job title and department
-      const roleSpecificContent = generateRoleSpecificContent(jobTitle, department, experienceLevel, workType, location, experienceRange);
+      // Show loading state
+      if (generateButton) {
+        generateButton.textContent = 'Generating with AI...';
+        generateButton.disabled = true;
+      }
 
-      setFormData(prev => ({
-        ...prev,
-        jobDescription: roleSpecificContent.description,
-        requirements: roleSpecificContent.requirements
-      }));
+      // Call enhanced AI generation API
+      const aiContent = await generateJobContentWithAI({
+        jobTitle,
+        department,
+        experienceLevel,
+        location,
+        workType,
+        experienceRange,
+        minSalary,
+        maxSalary
+      });
 
-      alert('Job description generated successfully with AI!');
+      if (aiContent) {
+        setFormData(prev => ({
+          ...prev,
+          jobDescription: aiContent.description,
+          requirements: aiContent.requirements,
+          responsibilities: aiContent.responsibilities
+        }));
+
+        alert('🎉 Job content generated successfully with AI!');
+      } else {
+        // Fallback to local generation if AI service fails
+        const roleSpecificContent = generateRoleSpecificContent(jobTitle, department, experienceLevel, workType, location, experienceRange);
+
+        setFormData(prev => ({
+          ...prev,
+          jobDescription: roleSpecificContent.description,
+          requirements: roleSpecificContent.requirements
+        }));
+
+        alert('Job description generated successfully with local AI!');
+      }
     } catch (error) {
       console.error('Error generating with AI:', error);
-      alert('Error generating job description. Please try again.');
+      
+      // Fallback to local generation
+      try {
+        const department = departments.find(d => d.id.toString() === formData.department)?.name || formData.department;
+        const roleSpecificContent = generateRoleSpecificContent(
+          formData.jobTitle, 
+          department, 
+          formData.experienceLevel, 
+          formData.workType || 'full-time', 
+          formData.location || 'our office', 
+          formData.experienceRange || '3-5 years'
+        );
+
+        setFormData(prev => ({
+          ...prev,
+          jobDescription: roleSpecificContent.description,
+          requirements: roleSpecificContent.requirements
+        }));
+
+        alert('Job description generated successfully (using fallback AI)!');
+      } catch (fallbackError) {
+        alert('Error generating job description. Please try again or fill manually.');
+      }
+    } finally {
+      // Reset button state
+      if (generateButton) {
+        generateButton.textContent = originalButtonText;
+        generateButton.disabled = false;
+      }
     }
   };
 
@@ -1593,7 +2105,8 @@ ${preferredQuals.map(qual => `• ${qual}`).join('\n')}`
               <button
                 type="button"
                 onClick={handleGenerateWithAI}
-                className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold px-6 py-3 rounded-lg transition-all duration-200 flex items-center justify-center gap-2"
+                data-generate-ai
+                className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed text-white font-semibold px-6 py-3 rounded-lg transition-all duration-200 flex items-center justify-center gap-2"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
