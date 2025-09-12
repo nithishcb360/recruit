@@ -45,7 +45,12 @@
       "Bash(npx eslint:*)",
       "Bash(sed:*)",
       "Bash(timeout 10 curl -I http://localhost:8000/api/candidates/)",
-      "Bash(dir backend)"
+      "Bash(dir backend)",
+      "Bash(call venvScriptsactivate.bat)",
+      "Bash(venv/Scripts/python.exe -m pip install:*)",
+      "Bash(venv/Scripts/python.exe manage.py migrate:*)",
+      "Bash(venv/Scripts/python.exe manage.py runserver:*)",
+      "Bash(timeout 5 curl -I http://localhost:8000/api/)"
     ],
     "deny": [],
     "ask": []
