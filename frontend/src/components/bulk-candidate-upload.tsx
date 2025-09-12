@@ -100,8 +100,8 @@ export default function BulkCandidateUpload({ onClose, onCandidatesCreated }: Bu
     setUploadProgress(0)
     
     try {
-      const parsedCandidates = []
-      const errors = []
+      const parsedCandidates: any[] = []
+      const errors: any[] = []
       let processedFiles = 0
 
       toast({
@@ -141,7 +141,7 @@ export default function BulkCandidateUpload({ onClose, onCandidatesCreated }: Bu
         } catch (error) {
           return {
             success: false,
-            error: `${file.name}: Network error - ${error.message}`
+            error: `${file.name}: Network error - ${error instanceof Error ? error.message : 'Unknown error'}`
           }
         }
       })

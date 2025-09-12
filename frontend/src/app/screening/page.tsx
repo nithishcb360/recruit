@@ -18,12 +18,12 @@ interface Job {
   id: number
   title: string
   department: { name: string }
-  experience_level: string
-  required_skills: string[]
-  preferred_skills: string[]
-  requirements: string
-  description: string
-  status: string
+  experience_level?: string
+  required_skills?: string[]
+  preferred_skills?: string[]
+  requirements?: string
+  description?: string
+  status?: string
 }
 
 interface Candidate {
@@ -288,7 +288,7 @@ export default function ScreeningPage() {
     
     // For now, we'll create a mock job location since it's not in the current job interface
     // This should ideally come from the job posting
-    const jobLocation = "remote" // Default assumption for tech jobs
+    const jobLocation: string = "remote" // Default assumption for tech jobs
     
     if (candidateLocation) {
       if (jobLocation === "remote" || candidateLocation.includes("remote")) {
