@@ -17,6 +17,7 @@ urlpatterns = [
     path('parse-resume/', views.parse_resume, name='parse-resume'),
     path('bulk-create-candidates/', views.bulk_create_candidates, name='bulk-create-candidates'),
     path('candidates/<int:candidate_id>/resume/', views.view_resume, name='view-resume'),
+    path('generate-job-titles/', views.generate_job_titles, name='generate-job-titles'),
     path('update-candidate-experience/', views.update_candidate_experience, name='update-candidate-experience'),
     path('', include(router.urls)),
 ]

@@ -64,7 +64,6 @@ interface Candidate {
   skills?: string[]
   experience_years?: number
   experience_level?: string
-  current_company?: string
   current_position?: string
 }
 
@@ -112,7 +111,7 @@ export default function CandidateDetailsModal({ isOpen, onClose, candidate }: Ca
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white">
         <DialogHeader>
           <DialogTitle className="text-2xl font-bold text-gray-900">
             Candidate Details
@@ -129,7 +128,7 @@ export default function CandidateDetailsModal({ isOpen, onClose, candidate }: Ca
                !candidate.avatar.includes('placeholder') ? (
                 <AvatarImage src={candidate.avatar} alt={candidate.name} />
               ) : null}
-              <AvatarFallback className="text-lg font-semibold">
+              <AvatarFallback className="text-lg font-semibold bg-blue-600 text-white">
                 {getInitials(candidate.name)}
               </AvatarFallback>
             </Avatar>
@@ -145,32 +144,32 @@ export default function CandidateDetailsModal({ isOpen, onClose, candidate }: Ca
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="flex items-center text-gray-700">
-                  <Mail className="w-4 h-4 mr-2" />
-                  <span>{candidate.email || 'No email provided'}</span>
+                <div className="flex items-center">
+                  <Mail className="w-4 h-4 mr-2 text-gray-600" />
+                  <span className="text-gray-900">{candidate.email || 'No email provided'}</span>
                 </div>
                 {candidate.phone && (
-                  <div className="flex items-center text-gray-700">
-                    <Phone className="w-4 h-4 mr-2" />
-                    <span>{candidate.phone}</span>
+                  <div className="flex items-center">
+                    <Phone className="w-4 h-4 mr-2 text-gray-600" />
+                    <span className="text-gray-900">{candidate.phone}</span>
                   </div>
                 )}
                 {candidate.location && (
-                  <div className="flex items-center text-gray-700">
-                    <MapPin className="w-4 h-4 mr-2" />
-                    <span>{candidate.location}</span>
+                  <div className="flex items-center">
+                    <MapPin className="w-4 h-4 mr-2 text-gray-600" />
+                    <span className="text-gray-900">{candidate.location}</span>
                   </div>
                 )}
-                <div className="flex items-center text-gray-700">
-                  <Clock className="w-4 h-4 mr-2" />
-                  <span>Last activity: {candidate.lastActivity}</span>
+                <div className="flex items-center">
+                  <Clock className="w-4 h-4 mr-2 text-gray-600" />
+                  <span className="text-gray-900">Last activity: {candidate.lastActivity}</span>
                 </div>
               </div>
             </div>
           </div>
 
           {/* Experience & Professional Information */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 gap-6">
             <div className="bg-white border rounded-lg p-4">
               <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                 <Briefcase className="w-5 h-5 mr-2" />
@@ -178,50 +177,24 @@ export default function CandidateDetailsModal({ isOpen, onClose, candidate }: Ca
               </h3>
               <div className="space-y-3">
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Total Experience:</span>
-                  <span className="font-medium">{candidate.totalExperience || candidate.experience_years || 0} years</span>
+                  <span className="text-gray-700">Total Experience:</span>
+                  <span className="font-medium text-gray-900">{candidate.totalExperience || candidate.experience_years || 0} years</span>
                 </div>
                 {candidate.experience_level && (
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Experience Level:</span>
-                    <span className="font-medium capitalize">{candidate.experience_level}</span>
+                    <span className="text-gray-700">Experience Level:</span>
+                    <span className="font-medium capitalize text-gray-900">{candidate.experience_level}</span>
                   </div>
                 )}
                 {candidate.current_position && (
                   <div>
-                    <span className="text-gray-600">Current Position:</span>
-                    <p className="font-medium mt-1">{candidate.current_position}</p>
-                  </div>
-                )}
-                {candidate.current_company && (
-                  <div className="flex items-center">
-                    <Building className="w-4 h-4 mr-2 text-gray-500" />
-                    <span>{candidate.current_company}</span>
+                    <span className="text-gray-700">Current Position:</span>
+                    <p className="font-medium mt-1 text-gray-900">{candidate.current_position}</p>
                   </div>
                 )}
               </div>
             </div>
 
-            <div className="bg-white border rounded-lg p-4">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                <DollarSign className="w-5 h-5 mr-2" />
-                Compensation & Availability
-              </h3>
-              <div className="space-y-3">
-                {candidate.expectedSalary && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Expected Salary:</span>
-                    <span className="font-medium">{candidate.expectedSalary}</span>
-                  </div>
-                )}
-                {candidate.noticePeriod && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Notice Period:</span>
-                    <span className="font-medium">{candidate.noticePeriod}</span>
-                  </div>
-                )}
-              </div>
-            </div>
           </div>
 
           {/* Skills & Qualifications */}

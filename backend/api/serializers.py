@@ -166,6 +166,9 @@ class CandidateSerializer(serializers.ModelSerializer):
 
 
 class CandidateCreateSerializer(serializers.ModelSerializer):
+    # Make email optional and allow blank values and null
+    email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
+    
     class Meta:
         model = Candidate
         fields = [
@@ -174,6 +177,12 @@ class CandidateCreateSerializer(serializers.ModelSerializer):
             'education', 'certifications', 'current_company', 'current_position',
             'salary_expectation', 'availability', 'source'
         ]
+    
+    def validate_email(self, value):
+        """Handle empty email validation"""
+        if value == '' or value is None:
+            return None  # Convert empty string or None to None
+        return value
 
 
 class CandidateListSerializer(serializers.ModelSerializer):
@@ -247,6 +256,8 @@ class ResumeParseSerializer(serializers.Serializer):
     skills = serializers.ListField(child=serializers.CharField(), required=False)
     experience = serializers.DictField(required=False)
     education = serializers.ListField(child=serializers.CharField(), required=False)
+    current_position = serializers.CharField(required=False, allow_blank=True)
+    current_company = serializers.CharField(required=False, allow_blank=True)
     text = serializers.CharField(required=False, allow_blank=True)
 
 

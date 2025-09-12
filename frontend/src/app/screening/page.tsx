@@ -39,7 +39,6 @@ interface Candidate {
   certifications: any[]
   salary_expectation: number | null
   location: string
-  current_company: string
   current_position: string
 }
 
@@ -219,7 +218,7 @@ export default function ScreeningPage() {
 
     // 2. Department Matching (25% of total score)
     let departmentScore = 75 + baseRandomness + Math.random() * 15
-    const candidateCompany = (candidate.current_company || "").toLowerCase()
+    const candidateCompany = ""
     const jobDepartment = job.department.name.toLowerCase()
     
     // Check if candidate's background aligns with department
@@ -636,12 +635,6 @@ export default function ScreeningPage() {
                         </Badge>
                       </div>
                     )}
-                    {movedCandidateData.current_company && (
-                      <div>
-                        <span className="font-medium text-gray-600">Current Company:</span>
-                        <div className="text-gray-900">{movedCandidateData.current_company}</div>
-                      </div>
-                    )}
                     {movedCandidateData.current_position && (
                       <div>
                         <span className="font-medium text-gray-600">Current Position:</span>
@@ -965,12 +958,6 @@ export default function ScreeningPage() {
                             <h4 className="font-semibold text-gray-900">Candidate Profile</h4>
                             
                             <div className="space-y-3 text-sm">
-                              {result.candidate.current_company && (
-                                <div>
-                                  <span className="font-medium text-gray-600">Current Company:</span>
-                                  <div className="text-gray-900">{result.candidate.current_company}</div>
-                                </div>
-                              )}
                               
                               {result.candidate.current_position && (
                                 <div>
