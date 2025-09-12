@@ -31,7 +31,7 @@ export default function Sidebar({ isOpen = false, onToggle }: SidebarProps) {
 
   const nav = [
     { label: "Dashboard", icon: LayoutDashboard, href: "/", active: pathname === "/" },
-    { label: "Feedback Forms", icon: FileText, href: "#" },
+    { label: "Feedback Forms", icon: FileText, href: "/forms", active: pathname === "/forms" },
     { label: "Jobs", icon: Briefcase, href: "/jobs", active: pathname === "/jobs" },
     { label: "Candidates", icon: Users, href: "/candidates", active: pathname === "/candidates" },
     { label: "AI/HR Screening", icon: Brain, href: "/screening", active: pathname === "/screening" },

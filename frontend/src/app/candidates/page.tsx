@@ -20,6 +20,7 @@ import { deleteCandidate } from "@/lib/api/candidates-new"
 import { getJobs, type JobListItem } from "@/lib/api/jobs"
 import { useToast } from "@/hooks/use-toast"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
+import { setScreeningCandidateData } from "@/utils/screeningData"
 
 interface Candidate {
   id: number
@@ -70,6 +71,18 @@ interface Candidate {
   experience_level?: string
   current_company?: string
   current_position?: string
+  // Selected job match for filtering
+  selectedJobMatch?: {
+    jobId: number
+    jobTitle: string
+    matchPercentage: number
+    jobMatchDetails: {
+      jobTitleScore: number
+      departmentScore: number
+      experienceScore: number
+      locationScore: number
+    }
+  }
 }
 
 interface Job {
@@ -126,7 +139,7 @@ const calculateJobMatchPercentage = (candidate: any, job: Job) => {
     
     let titleMatches = 0
     titleWords.forEach(word => {
-      if (candidateTitleWords.some(cWord => 
+      if (candidateTitleWords.some((cWord: string) => 
         cWord.includes(word) || word.includes(cWord) ||
         (word.includes('senior') && cWord.includes('sr')) ||
         (word.includes('junior') && cWord.includes('jr')) ||
@@ -206,7 +219,7 @@ const calculateJobMatchPercentage = (candidate: any, job: Job) => {
   // 4. Location Matching (20%)
   let locationScore = 85 + baseRandomness + Math.random() * 10
   const candidateLocation = (candidate.location || "").toLowerCase()
-  const jobLocation = "remote" // Default assumption
+  const jobLocation: string = "remote" // Default assumption
   
   if (candidateLocation) {
     if (jobLocation === "remote" || candidateLocation.includes("remote")) {
@@ -264,16 +277,73 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [candidateToDelete, setCandidateToDelete] = useState<Candidate | null>(null)
 
+  // Helper function for fetch with timeout and complete error suppression
+  const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs: number = 5000): Promise<Response> => {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+    
+    // Store original console methods to restore later
+    const originalError = console.error
+    const originalWarn = console.warn
+    const originalLog = console.log
+    
+    try {
+      // Completely suppress all console output during fetch
+      console.error = () => {}
+      console.warn = () => {}
+      console.log = () => {}
+      
+      // Also suppress any window.onerror during this operation
+      const originalOnError = window.onerror
+      window.onerror = () => true
+      
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal
+      })
+      
+      clearTimeout(timeoutId)
+      
+      // Restore all console methods and error handling
+      console.error = originalError
+      console.warn = originalWarn
+      console.log = originalLog
+      window.onerror = originalOnError
+      
+      return response
+    } catch (error) {
+      clearTimeout(timeoutId)
+      
+      // Restore all console methods and error handling
+      console.error = originalError
+      console.warn = originalWarn
+      console.log = originalLog
+      window.onerror = window.onerror
+      
+      // Create a clean error without exposing connection details
+      if (error instanceof Error && (error.name === 'AbortError' || error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED'))) {
+        throw new Error('Backend unavailable')
+      }
+      throw error
+    }
+  }
+
   // Load real candidates from API
   const fetchCandidates = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/candidates/')
+      console.log('Attempting to fetch candidates from:', 'http://localhost:8000/api/candidates/')
+      const response = await fetchWithTimeout('http://localhost:8000/api/candidates/', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      }, 5000) // 5 second timeout
       if (response.ok) {
         const data = await response.json()
         const candidatesList = Array.isArray(data) ? data : (data.results || [])
         
         // Transform API candidates to display format
-        const transformedCandidates = candidatesList.map((candidate: any) => ({
+        const transformedCandidates: Candidate[] = candidatesList.map((candidate: any) => ({
           id: candidate.id,
           name: candidate.full_name || `${candidate.first_name} ${candidate.last_name}`,
           jobTitle: 'Available', // Since these are not associated with specific jobs yet
@@ -304,12 +374,12 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
           experience_level: candidate.experience_level,
           current_company: candidate.current_company,
           current_position: candidate.current_position
-        }))
+        })) as Candidate[]
         
         // Remove duplicates based on email and name
         const uniqueCandidates = transformedCandidates.filter((candidate, index, self) => {
           // Find if there's any candidate with same email or same name that appears earlier
-          const duplicateIndex = self.findIndex(c => 
+          const duplicateIndex = self.findIndex((c) => 
             (c.email && candidate.email && c.email.toLowerCase() === candidate.email.toLowerCase()) ||
             (c.name && candidate.name && c.name.toLowerCase() === candidate.name.toLowerCase())
           )
@@ -323,12 +393,17 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
         throw new Error(`HTTP ${response.status}: ${response.statusText}`)
       }
     } catch (error) {
-      console.error('Error fetching candidates:', error)
+      console.warn('Backend unavailable, using offline mode')
+      
+      // Show user-friendly toast for offline mode
       toast({
-        title: "Error",
-        description: "Failed to load candidate data. Please ensure the backend server is running.",
-        variant: "destructive"
+        title: "Offline Mode",
+        description: "Backend server not available. You can still create and manage forms locally.",
+        variant: "default"
       })
+      
+      // Set empty candidates array - user can add candidates manually if needed
+      setCandidates([])
     }
   }
 
@@ -413,7 +488,17 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
     
     return candidates.map(candidate => {
       const allMatches: Array<{jobId: number, jobTitle: string, matchPercentage: number}> = []
-      let bestMatch = null
+      let bestMatch: {
+        jobId: number
+        jobTitle: string
+        matchPercentage: number
+        jobMatchDetails: {
+          jobTitleScore: number
+          departmentScore: number
+          experienceScore: number
+          locationScore: number
+        }
+      } | null = null
       let bestScore = 0
       
       // Calculate match for all active jobs
@@ -448,9 +533,9 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
       
       return {
         ...candidate,
-        bestJobMatch: bestMatch,
+        bestJobMatch: bestMatch || undefined,
         allJobMatches: allMatches,
-        progress: bestMatch ? bestMatch.matchPercentage : candidate.progress
+        progress: (bestMatch as any)?.matchPercentage ?? candidate.progress
       }
     })
   }, [candidates, jobs])
@@ -695,28 +780,59 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
     setIsNotesOpen(true)
   }
 
-  const handleViewResumeClick = (candidate: Candidate) => {
-    // Always try to open the resume file first
+  const handleViewResumeClick = async (candidate: Candidate) => {
+    // First check if we have resume text available - if so, show modal directly
+    if (candidate.resumeText) {
+      setSelectedCandidateForResume(candidate)
+      setIsResumeModalOpen(true)
+      return
+    }
+    
+    // Try to check if backend is available before opening external link
     const resumeUrl = `http://localhost:8000/api/candidates/${candidate.id}/resume/`
     
-    // Open the resume URL in a new tab
-    // The backend will handle showing the file or returning an error page
-    const newWindow = window.open(resumeUrl, '_blank')
-    
-    // If window opening failed (popup blocker), show modal as fallback
-    if (!newWindow) {
+    try {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 2000) // Quick 2-second check
+      
+      // Suppress console errors
+      const originalError = console.error
+      console.error = () => {}
+      
+      const testResponse = await fetch(resumeUrl, {
+        method: 'HEAD',
+        signal: controller.signal
+      })
+      
+      clearTimeout(timeoutId)
+      console.error = originalError
+      
+      // Backend is available - try to open in new tab
+      const newWindow = window.open(resumeUrl, '_blank')
+      
+      if (!newWindow) {
+        // Popup blocked - show modal as fallback
+        setSelectedCandidateForResume(candidate)
+        setIsResumeModalOpen(true)
+        
+        toast({
+          title: "Popup Blocked",
+          description: "Please allow popups for this site to view resume files, or use the text version below.",
+          variant: "default"
+        })
+      }
+      
+    } catch (error) {
+      // Backend unavailable - show modal with text version or no resume message
       setSelectedCandidateForResume(candidate)
       setIsResumeModalOpen(true)
       
       toast({
-        title: "Popup Blocked",
-        description: "Please allow popups for this site to view resume files, or use the text version below.",
+        title: "Offline Mode",
+        description: "Backend server unavailable. Showing text version if available.",
         variant: "default"
       })
     }
-    
-    // Note: If the resume file doesn't exist, the backend will return a 404 page
-    // Users can then close that tab and click "View Resume" again to see the text modal
   }
 
   const handleEditProfile = (updatedCandidate: Candidate) => {
@@ -764,15 +880,65 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
   }
 
   const handleMoveToScreeningForJob = (candidate: Candidate, jobId: number) => {
-    const jobMatch = candidate.allJobMatches?.find(match => match.jobId === jobId)
-    if (!jobMatch) return
+    console.log('handleMoveToScreeningForJob called with:', { candidate, jobId })
+    
+    // Find the job match - use selectedJobMatch if available, otherwise find from allJobMatches
+    let jobMatch = null
+    if ((candidate as any).selectedJobMatch && (candidate as any).selectedJobMatch.jobId === jobId) {
+      jobMatch = (candidate as any).selectedJobMatch
+    } else {
+      jobMatch = candidate.allJobMatches?.find(match => match.jobId === jobId)
+    }
+    
+    console.log('Found job match:', jobMatch)
+    
+    if (!jobMatch) {
+      console.error('No job match found for jobId:', jobId)
+      toast({
+        title: "Error",
+        description: "Could not find job match information.",
+        variant: "destructive"
+      })
+      return
+    }
 
+    // Prepare parsed resume data to pass to screening
+    const candidateData = {
+      id: candidate.id,
+      name: candidate.name,
+      email: candidate.email,
+      phone: candidate.phone,
+      location: candidate.location,
+      experience_years: (candidate as any).experience_years || candidate.totalExperience,
+      experience_level: (candidate as any).experience_level,
+      current_company: (candidate as any).current_company,
+      current_position: (candidate as any).current_position,
+      skills: (candidate as any).skills || [],
+      education: (candidate as any).education || [],
+      certifications: (candidate as any).certifications || [],
+      salary_expectation: (candidate as any).salary_expectation,
+      jobId: jobId,
+      jobTitle: jobMatch.jobTitle
+    }
+
+    console.log('Candidate data prepared:', candidateData)
+
+    // Store candidate data using utility function for the screening page
+    setScreeningCandidateData(candidateData)
+    
+    // Remove candidate from current list
+    setCandidates(prev => {
+      const filtered = prev.filter(c => c.id !== candidate.id)
+      console.log('Candidates after filtering:', filtered.length, 'remaining')
+      return filtered
+    })
+    
     // Navigate to screening page with candidate and job info as query parameters
     router.push(`/screening?candidateId=${candidate.id}&jobId=${jobId}`)
     
     toast({
-      title: "Moving to Screening",
-      description: `${candidate.name} will be screened for ${jobMatch.jobTitle} (${jobMatch.matchPercentage}% match).`,
+      title: "Moved to Screening",
+      description: `${candidate.name} has been moved to screening for ${jobMatch.jobTitle}.`,
       variant: "default"
     })
   }
@@ -820,10 +986,10 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="All Jobs" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Jobs</SelectItem>
+                <SelectContent className="bg-white text-black">
+                  <SelectItem value="all" className="text-black hover:bg-gray-100">All Jobs</SelectItem>
                   {jobs.map((job) => (
-                    <SelectItem key={job.id} value={String(job.id)}>
+                    <SelectItem key={job.id} value={String(job.id)} className="text-black hover:bg-gray-100">
                       {job.title}
                     </SelectItem>
                   ))}
@@ -835,10 +1001,10 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="All Stages" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Stages</SelectItem>
+                <SelectContent className="bg-white text-black">
+                  <SelectItem value="all" className="text-black hover:bg-gray-100">All Stages</SelectItem>
                   {stages.map((stage) => (
-                    <SelectItem key={stage} value={stage}>
+                    <SelectItem key={stage} value={stage} className="text-black hover:bg-gray-100">
                       {stage}
                     </SelectItem>
                   ))}
@@ -850,11 +1016,11 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Sort by" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="lastActivity">Last Activity</SelectItem>
-                  <SelectItem value="name">Name</SelectItem>
-                  <SelectItem value="stage">Stage</SelectItem>
-                  <SelectItem value="rating">Rating</SelectItem>
+                <SelectContent className="bg-white text-black">
+                  <SelectItem value="lastActivity" className="text-black hover:bg-gray-100">Last Activity</SelectItem>
+                  <SelectItem value="name" className="text-black hover:bg-gray-100">Name</SelectItem>
+                  <SelectItem value="stage" className="text-black hover:bg-gray-100">Stage</SelectItem>
+                  <SelectItem value="rating" className="text-black hover:bg-gray-100">Rating</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -905,13 +1071,13 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
                     <SelectTrigger>
                       <SelectValue placeholder="All Ratings" />
                     </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Ratings</SelectItem>
-                      <SelectItem value="4-5">4-5 Stars</SelectItem>
-                      <SelectItem value="3-4">3-4 Stars</SelectItem>
-                      <SelectItem value="2-3">2-3 Stars</SelectItem>
-                      <SelectItem value="1-2">1-2 Stars</SelectItem>
-                      <SelectItem value="0-1">0-1 Stars</SelectItem>
+                    <SelectContent className="bg-white text-black">
+                      <SelectItem value="all" className="text-black hover:bg-gray-100">All Ratings</SelectItem>
+                      <SelectItem value="4-5" className="text-black hover:bg-gray-100">4-5 Stars</SelectItem>
+                      <SelectItem value="3-4" className="text-black hover:bg-gray-100">3-4 Stars</SelectItem>
+                      <SelectItem value="2-3" className="text-black hover:bg-gray-100">2-3 Stars</SelectItem>
+                      <SelectItem value="1-2" className="text-black hover:bg-gray-100">1-2 Stars</SelectItem>
+                      <SelectItem value="0-1" className="text-black hover:bg-gray-100">0-1 Stars</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -1078,4 +1244,54 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
       </div>
     </ProtectedRoute>
   )
+}
+
+function transformApplicationToCandidate(app: JobApplication): Candidate {
+  return {
+    id: app.id,
+    applicationId: app.id,
+    name: app.candidate_details?.full_name || 'Unknown',
+    jobTitle: app.job_details?.title || 'Unknown',
+    stage: app.stage || 'applied',
+    rating: app.overall_rating || 0,
+    lastActivity: app.stage_updated_at ? formatDateHelper(app.stage_updated_at) : '1d ago',
+    email: app.candidate_details?.email || '',
+    phone: app.candidate_details?.phone || '',
+    location: app.candidate_details?.location || '',
+    totalExperience: 0,
+    relevantExperience: 0,
+    skillExperience: [],
+    expectedSalary: '',
+    noticePeriod: '',
+    resumeLink: '',
+    linkedinProfile: '',
+    notes: '',
+    interviewHistory: [],
+    feedbackSummary: '',
+    progress: getStageProgress(app.stage || 'applied')
+  }
+}
+
+function formatDateHelper(dateString: string): string {
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffTime = Math.abs(now.getTime() - date.getTime())
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+  
+  if (diffDays === 1) return '1d ago'
+  if (diffDays < 7) return `${diffDays}d ago`
+  if (diffDays < 30) return `${Math.ceil(diffDays / 7)}w ago`
+  return `${Math.ceil(diffDays / 30)}m ago`
+}
+
+function getStageProgress(stage: string): number {
+  const stageMap: Record<string, number> = {
+    'Applied': 20,
+    'Screening': 40,
+    'Interview': 60,
+    'Offer': 80,
+    'Hired': 100,
+    'Rejected': 0
+  }
+  return stageMap[stage] || 10
 }

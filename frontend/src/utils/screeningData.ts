@@ -1,0 +1,68 @@
+/**
+ * Utility functions for handling screening candidate data transfer via sessionStorage
+ */
+
+export interface ScreeningCandidateData {
+  id: number
+  name: string
+  email: string
+  phone?: string
+  location?: string
+  experience_years?: number
+  experience_level?: string
+  current_company?: string
+  current_position?: string
+  skills?: string[]
+  education?: any[]
+  certifications?: any[]
+  salary_expectation?: number
+  jobId?: number
+  jobTitle?: string
+}
+
+/**
+ * Store candidate data for screening page
+ */
+export function setScreeningCandidateData(data: ScreeningCandidateData): void {
+  try {
+    sessionStorage.setItem('screeningCandidateData', JSON.stringify(data))
+  } catch (error) {
+    console.error('Error storing screening candidate data:', error)
+  }
+}
+
+/**
+ * Retrieve candidate data from sessionStorage
+ */
+export function getScreeningCandidateData(): ScreeningCandidateData | null {
+  try {
+    const data = sessionStorage.getItem('screeningCandidateData')
+    return data ? JSON.parse(data) : null
+  } catch (error) {
+    console.error('Error retrieving screening candidate data:', error)
+    return null
+  }
+}
+
+/**
+ * Clear screening candidate data from sessionStorage
+ */
+export function clearScreeningCandidateData(): void {
+  try {
+    sessionStorage.removeItem('screeningCandidateData')
+  } catch (error) {
+    console.error('Error clearing screening candidate data:', error)
+  }
+}
+
+/**
+ * Check if screening candidate data exists
+ */
+export function hasScreeningCandidateData(): boolean {
+  try {
+    return sessionStorage.getItem('screeningCandidateData') !== null
+  } catch (error) {
+    console.error('Error checking screening candidate data:', error)
+    return false
+  }
+}

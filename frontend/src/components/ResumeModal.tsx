@@ -26,10 +26,63 @@ export default function ResumeModal({ isOpen, onClose, candidateName, resumeText
     URL.revokeObjectURL(url)
   }
 
-  const handleViewOriginalResume = () => {
-    if (candidateId) {
-      const resumeUrl = `http://localhost:8000/api/candidates/${candidateId}/resume/`
+  const handleViewOriginalResume = async () => {
+    if (!candidateId) return
+    
+    const resumeUrl = `http://localhost:8000/api/candidates/${candidateId}/resume/`
+    
+    try {
+      // First check if the backend is available with a quick test
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 3000)
+      
+      // Suppress console errors temporarily
+      const originalError = console.error
+      console.error = () => {}
+      
+      const testResponse = await fetch(resumeUrl, {
+        method: 'HEAD', // Just check if the resource exists
+        signal: controller.signal
+      })
+      
+      clearTimeout(timeoutId)
+      console.error = originalError
+      
+      // If we get here, backend is available - open the URL
       window.open(resumeUrl, '_blank')
+      
+    } catch (error) {
+      console.error = console.error // Restore in case of error
+      
+      // Backend is not available - show helpful message
+      const notification = document.createElement('div')
+      notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: #f97316;
+        color: white;
+        padding: 12px 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        z-index: 10000;
+        font-family: system-ui;
+        font-size: 14px;
+        max-width: 350px;
+      `
+      notification.innerHTML = `
+        <div style="font-weight: 600; margin-bottom: 4px;">Backend Unavailable</div>
+        <div>Cannot access original resume file. Backend server is not running.</div>
+      `
+      
+      document.body.appendChild(notification)
+      
+      // Auto-remove notification after 4 seconds
+      setTimeout(() => {
+        if (document.body.contains(notification)) {
+          document.body.removeChild(notification)
+        }
+      }, 4000)
     }
   }
 

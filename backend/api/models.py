@@ -295,3 +295,36 @@ class JobApplication(models.Model):
 
     def __str__(self):
         return f"{self.candidate.full_name} - {self.job.title}"
+
+
+class FeedbackTemplate(models.Model):
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('published', 'Published'),
+        ('archived', 'Archived'),
+    ]
+    
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    questions = models.JSONField(default=list, blank=True)
+    sections = models.JSONField(default=list, blank=True)
+    rating_criteria = models.JSONField(default=list, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    is_active = models.BooleanField(default=True)
+    is_default = models.BooleanField(default=False)
+    
+    # Metadata
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_feedback_templates', null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['status']),
+            models.Index(fields=['is_active']),
+            models.Index(fields=['created_at']),
+        ]
+    
+    def __str__(self):
+        return self.name

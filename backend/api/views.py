@@ -9,14 +9,15 @@ from datetime import timedelta
 from django_filters.rest_framework import DjangoFilterBackend
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
-from .models import DashboardStats, Task, ActivityLog, Department, Job, Candidate, JobApplication
+from .models import DashboardStats, Task, ActivityLog, Department, Job, Candidate, JobApplication, FeedbackTemplate
 from .serializers import (
     DashboardStatsSerializer, TaskSerializer, TaskCreateSerializer,
     ActivityLogSerializer, DashboardOverviewSerializer,
     DepartmentSerializer, JobSerializer, JobCreateSerializer, 
     JobUpdateSerializer, JobListSerializer, CandidateSerializer,
     CandidateCreateSerializer, CandidateListSerializer, ResumeParseSerializer,
-    JobApplicationSerializer, JobApplicationCreateSerializer
+    JobApplicationSerializer, JobApplicationCreateSerializer,
+    FeedbackTemplateSerializer, FeedbackTemplateCreateSerializer, FeedbackTemplateUpdateSerializer
 )
 from .utils.resume_parser import ResumeParser
 import os
@@ -746,3 +747,108 @@ class JobApplicationViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(application)
         return Response(serializer.data)
+
+
+class FeedbackTemplateViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing feedback templates
+    """
+    queryset = FeedbackTemplate.objects.all()
+    serializer_class = FeedbackTemplateSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['status', 'is_active', 'is_default']
+    search_fields = ['name', 'description']
+    ordering_fields = ['created_at', 'updated_at', 'name']
+    ordering = ['-created_at']
+
+    def get_serializer_class(self):
+        """Return appropriate serializer based on action"""
+        if self.action == 'create':
+            return FeedbackTemplateCreateSerializer
+        elif self.action in ['update', 'partial_update']:
+            return FeedbackTemplateUpdateSerializer
+        return FeedbackTemplateSerializer
+
+    def perform_create(self, serializer):
+        """Set the created_by field when creating a new template"""
+        serializer.save(created_by=self.request.user if self.request.user.is_authenticated else None)
+
+    def create(self, request, *args, **kwargs):
+        """Override create to return full object after creation"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        
+        # Return full object using the main serializer
+        instance = serializer.instance
+        response_serializer = FeedbackTemplateSerializer(instance)
+        headers = self.get_success_headers(serializer.data)
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def update(self, request, *args, **kwargs):
+        """Override update to return full object after update"""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        # Return full object using the main serializer
+        response_serializer = FeedbackTemplateSerializer(instance)
+        return Response(response_serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def publish(self, request, pk=None):
+        """Publish a feedback template"""
+        template = self.get_object()
+        template.status = 'published'
+        template.save()
+        
+        serializer = self.get_serializer(template)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def unpublish(self, request, pk=None):
+        """Unpublish a feedback template (set to draft)"""
+        template = self.get_object()
+        template.status = 'draft'
+        template.save()
+        
+        serializer = self.get_serializer(template)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def archive(self, request, pk=None):
+        """Archive a feedback template"""
+        template = self.get_object()
+        template.status = 'archived'
+        template.is_active = False
+        template.save()
+        
+        serializer = self.get_serializer(template)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def duplicate(self, request, pk=None):
+        """Create a duplicate of a feedback template"""
+        original_template = self.get_object()
+        
+        # Create a copy
+        template_data = {
+            'name': f"{original_template.name} (Copy)",
+            'description': original_template.description,
+            'questions': original_template.questions,
+            'sections': original_template.sections,
+            'rating_criteria': original_template.rating_criteria,
+            'status': 'draft',
+            'is_active': True,
+            'is_default': False
+        }
+        
+        serializer = FeedbackTemplateCreateSerializer(data=template_data)
+        if serializer.is_valid():
+            new_template = serializer.save(created_by=self.request.user if self.request.user.is_authenticated else None)
+            response_serializer = self.get_serializer(new_template)
+            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
