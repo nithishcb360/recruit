@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createJob, getDepartments, createDepartment, type JobCreateData, type Department, type Job, type DepartmentCreateData } from '@/lib/api/jobs';
+import { searchLocations, type Location } from '@/lib/api/locations';
 
 interface FormData {
   jobTitle: string;
@@ -49,6 +50,9 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
   const [newDepartmentName, setNewDepartmentName] = useState('');
   const [newDepartmentDescription, setNewDepartmentDescription] = useState('');
   const [isCreatingDepartment, setIsCreatingDepartment] = useState(false);
+  const [locationSuggestions, setLocationSuggestions] = useState<Location[]>([]);
+  const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
+  const [isSearchingLocations, setIsSearchingLocations] = useState(false);
 
   const steps = [
     { number: 1, name: 'Job Details', active: activeStep === 1 },
@@ -140,6 +144,11 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
       }));
     }
 
+    // Handle location search
+    if (field === 'location' && typeof value === 'string') {
+      handleLocationSearch(value);
+    }
+
     // Handle salary validation - only for number fields
     if (field === 'minSalary' && typeof value === 'number') {
       const numValue = value as number;
@@ -158,6 +167,41 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
           minSalary: numValue
         }));
       }
+    }
+  };
+
+  const handleLocationSearch = async (query: string) => {
+    if (query.length < 3) {
+      setLocationSuggestions([]);
+      setShowLocationSuggestions(false);
+      return;
+    }
+
+    setIsSearchingLocations(true);
+    try {
+      const suggestions = await searchLocations(query);
+      setLocationSuggestions(suggestions);
+      setShowLocationSuggestions(suggestions.length > 0);
+    } catch (error) {
+      console.error('Error searching locations:', error);
+      setLocationSuggestions([]);
+      setShowLocationSuggestions(false);
+    } finally {
+      setIsSearchingLocations(false);
+    }
+  };
+
+  const handleLocationSelect = (location: Location) => {
+    setFormData(prev => ({
+      ...prev,
+      location: location.full_name || location.name
+    }));
+    setShowLocationSuggestions(false);
+    setLocationSuggestions([]);
+    // Clear the location input focus to ensure dropdown closes properly
+    const locationInput = document.querySelector('input[placeholder*="search locations"]') as HTMLInputElement;
+    if (locationInput) {
+      locationInput.blur();
     }
   };
 
@@ -847,16 +891,141 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
     return teamValues[Math.floor(Math.random() * teamValues.length)];
   };
 
+  const generateIndustryTerms = (department: string, title: string) => {
+    const industryTerms = {
+      'technology': ['digital transformation', 'scalable solutions', 'agile methodologies', 'cloud-first approach', 'microservices architecture'],
+      'finance': ['regulatory compliance', 'risk management', 'financial modeling', 'market analysis', 'portfolio optimization'],
+      'healthcare': ['patient outcomes', 'healthcare innovation', 'regulatory standards', 'clinical excellence', 'care coordination'],
+      'education': ['learning outcomes', 'curriculum development', 'educational technology', 'student engagement', 'academic excellence'],
+      'retail': ['customer experience', 'omnichannel solutions', 'inventory optimization', 'brand loyalty', 'market positioning'],
+      'manufacturing': ['operational efficiency', 'quality assurance', 'supply chain optimization', 'lean manufacturing', 'process improvement'],
+      'marketing': ['brand awareness', 'customer acquisition', 'digital campaigns', 'market penetration', 'engagement strategies'],
+      'sales': ['revenue generation', 'client relationship management', 'sales optimization', 'territory expansion', 'deal closure']
+    };
+    
+    const deptLower = department.toLowerCase();
+    for (const [key, terms] of Object.entries(industryTerms)) {
+      if (deptLower.includes(key)) {
+        return terms[Math.floor(Math.random() * terms.length)];
+      }
+    }
+    return 'business excellence';
+  };
+
+  const generateCompanySize = (variationIndex: number) => {
+    const sizes = [
+      'fast-growing startup',
+      'established mid-market company',
+      'industry-leading enterprise',
+      'innovative scale-up',
+      'dynamic growth-stage company',
+      'well-funded technology company',
+      'market-leading organization',
+      'forward-thinking enterprise',
+      'agile technology firm',
+      'established industry player'
+    ];
+    return sizes[variationIndex % sizes.length];
+  };
+
+  const generateTeamStructure = (variationIndex: number) => {
+    const structures = [
+      'cross-functional team environment',
+      'collaborative, flat organizational structure',
+      'diverse, multicultural team setting',
+      'high-performing, results-driven team',
+      'innovative, creative team culture',
+      'autonomous, empowered team structure',
+      'inclusive, supportive team environment',
+      'dynamic, fast-paced team setting',
+      'strategic, goal-oriented team culture',
+      'flexible, adaptive team framework'
+    ];
+    return structures[variationIndex % structures.length];
+  };
+
+  const generateGrowthStage = (variationIndex: number) => {
+    const stages = [
+      'rapid expansion phase',
+      'strategic growth initiative',
+      'market expansion effort',
+      'innovation-driven growth',
+      'scaling operations globally',
+      'entering new market segments',
+      'digital transformation journey',
+      'product portfolio expansion',
+      'customer base diversification',
+      'international market penetration'
+    ];
+    return stages[variationIndex % stages.length];
+  };
+
+  const generateToneVariation = (variationIndex: number) => {
+    const tones = [
+      { style: 'professional', descriptor: 'We maintain the highest standards of' },
+      { style: 'innovative', descriptor: 'We\'re pioneering breakthrough approaches to' },
+      { style: 'collaborative', descriptor: 'We believe in the power of teamwork to achieve' },
+      { style: 'dynamic', descriptor: 'We thrive in fast-paced environments focused on' },
+      { style: 'supportive', descriptor: 'We foster an environment where everyone can contribute to' },
+      { style: 'results-driven', descriptor: 'We\'re committed to delivering exceptional outcomes in' },
+      { style: 'forward-thinking', descriptor: 'We anticipate future trends and prepare for' },
+      { style: 'inclusive', descriptor: 'We celebrate diverse perspectives that enhance' },
+      { style: 'agile', descriptor: 'We adapt quickly to changing needs while maintaining' },
+      { style: 'customer-centric', descriptor: 'We put our customers at the heart of everything we do in' }
+    ];
+    return tones[variationIndex % tones.length];
+  };
+
+  const generateCultureEmphasis = (variationIndex: number) => {
+    const cultures = [
+      'work-life balance and professional development',
+      'continuous learning and skill advancement',
+      'innovation and creative problem-solving',
+      'collaboration and knowledge sharing',
+      'diversity, equity, and inclusion',
+      'sustainability and social responsibility',
+      'customer success and satisfaction',
+      'operational excellence and quality',
+      'transparency and open communication',
+      'entrepreneurial spirit and ownership mindset'
+    ];
+    return cultures[variationIndex % cultures.length];
+  };
+
   const generateRoleSpecificContent = (jobTitle: string, department: string, experienceLevel: string, workType: string, location: string, experienceRange: string) => {
     const title = jobTitle.toLowerCase();
     const dept = department.toLowerCase();
     
-    // DevOps Engineer
+    // Enhanced randomization system - create multiple sources of uniqueness
+    const timestamp = Date.now();
+    const randomSeed1 = Math.random() * 10000;
+    const randomSeed2 = Math.random() * 10000;
+    const hashSeed = Math.abs(jobTitle.split('').reduce((hash, char) => hash + char.charCodeAt(0), 0));
+    const combinedSeed = Math.floor((timestamp + randomSeed1 + randomSeed2 + hashSeed) % 1000);
+    
+    // DevOps Engineer with variations
     if (title.includes('devops') || title.includes('sre') || title.includes('site reliability')) {
+      const devopsIntros = [
+        `We are seeking a skilled ${jobTitle} to join our ${department} team. This ${workType} position is based in ${location}.`,
+        `Join our dynamic ${department} team as a ${jobTitle}! This ${workType} role in ${location} offers exciting challenges.`,
+        `Our ${department} team is looking for an experienced ${jobTitle} to drive innovation. This ${workType} position is located in ${location}.`,
+        `Are you passionate about DevOps excellence? We're hiring a ${jobTitle} for our ${department} team. This ${workType} role is based in ${location}.`
+      ];
+      
+      const devopsDescriptions = [
+        `As a ${jobTitle}, you will be responsible for bridging the gap between development and operations teams, ensuring smooth deployment and operation of our software systems. You'll work with cutting-edge technologies to build and maintain scalable, reliable infrastructure.`,
+        `In this role, you'll architect and maintain robust CI/CD pipelines while optimizing our cloud infrastructure for maximum performance and reliability. You'll be at the forefront of modern DevOps practices.`,
+        `You'll lead the transformation of our development and deployment processes, implementing best practices in automation, monitoring, and infrastructure management. Your expertise will drive our technical excellence.`,
+        `As our ${jobTitle}, you'll design resilient systems and automate complex workflows. You'll work closely with development teams to ensure seamless software delivery and operational excellence.`
+      ];
+      
+      const selectedIntro = devopsIntros[combinedSeed % devopsIntros.length];
+      const selectedDesc = devopsDescriptions[Math.floor((combinedSeed + randomSeed1) % devopsDescriptions.length)];
+      
       return {
-        description: `We are seeking a skilled ${jobTitle} to join our ${department} team. This ${workType} position is based in ${location}.
+        description: `${selectedIntro}
 
-As a ${jobTitle}, you will be responsible for bridging the gap between development and operations teams, ensuring smooth deployment and operation of our software systems. You'll work with cutting-edge technologies to build and maintain scalable, reliable infrastructure.
+${selectedDesc}
 
 Key Responsibilities:
 • Design, implement, and maintain CI/CD pipelines using tools like Jenkins, GitLab CI, or GitHub Actions
@@ -890,12 +1059,29 @@ Preferred Qualifications:
       };
     }
 
-    // Software Engineer/Developer
+    // Software Engineer/Developer with variations
     if (title.includes('software') || title.includes('developer') || title.includes('engineer')) {
+      const engineerIntros = [
+        `We are seeking a talented ${jobTitle} to join our ${department} team. This ${workType} position is based in ${location}.`,
+        `Join our innovative ${department} team as a ${jobTitle}! We're looking for someone passionate about building great software. This ${workType} role is in ${location}.`,
+        `Are you ready to make an impact? Our ${department} team needs a skilled ${jobTitle} to help build the future. This ${workType} position is located in ${location}.`,
+        `Calling all talented developers! We're expanding our ${department} team and need a ${jobTitle} to join our mission. This ${workType} role is based in ${location}.`
+      ];
+      
+      const engineerDescriptions = [
+        `As a ${jobTitle}, you will be responsible for designing, developing, and maintaining high-quality software solutions. You'll work in a collaborative environment using modern development practices and cutting-edge technologies.`,
+        `In this role, you'll architect scalable applications and write clean, efficient code that makes a difference. You'll collaborate with cross-functional teams to deliver exceptional user experiences.`,
+        `You'll be at the heart of our product development, crafting robust solutions that serve thousands of users. Your code will be the foundation of innovative features that drive our business forward.`,
+        `As our ${jobTitle}, you'll solve complex technical challenges while mentoring team members and contributing to our engineering culture of excellence and continuous improvement.`
+      ];
+      
+      const selectedIntro = engineerIntros[combinedSeed % engineerIntros.length];
+      const selectedDesc = engineerDescriptions[Math.floor((combinedSeed + randomSeed1) % engineerDescriptions.length)];
+      
       return {
-        description: `We are seeking a talented ${jobTitle} to join our ${department} team. This ${workType} position is based in ${location}.
+        description: `${selectedIntro}
 
-As a ${jobTitle}, you will be responsible for designing, developing, and maintaining high-quality software solutions. You'll work in a collaborative environment using modern development practices and cutting-edge technologies.
+${selectedDesc}
 
 Key Responsibilities:
 • Design and develop scalable software applications using modern programming languages
@@ -929,131 +1115,117 @@ Preferred Qualifications:
       };
     }
 
-    // Data Scientist/Analyst
-    if (title.includes('data') && (title.includes('scientist') || title.includes('analyst') || title.includes('engineer'))) {
-      return {
-        description: `We are seeking an experienced ${jobTitle} to join our ${department} team. This ${workType} position is based in ${location}.
+    // Enhanced dynamic content generation for all other roles
+    const roleKeywords = extractRoleKeywords(title);
+    const primaryFunction = extractPrimaryFunction(title);
+    const focusArea = extractFocusArea(title);
+    const specificSkills = generateSpecificSkills(title);
+    
+    // Create multiple variation pools for true randomness
+    const companyIntroVariations = [
+      `We are seeking an exceptional ${jobTitle} to join our growing ${department} team. This ${workType} role is based in ${location} and offers incredible growth opportunities.`,
+      `Join our dynamic ${department} team as a ${jobTitle}! This ${workType} position in ${location} is perfect for someone who wants to make a real impact.`,
+      `Are you passionate about ${extractPassionArea(jobTitle)}? We're looking for a ${jobTitle} to join our innovative ${department} team. This ${workType} role is located in ${location}.`,
+      `Our ${department} team is expanding, and we need a talented ${jobTitle} to help drive our mission forward. This ${workType} position is based in ${location}.`,
+      `Ready for your next challenge? Join us as a ${jobTitle} in our ${department} team. This ${workType} opportunity in ${location} offers unlimited potential.`,
+      `We believe in the power of great talent. That's why we're seeking a ${jobTitle} for our ${department} team. This ${workType} role is based in ${location}.`,
+      `Transform your career with us! We're hiring a ${jobTitle} to join our ${department} team. This ${workType} position in ${location} offers exciting challenges.`,
+      `Innovation starts with the right people. We're looking for a ${jobTitle} to join our ${department} team. This ${workType} role is located in ${location}.`,
+    ];
+    
+    const roleDescriptionVariations = [
+      `As our ${jobTitle}, you will ${primaryFunction} while contributing to strategic initiatives that drive business growth. You'll work in a collaborative environment with cutting-edge tools and technologies.`,
+      `In this role, you'll ${primaryFunction} and play a key part in shaping the future of our ${department}. You'll have the opportunity to work on challenging projects with significant impact.`,
+      `You'll be responsible for ${primaryFunction} while building strong relationships across our organization. This position offers the perfect blend of technical challenges and professional growth.`,
+      `As a ${jobTitle}, you'll ${primaryFunction} and drive innovation in ${focusArea}. You'll work with a team of experts who are passionate about excellence and continuous improvement.`,
+      `This role involves ${primaryFunction} while contributing to our company's mission of delivering exceptional results. You'll be part of a team that values creativity, collaboration, and professional development.`,
+      `You'll ${primaryFunction} while working on projects that make a real difference. This position offers the opportunity to grow your skills while contributing to meaningful work.`,
+      `As our ${jobTitle}, you'll be at the forefront of ${primaryFunction} and help establish new standards of excellence in our industry. You'll work with state-of-the-art tools and methodologies.`,
+      `In this position, you'll ${primaryFunction} while collaborating with talented professionals who share your commitment to quality and innovation. You'll have access to ongoing learning opportunities.`
+    ];
+    
+    const responsibilityPools = [
+      [
+        `Lead strategic initiatives in ${focusArea} that drive measurable business impact`,
+        `Collaborate with cross-functional teams to deliver exceptional results and exceed expectations`,
+        `Develop innovative solutions to complex challenges using industry best practices`,
+        `Mentor team members and contribute to knowledge sharing across the organization`,
+        `Stay current with industry trends and emerging technologies in your field`,
+        `Participate in strategic planning and contribute to long-term organizational goals`,
+        `Build and maintain strong relationships with key stakeholders and partners`
+      ],
+      [
+        `Drive excellence in ${focusArea} through continuous improvement and innovation`,
+        `Work closely with stakeholders to understand requirements and deliver solutions that exceed expectations`,
+        `Implement best practices and establish new standards of quality in your area of expertise`,
+        `Provide guidance and support to team members while fostering a collaborative environment`,
+        `Research and evaluate new technologies and methodologies to enhance team capabilities`,
+        `Contribute to project planning and execution while ensuring timely delivery of objectives`,
+        `Communicate effectively with diverse audiences to ensure alignment and understanding`
+      ],
+      [
+        `Execute high-impact projects in ${focusArea} that contribute to organizational success`,
+        `Foster collaboration and teamwork while maintaining focus on quality and efficiency`,
+        `Analyze complex problems and develop creative solutions that address business needs`,
+        `Share expertise and best practices to elevate overall team performance`,
+        `Monitor industry developments and apply relevant insights to improve processes`,
+        `Support organizational initiatives through dedicated expertise and professional commitment`,
+        `Maintain high standards of professional conduct while contributing to a positive work culture`
+      ],
+      [
+        `Champion innovation in ${focusArea} while ensuring adherence to quality standards`,
+        `Build consensus among stakeholders and facilitate effective decision-making processes`,
+        `Optimize workflows and processes to improve efficiency and outcomes`,
+        `Develop and maintain documentation that supports team knowledge and continuity`,
+        `Identify opportunities for improvement and implement solutions that add value`,
+        `Engage in professional development activities to enhance skills and expertise`,
+        `Support organizational culture through active participation and positive contribution`
+      ]
+    ];
+    
+    // Use multiple randomization sources
+    const introIndex = Math.floor((combinedSeed + timestamp) % companyIntroVariations.length);
+    const descIndex = Math.floor((combinedSeed + randomSeed1 + randomSeed2) % roleDescriptionVariations.length);
+    const respPoolIndex = Math.floor((combinedSeed + hashSeed) % responsibilityPools.length);
+    
+    const selectedIntro = companyIntroVariations[introIndex];
+    const selectedDesc = roleDescriptionVariations[descIndex];
+    const selectedResponsibilities = responsibilityPools[respPoolIndex];
+    
+    // Shuffle responsibilities for more variety
+    const shuffledResponsibilities = selectedResponsibilities
+      .map(resp => ({ resp, sort: Math.random() + combinedSeed / 1000 }))
+      .sort((a, b) => a.sort - b.sort)
+      .map(({ resp }) => resp)
+      .slice(0, 5 + (combinedSeed % 3)); // 5-7 responsibilities
+    
+    const educationReq = generateEducationRequirement(title, department);
+    const specificReqs = generateSpecificRequirements(title, experienceRange);
+    const preferredQuals = generatePreferredQualifications(title);
 
-As a ${jobTitle}, you will be responsible for extracting insights from complex datasets to drive business decisions. You'll work with large-scale data processing systems and develop machine learning models to solve real-world problems.
+    return {
+      description: `${selectedIntro}
 
-Key Responsibilities:
-• Analyze large and complex datasets to identify trends, patterns, and insights
-• Develop and deploy machine learning models and statistical algorithms
-• Create data pipelines and ETL processes for efficient data processing
-• Design and implement A/B tests and statistical experiments
-• Build interactive dashboards and visualizations for stakeholders
-• Collaborate with business teams to understand requirements and deliver actionable insights
-• Clean, preprocess, and validate data for analysis and modeling
-• Monitor model performance and implement improvements
-• Present findings to technical and non-technical audiences`,
-
-        requirements: `Required Qualifications:
-• Master's or PhD in Data Science, Statistics, Mathematics, Computer Science, or related field
-• ${experienceRange} of experience in data science or analytics roles
-• Proficiency in Python or R for data analysis and machine learning
-• Experience with SQL and database management systems
-• Strong knowledge of machine learning algorithms and statistical methods
-• Experience with data visualization tools (Tableau, Power BI, or similar)
-• Familiarity with big data technologies (Spark, Hadoop, or cloud-based solutions)
-• Experience with data science libraries (pandas, scikit-learn, TensorFlow, PyTorch)
-• Strong analytical and problem-solving skills
-
-Preferred Qualifications:
-• Experience with cloud platforms (AWS, Azure, GCP) and their ML services
-• Knowledge of deep learning frameworks
-• Experience with MLOps and model deployment
-• Understanding of business intelligence and data warehousing concepts
-• Experience with real-time data processing systems`
-      };
-    }
-
-    // Product Manager
-    if (title.includes('product') && title.includes('manager')) {
-      return {
-        description: `We are seeking a strategic ${jobTitle} to join our ${department} team. This ${workType} position is based in ${location}.
-
-As a ${jobTitle}, you will be responsible for driving product strategy, defining roadmaps, and working cross-functionally to deliver exceptional products that meet customer needs and business objectives.
-
-Key Responsibilities:
-• Define product vision, strategy, and roadmap aligned with business goals
-• Conduct market research and competitive analysis to identify opportunities
-• Gather and prioritize product requirements from stakeholders and customers
-• Work closely with engineering teams to ensure successful product delivery
-• Collaborate with design teams to create intuitive user experiences
-• Define and track key product metrics and KPIs
-• Lead go-to-market strategies and product launches
-• Manage product lifecycle from conception to end-of-life
-• Communicate product updates and strategy to stakeholders across the organization`,
-
-        requirements: `Required Qualifications:
-• Bachelor's degree in Business, Engineering, or related field
-• ${experienceRange} of product management experience
-• Strong analytical skills with experience in data-driven decision making
-• Experience with product management tools (Jira, Confluence, Roadmapping tools)
-• Understanding of software development lifecycle and agile methodologies
-• Excellent communication and presentation skills
-• Experience with user research and usability testing
-• Strong project management and organizational skills
-• Customer-focused mindset with empathy for user needs
-
-Preferred Qualifications:
-• MBA or advanced degree preferred
-• Technical background or experience working closely with engineering teams
-• Experience with A/B testing and experimentation frameworks
-• Knowledge of UX/UI design principles
-• Experience in ${dept} industry or related markets
-• Familiarity with growth hacking and user acquisition strategies`
-      };
-    }
-
-    // Truly dynamic content generation for other roles
-    const generateDynamicContent = () => {
-      const roleKeywords = extractRoleKeywords(title);
-      const primaryFunction = extractPrimaryFunction(title);
-      const focusArea = extractFocusArea(title);
-      const specificSkills = generateSpecificSkills(title);
-      
-      // Generate unique company introductions based on job characteristics
-      const companyIntros = generateUniqueCompanyIntros(jobTitle, department, roleKeywords);
-      const roleContexts = generateUniqueRoleContexts(workType, location, primaryFunction, experienceLevel);
-      const uniqueValueProps = generateUniqueValuePropositions(jobTitle, department, focusArea);
-
-      const dynamicResponsibilities = generateDynamicResponsibilities(title, primaryFunction, focusArea);
-      const educationReq = generateEducationRequirement(title, department);
-      const specificReqs = generateSpecificRequirements(title, experienceRange);
-      const preferredQuals = generatePreferredQualifications(title);
-
-      // Create unique description structure
-      const selectedIntro = companyIntros[Math.floor(Math.random() * companyIntros.length)];
-      const selectedContext = roleContexts[Math.floor(Math.random() * roleContexts.length)];
-      const selectedValueProp = uniqueValueProps[Math.floor(Math.random() * uniqueValueProps.length)];
-      
-      // Generate unique closing statement
-      const closingStatements = generateUniqueClosingStatements(jobTitle, primaryFunction);
-      const selectedClosing = closingStatements[Math.floor(Math.random() * closingStatements.length)];
-
-      return {
-        description: `${selectedIntro}
-
-${selectedContext}
-
-${selectedValueProp}
+${selectedDesc}
 
 Key Responsibilities:
-${dynamicResponsibilities.map(resp => `• ${resp}`).join('\n')}
+${shuffledResponsibilities.map(resp => `• ${resp}`).join('\n')}
 
-${selectedClosing}`,
+What We Offer:
+• Competitive compensation and comprehensive benefits package
+• Professional development opportunities and career advancement
+• Flexible work environment that promotes work-life balance
+• Collaborative culture with talented professionals
+• Access to cutting-edge tools and technologies
+• Opportunity to make a meaningful impact in your field`,
 
-        requirements: `Required Qualifications:
+      requirements: `Required Qualifications:
 ${educationReq}
 ${specificReqs.map(req => `• ${req}`).join('\n')}
 
 Preferred Qualifications:
 ${preferredQuals.map(qual => `• ${qual}`).join('\n')}`
-      };
     };
-
-    return generateDynamicContent();
   };
 
   const handleCreateDepartment = async () => {
@@ -1249,19 +1421,50 @@ ${preferredQuals.map(qual => `• ${qual}`).join('\n')}`
 
             {/* Location and Work Type */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div>
+              <div className="relative">
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Location
                 </label>
-                <input
-                  type="text"
-                  value={formData.location}
-                  onChange={(e) => handleInputChange('location', e.target.value)}
-                  onFocus={() => handleFieldFocus('location')}
-                  onBlur={() => handleFieldBlur('location')}
-                  className={getInputClasses('location')}
-                  placeholder="e.g., Remote, New York, NY"
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={formData.location}
+                    onChange={(e) => handleInputChange('location', e.target.value)}
+                    onFocus={() => handleFieldFocus('location')}
+                    onBlur={() => setTimeout(() => setShowLocationSuggestions(false), 150)}
+                    className={getInputClasses('location')}
+                    placeholder="Type 3+ letters to search locations..."
+                    autoComplete="off"
+                  />
+                  {isSearchingLocations && (
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Location Suggestions Dropdown */}
+                {showLocationSuggestions && locationSuggestions.length > 0 && (
+                  <div 
+                    className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+                    onMouseDown={(e) => e.preventDefault()} // Prevent input blur when clicking dropdown
+                  >
+                    {locationSuggestions.map((location) => (
+                      <div
+                        key={location.id}
+                        onClick={() => handleLocationSelect(location)}
+                        className="px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                      >
+                        <div className="font-medium text-gray-900">{location.name}</div>
+                        {location.state && location.country && (
+                          <div className="text-sm text-gray-600">
+                            {location.state}, {location.country}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div>

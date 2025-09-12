@@ -95,6 +95,59 @@ export interface GenerateJDResponse {
 // Mock API base URL - replace with your actual API endpoint
 const API_BASE_URL = 'http://localhost:8000/api'
 
+// Helper function for fetch with timeout and complete error suppression
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs: number = 5000): Promise<Response> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+  
+  // Store original console methods to restore later
+  const originalError = console.error
+  const originalWarn = console.warn
+  const originalLog = console.log
+  
+  try {
+    // Completely suppress all console output during fetch
+    console.error = () => {}
+    console.warn = () => {}
+    console.log = () => {}
+    
+    // Also suppress any window.onerror during this operation
+    const originalOnError = window.onerror
+    window.onerror = () => true
+    
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    })
+    
+    clearTimeout(timeoutId)
+    
+    // Restore all console methods and error handling
+    console.error = originalError
+    console.warn = originalWarn
+    console.log = originalLog
+    window.onerror = originalOnError
+    
+    return response
+  } catch (error) {
+    clearTimeout(timeoutId)
+    
+    // Restore all console methods and error handling
+    console.error = originalError
+    console.warn = originalWarn
+    console.log = originalLog
+    if (window.onerror !== (() => true)) {
+      window.onerror = window.onerror
+    }
+    
+    // Create a clean error without exposing connection details
+    if (error instanceof Error && (error.name === 'AbortError' || error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED'))) {
+      throw new Error('Backend unavailable')
+    }
+    throw error
+  }
+}
+
 // API functions
 export async function getDepartments(): Promise<{ results: Department[] }> {
   try {
@@ -231,7 +284,7 @@ export async function parseJD(file: File): Promise<ParsedJD> {
 
 export async function getJobs(): Promise<{ results: Job[] }> {
   try {
-    const response = await fetch(`${API_BASE_URL}/jobs/`)
+    const response = await fetchWithTimeout(`${API_BASE_URL}/jobs/`)
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`)
     }
@@ -267,48 +320,15 @@ export async function getJobs(): Promise<{ results: Job[] }> {
 
     return { results: detailedJobs }
   } catch (error) {
-    // Mock data for development
-    console.log('Error fetching jobs, using mock data:', error)
-    return {
-      results: [
-        {
-          id: 1,
-          title: 'Senior Software Engineer',
-          department: { id: 1, name: 'Engineering', description: 'Software development and technical roles' },
-          description: 'We are looking for a Senior Software Engineer to join our Engineering team.',
-          requirements: 'Bachelor\'s degree in Computer Science, 5+ years of experience',
-          responsibilities: 'Design and develop scalable software solutions, mentor junior developers, participate in code reviews, and collaborate with cross-functional teams.',
-          created_at: new Date().toISOString(),
-          status: 'active',
-          published_to_linkedin: true,
-          published_to_naukri: false,
-          linkedin_published_at: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
-          naukri_published_at: undefined,
-          linkedin_job_url: 'https://www.linkedin.com/jobs/view/3871234567/',
-          linkedin_job_id: 'job_3871234567',
-          naukri_job_url: undefined,
-          naukri_job_id: undefined
-        },
-        {
-          id: 2,
-          title: 'Product Manager',
-          department: { id: 2, name: 'Product', description: 'Product management and strategy' },
-          description: 'Seeking an experienced Product Manager to drive our product strategy.',
-          requirements: 'MBA preferred, 3+ years of product management experience',
-          responsibilities: 'Define product roadmap, work with engineering teams, conduct market research, and analyze user feedback to improve products.',
-          created_at: new Date(Date.now() - 86400000).toISOString(), // Yesterday
-          status: 'active',
-          published_to_linkedin: false,
-          published_to_naukri: true,
-          linkedin_published_at: undefined,
-          naukri_published_at: new Date(Date.now() - 7200000).toISOString(), // 2 hours ago
-          linkedin_job_url: undefined,
-          linkedin_job_id: undefined,
-          naukri_job_url: 'https://www.naukri.com/job-detail/product-manager-12345678',
-          naukri_job_id: 'naukri_12345678'
-        }
-      ]
+    // Backend unavailable - return empty results instead of mock data
+    if (error instanceof Error && error.message === 'Backend unavailable') {
+      console.warn('Backend unavailable, returning empty jobs list')
+      return { results: [] }
     }
+    
+    // Other errors - also return empty results
+    console.warn('Jobs API error, returning empty list')
+    return { results: [] }
   }
 }
 

@@ -12,17 +12,18 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { useToast } from "@/hooks/use-toast"
 import { getJobs } from "@/lib/api/jobs"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
+import { getScreeningCandidateData, clearScreeningCandidateData, ScreeningCandidateData } from "@/utils/screeningData"
 
 interface Job {
   id: number
   title: string
   department: { name: string }
-  experience_level: string
-  required_skills: string[]
-  preferred_skills: string[]
-  requirements: string
-  description: string
-  status: string
+  experience_level?: string
+  required_skills?: string[]
+  preferred_skills?: string[]
+  requirements?: string
+  description?: string
+  status?: string
 }
 
 interface Candidate {
@@ -97,12 +98,23 @@ export default function ScreeningPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [screeningResults, setScreeningResults] = useState<ScreeningResult[]>([])
   const [expandedCards, setExpandedCards] = useState<Set<number>>(new Set())
+  const [movedCandidateData, setMovedCandidateData] = useState<ScreeningCandidateData | null>(null)
 
   // Load jobs and applications on component mount
   useEffect(() => {
     fetchJobs()
     fetchCandidates()
     fetchApplications()
+    
+    // Check for moved candidate data from candidates page
+    const screeningData = getScreeningCandidateData()
+    if (screeningData) {
+      setMovedCandidateData(screeningData)
+      // Auto-select the job if provided
+      if (screeningData.jobId) {
+        setSelectedJobId(screeningData.jobId.toString())
+      }
+    }
   }, [])
 
   const fetchJobs = async () => {
@@ -276,7 +288,7 @@ export default function ScreeningPage() {
     
     // For now, we'll create a mock job location since it's not in the current job interface
     // This should ideally come from the job posting
-    const jobLocation = "remote" // Default assumption for tech jobs
+    const jobLocation: string = "remote" // Default assumption for tech jobs
     
     if (candidateLocation) {
       if (jobLocation === "remote" || candidateLocation.includes("remote")) {
@@ -506,7 +518,509 @@ export default function ScreeningPage() {
     }
   }
 
+  // Handle closing the moved candidate data
+  const handleCloseMovedCandidate = () => {
+    setMovedCandidateData(null)
+    clearScreeningCandidateData()
+    toast({
+      title: "Candidate Data Cleared",
+      description: "The moved candidate data has been cleared from the screening view.",
+      variant: "default"
+    })
+  }
+
   return (
-   <div>screerffdin </div>
+    <ProtectedRoute>
+      <div className="container mx-auto p-6 space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">AI Candidate Screening</h1>
+            <p className="text-gray-600">Intelligent candidate analysis and job matching</p>
+          </div>
+          <div className="flex items-center gap-4">
+            <Badge variant="outline" className="flex items-center gap-2">
+              <Brain className="h-4 w-4" />
+              AI Powered
+            </Badge>
+          </div>
+        </div>
+
+        {/* Moved Candidate Data Section */}
+        {movedCandidateData && (
+          <Card className="border-2 border-blue-200 bg-blue-50/30">
+            <CardHeader className="pb-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                    <User className="h-5 w-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-lg text-blue-900">
+                      Candidate Moved for Screening: {movedCandidateData.name}
+                    </CardTitle>
+                    <CardDescription className="text-blue-700">
+                      {movedCandidateData.jobTitle && `Applied for: ${movedCandidateData.jobTitle}`}
+                    </CardDescription>
+                  </div>
+                </div>
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={handleCloseMovedCandidate}
+                  className="text-blue-600 hover:text-blue-800"
+                >
+                  <XCircle className="h-4 w-4 mr-2" />
+                  Clear
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid md:grid-cols-3 gap-6">
+                {/* Basic Information */}
+                <div className="space-y-3">
+                  <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                    <User className="h-4 w-4" />
+                    Basic Information
+                  </h4>
+                  <div className="space-y-2 text-sm">
+                    <div>
+                      <span className="font-medium text-gray-600">Email:</span>
+                      <div className="text-gray-900">{movedCandidateData.email}</div>
+                    </div>
+                    {movedCandidateData.phone && (
+                      <div>
+                        <span className="font-medium text-gray-600">Phone:</span>
+                        <div className="text-gray-900">{movedCandidateData.phone}</div>
+                      </div>
+                    )}
+                    {movedCandidateData.location && (
+                      <div>
+                        <span className="font-medium text-gray-600">Location:</span>
+                        <div className="text-gray-900 flex items-center gap-1">
+                          <MapPin className="h-3 w-3" />
+                          {movedCandidateData.location}
+                        </div>
+                      </div>
+                    )}
+                    {movedCandidateData.salary_expectation && (
+                      <div>
+                        <span className="font-medium text-gray-600">Expected Salary:</span>
+                        <div className="text-gray-900">${movedCandidateData.salary_expectation.toLocaleString()}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Experience */}
+                <div className="space-y-3">
+                  <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                    <Briefcase className="h-4 w-4" />
+                    Experience
+                  </h4>
+                  <div className="space-y-2 text-sm">
+                    {movedCandidateData.experience_years && (
+                      <div>
+                        <span className="font-medium text-gray-600">Years of Experience:</span>
+                        <div className="text-gray-900 flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {movedCandidateData.experience_years} years
+                        </div>
+                      </div>
+                    )}
+                    {movedCandidateData.experience_level && (
+                      <div>
+                        <span className="font-medium text-gray-600">Experience Level:</span>
+                        <Badge variant="outline" className="text-xs">
+                          {movedCandidateData.experience_level}
+                        </Badge>
+                      </div>
+                    )}
+                    {movedCandidateData.current_company && (
+                      <div>
+                        <span className="font-medium text-gray-600">Current Company:</span>
+                        <div className="text-gray-900">{movedCandidateData.current_company}</div>
+                      </div>
+                    )}
+                    {movedCandidateData.current_position && (
+                      <div>
+                        <span className="font-medium text-gray-600">Current Position:</span>
+                        <div className="text-gray-900">{movedCandidateData.current_position}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Skills & Education */}
+                <div className="space-y-3">
+                  <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                    <Target className="h-4 w-4" />
+                    Skills & Education
+                  </h4>
+                  <div className="space-y-3 text-sm">
+                    {movedCandidateData.skills && movedCandidateData.skills.length > 0 && (
+                      <div>
+                        <span className="font-medium text-gray-600">Skills:</span>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {movedCandidateData.skills.slice(0, 8).map((skill, index) => (
+                            <Badge key={index} variant="secondary" className="text-xs">
+                              {skill}
+                            </Badge>
+                          ))}
+                          {movedCandidateData.skills.length > 8 && (
+                            <Badge variant="outline" className="text-xs">
+                              +{movedCandidateData.skills.length - 8} more
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {movedCandidateData.education && movedCandidateData.education.length > 0 && (
+                      <div>
+                        <span className="font-medium text-gray-600">Education:</span>
+                        <div className="space-y-1">
+                          {movedCandidateData.education.slice(0, 2).map((edu, index) => (
+                            <div key={index} className="text-gray-900 text-xs bg-gray-100 px-2 py-1 rounded">
+                              {typeof edu === 'string' ? edu : JSON.stringify(edu)}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {movedCandidateData.certifications && movedCandidateData.certifications.length > 0 && (
+                      <div>
+                        <span className="font-medium text-gray-600">Certifications:</span>
+                        <div className="space-y-1">
+                          {movedCandidateData.certifications.slice(0, 2).map((cert, index) => (
+                            <div key={index} className="text-gray-900 text-xs bg-green-100 px-2 py-1 rounded">
+                              {typeof cert === 'string' ? cert : JSON.stringify(cert)}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+{/*        
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Target className="h-5 w-5" />
+              Select Job Position
+            </CardTitle>
+            <CardDescription>
+              Choose a job to screen candidates against
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Select value={selectedJobId} onValueChange={handleJobSelection}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select a job position to screen candidates..." />
+              </SelectTrigger>
+              <SelectContent>
+                {jobs.map((job) => (
+                  <SelectItem key={job.id} value={job.id.toString()}>
+                    <div className="flex flex-col items-start">
+                      <span className="font-medium">{job.title}</span>
+                      <span className="text-sm text-gray-500">{job.department.name} • {job.experience_level}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </CardContent>
+        </Card> */}
+
+      
+        {/* {selectedJobId && (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Search className="h-4 w-4 text-gray-500" />
+                  <Input
+                    placeholder="Search candidates..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-64"
+                  />
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <Filter className="h-4 w-4 text-gray-500" />
+                  <Select value={minScore.toString()} onValueChange={(value) => setMinScore(parseInt(value))}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="0">All Scores</SelectItem>
+                      <SelectItem value="50">50%+</SelectItem>
+                      <SelectItem value="60">60%+</SelectItem>
+                      <SelectItem value="70">70%+</SelectItem>
+                      <SelectItem value="80">80%+</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <Users className="h-4 w-4" />
+                  {filteredResults.length} candidate{filteredResults.length !== 1 ? 's' : ''} found
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )} */}
+
+       
+        {/* {isLoading && (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-center py-8">
+                <div className="text-center">
+                  <Brain className="h-8 w-8 animate-pulse text-blue-500 mx-auto mb-2" />
+                  <p className="text-gray-600">AI is analyzing candidates...</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )} */}
+
+{/*       
+        {!selectedJobId && !isLoading && (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-center py-12">
+                <Target className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Job Position</h3>
+                <p className="text-gray-600">Choose a job position from the dropdown above to start screening candidates.</p>
+              </div>
+            </CardContent>
+          </Card>
+        )} */}
+
+        
+        {/* {selectedJobId && !isLoading && filteredResults.length === 0 && (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-center py-12">
+                <Users className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No Candidates Found</h3>
+                <p className="text-gray-600">
+                  {searchTerm ? 
+                    'No candidates match your search criteria. Try adjusting your filters.' :
+                    'No candidates meet the minimum score requirement or all candidates are already in later stages.'
+                  }
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )} */}
+
+     
+        {/* {selectedJobId && !isLoading && filteredResults.length > 0 && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-gray-900">Screening Results</h2>
+              <div className="text-sm text-gray-600">
+                Sorted by AI compatibility score
+              </div>
+            </div>
+
+            {filteredResults.map((result) => {
+              const isExpanded = expandedCards.has(result.candidate.id)
+              return (
+                <Card key={result.candidate.id} className="hover:shadow-md transition-shadow">
+                  <Collapsible>
+                    <CollapsibleTrigger asChild>
+                      <CardHeader className="cursor-pointer hover:bg-gray-50" onClick={() => toggleCardExpansion(result.candidate.id)}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-4">
+                            <div className="h-12 w-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold">
+                              {result.candidate.first_name[0]}{result.candidate.last_name[0]}
+                            </div>
+                            <div>
+                              <CardTitle className="text-lg">
+                                {result.candidate.first_name} {result.candidate.last_name}
+                              </CardTitle>
+                              <CardDescription className="flex items-center gap-4">
+                                <span>{result.candidate.email}</span>
+                                {result.candidate.experience_years && (
+                                  <span className="flex items-center gap-1">
+                                    <Briefcase className="h-3 w-3" />
+                                    {result.candidate.experience_years} years
+                                  </span>
+                                )}
+                                {result.candidate.location && (
+                                  <span className="flex items-center gap-1">
+                                    <MapPin className="h-3 w-3" />
+                                    {result.candidate.location}
+                                  </span>
+                                )}
+                              </CardDescription>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <div className="text-right">
+                              <div className={`text-2xl font-bold ${getScoreColor(result.totalScore)}`}>
+                                {result.totalScore}%
+                              </div>
+                              <Badge className={`${getRecommendationColor(result.recommendation)} border-0`}>
+                                {result.recommendation.replace('_', ' ')}
+                              </Badge>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleDeleteCandidate(result.candidate.id)
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4 text-red-500" />
+                            </Button>
+                            {isExpanded ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
+                          </div>
+                        </div>
+
+                    
+                        <div className="grid grid-cols-4 gap-4 mt-4">
+                          <div className="text-center">
+                            <div className={`text-lg font-semibold ${getScoreColor(result.breakdown.jobTitleScore)}`}>
+                              {result.breakdown.jobTitleScore}%
+                            </div>
+                            <div className="text-xs text-gray-500">Job Title</div>
+                          </div>
+                          <div className="text-center">
+                            <div className={`text-lg font-semibold ${getScoreColor(result.breakdown.departmentScore)}`}>
+                              {result.breakdown.departmentScore}%
+                            </div>
+                            <div className="text-xs text-gray-500">Department</div>
+                          </div>
+                          <div className="text-center">
+                            <div className={`text-lg font-semibold ${getScoreColor(result.experienceScore)}`}>
+                              {result.experienceScore}%
+                            </div>
+                            <div className="text-xs text-gray-500">Experience</div>
+                          </div>
+                          <div className="text-center">
+                            <div className={`text-lg font-semibold ${getScoreColor(result.breakdown.locationScore)}`}>
+                              {result.breakdown.locationScore}%
+                            </div>
+                            <div className="text-xs text-gray-500">Location</div>
+                          </div>
+                        </div>
+                      </CardHeader>
+                    </CollapsibleTrigger>
+
+                    <CollapsibleContent>
+                      <CardContent>
+                        <div className="grid md:grid-cols-2 gap-6">
+                        
+                          <div className="space-y-4">
+                            <h4 className="font-semibold text-gray-900">Detailed Analysis</h4>
+                            
+                            <div className="space-y-3">
+                              <div>
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className="text-sm font-medium">Required Skills Match</span>
+                                  <span className="text-sm font-semibold">{result.breakdown.requiredSkillsMatch}%</span>
+                                </div>
+                                <Progress value={result.breakdown.requiredSkillsMatch} className="h-2" />
+                              </div>
+
+                              <div>
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className="text-sm font-medium">Experience Level Fit</span>
+                                  <span className="text-sm font-semibold">{result.breakdown.experienceLevelMatch}%</span>
+                                </div>
+                                <Progress value={result.breakdown.experienceLevelMatch} className="h-2" />
+                              </div>
+
+                              <div>
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className="text-sm font-medium">Keyword Relevance</span>
+                                  <span className="text-sm font-semibold">{result.keywordScore}%</span>
+                                </div>
+                                <Progress value={result.keywordScore} className="h-2" />
+                              </div>
+
+                              <div>
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className="text-sm font-medium">Salary Expectation</span>
+                                  <Badge variant={result.breakdown.salaryFit === 'good' ? 'default' : 'secondary'}>
+                                    {result.breakdown.salaryFit}
+                                  </Badge>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                        
+                          <div className="space-y-4">
+                            <h4 className="font-semibold text-gray-900">Candidate Profile</h4>
+                            
+                            <div className="space-y-3 text-sm">
+                              {result.candidate.current_company && (
+                                <div>
+                                  <span className="font-medium text-gray-600">Current Company:</span>
+                                  <div className="text-gray-900">{result.candidate.current_company}</div>
+                                </div>
+                              )}
+                              
+                              {result.candidate.current_position && (
+                                <div>
+                                  <span className="font-medium text-gray-600">Current Position:</span>
+                                  <div className="text-gray-900">{result.candidate.current_position}</div>
+                                </div>
+                              )}
+
+                              {result.candidate.skills && result.candidate.skills.length > 0 && (
+                                <div>
+                                  <span className="font-medium text-gray-600">Skills:</span>
+                                  <div className="flex flex-wrap gap-1 mt-1">
+                                    {result.candidate.skills.slice(0, 10).map((skill, index) => (
+                                      <Badge key={index} variant="outline" className="text-xs">
+                                        {skill}
+                                      </Badge>
+                                    ))}
+                                    {result.candidate.skills.length > 10 && (
+                                      <Badge variant="secondary" className="text-xs">
+                                        +{result.candidate.skills.length - 10} more
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+
+                              {result.breakdown.keywordMatches.length > 0 && (
+                                <div>
+                                  <span className="font-medium text-gray-600">Matched Keywords:</span>
+                                  <div className="flex flex-wrap gap-1 mt-1">
+                                    {result.breakdown.keywordMatches.slice(0, 8).map((keyword, index) => (
+                                      <Badge key={index} variant="secondary" className="text-xs">
+                                        {keyword}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </CollapsibleContent>
+                  </Collapsible>
+                </Card>
+              )
+            })}
+          </div>
+        )} */}
+      </div>
+    </ProtectedRoute>
   )
 }

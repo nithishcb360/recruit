@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import DashboardStats, Task, ActivityLog, Department, Job, Candidate, JobApplication
+from .models import DashboardStats, Task, ActivityLog, Department, Job, Candidate, JobApplication, FeedbackTemplate
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -148,16 +148,21 @@ class JobListSerializer(serializers.ModelSerializer):
 
 class CandidateSerializer(serializers.ModelSerializer):
     full_name = serializers.ReadOnlyField()
+    name = serializers.SerializerMethodField()  # For frontend compatibility
     
     class Meta:
         model = Candidate
         fields = [
-            'id', 'first_name', 'last_name', 'full_name', 'email', 'phone', 'location',
+            'id', 'first_name', 'last_name', 'full_name', 'name', 'email', 'phone', 'location',
             'resume_file', 'resume_text', 'skills', 'experience_years', 'experience_level',
             'education', 'certifications', 'current_company', 'current_position',
             'salary_expectation', 'availability', 'status', 'source', 'rating',
             'created_at', 'updated_at'
         ]
+    
+    def get_name(self, obj):
+        """Return full name for frontend compatibility"""
+        return f"{obj.first_name} {obj.last_name}".strip()
 
 
 class CandidateCreateSerializer(serializers.ModelSerializer):
@@ -172,16 +177,22 @@ class CandidateCreateSerializer(serializers.ModelSerializer):
 
 
 class CandidateListSerializer(serializers.ModelSerializer):
-    """Lighter serializer for candidate listings"""
+    """Enhanced serializer for candidate listings with parsed resume data"""
     full_name = serializers.ReadOnlyField()
+    name = serializers.SerializerMethodField()  # For frontend compatibility
     
     class Meta:
         model = Candidate
         fields = [
-            'id', 'first_name', 'last_name', 'full_name', 'email', 'phone',
-            'location', 'experience_level', 'current_company', 'status',
-            'rating', 'created_at', 'updated_at'
+            'id', 'first_name', 'last_name', 'full_name', 'name', 'email', 'phone',
+            'location', 'experience_years', 'experience_level', 'current_company', 
+            'current_position', 'skills', 'education', 'certifications',
+            'status', 'rating', 'created_at', 'updated_at'
         ]
+    
+    def get_name(self, obj):
+        """Return full name for frontend compatibility"""
+        return f"{obj.first_name} {obj.last_name}".strip()
 
 
 class JobApplicationCreateSerializer(serializers.ModelSerializer):
@@ -237,3 +248,32 @@ class ResumeParseSerializer(serializers.Serializer):
     experience = serializers.DictField(required=False)
     education = serializers.ListField(child=serializers.CharField(), required=False)
     text = serializers.CharField(required=False, allow_blank=True)
+
+
+class FeedbackTemplateSerializer(serializers.ModelSerializer):
+    created_by = UserSerializer(read_only=True)
+    
+    class Meta:
+        model = FeedbackTemplate
+        fields = [
+            'id', 'name', 'description', 'questions', 'sections', 'rating_criteria',
+            'status', 'is_active', 'is_default', 'created_by', 'created_at', 'updated_at'
+        ]
+
+
+class FeedbackTemplateCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FeedbackTemplate
+        fields = [
+            'name', 'description', 'questions', 'sections', 'rating_criteria',
+            'status', 'is_active', 'is_default'
+        ]
+
+
+class FeedbackTemplateUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FeedbackTemplate
+        fields = [
+            'name', 'description', 'questions', 'sections', 'rating_criteria',
+            'status', 'is_active', 'is_default'
+        ]
