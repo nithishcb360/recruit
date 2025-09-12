@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Filter, Loader2, SortAsc, SortDesc, Search, X, Trash2 } from "lucide-react"
+import { Filter, Loader2, SortAsc, SortDesc, Search, X, Trash2, FileText, Target } from "lucide-react"
 import CandidateCard from "@/components/candidate-card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import InterviewScheduler from "@/components/interview-scheduler"
@@ -69,7 +69,6 @@ interface Candidate {
   skills?: string[]
   experience_years?: number
   experience_level?: string
-  current_company?: string
   current_position?: string
   // Selected job match for filtering
   selectedJobMatch?: {
@@ -158,7 +157,7 @@ const calculateJobMatchPercentage = (candidate: any, job: Job) => {
 
   // 2. Department Matching (25%)
   let departmentScore = 75 + baseRandomness + Math.random() * 15
-  const candidateCompany = (candidate.current_company || "").toLowerCase()
+  const candidateCompany = ""
   const jobDepartment = job.department.name.toLowerCase()
   
   if (candidateCompany || candidateTitle) {
@@ -342,39 +341,40 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
         const data = await response.json()
         const candidatesList = Array.isArray(data) ? data : (data.results || [])
         
-        // Transform API candidates to display format
-        const transformedCandidates: Candidate[] = candidatesList.map((candidate: any) => ({
-          id: candidate.id,
-          name: candidate.full_name || `${candidate.first_name} ${candidate.last_name}`,
-          jobTitle: 'Available', // Since these are not associated with specific jobs yet
-          stage: 'Available',
-          rating: candidate.rating || 0,
-          lastActivity: formatDate(candidate.updated_at || candidate.created_at),
-          avatar: null, // No avatar
-          email: candidate.email || '',
-          phone: candidate.phone || '',
-          location: candidate.location || '',
-          totalExperience: candidate.experience_years || 0,
-          relevantExperience: 0,
-          skillExperience: candidate.skills?.map((skill: string) => ({ skill, years: 0 })) || [],
-          expectedSalary: candidate.salary_expectation ? `$${candidate.salary_expectation}` : '',
-          noticePeriod: candidate.availability || '',
-          resumeLink: '#',
-          linkedinProfile: '#',
-          notes: '',
-          interviewHistory: [],
-          feedbackSummary: '',
-          progress: 0, // Available/not yet applied
-          resumeText: candidate.resume_text || '',
-          // Additional fields for job matching
-          first_name: candidate.first_name,
-          last_name: candidate.last_name,
-          skills: candidate.skills || [],
-          experience_years: candidate.experience_years,
-          experience_level: candidate.experience_level,
-          current_company: candidate.current_company,
-          current_position: candidate.current_position
-        })) as Candidate[]
+        // Transform API candidates to display format - EXCLUDE candidates already in screening
+        const transformedCandidates: Candidate[] = candidatesList
+          .filter((candidate: any) => candidate.status !== 'screening') // Only show candidates NOT in screening
+          .map((candidate: any) => ({
+            id: candidate.id,
+            name: candidate.full_name || `${candidate.first_name} ${candidate.last_name}`,
+            jobTitle: 'Available', // Since these are not associated with specific jobs yet
+            stage: 'Available',
+            rating: candidate.rating || 0,
+            lastActivity: formatDate(candidate.updated_at || candidate.created_at),
+            avatar: null, // No avatar
+            email: candidate.email || '',
+            phone: candidate.phone || '',
+            location: candidate.location || '',
+            totalExperience: candidate.experience_years || 0,
+            relevantExperience: 0,
+            skillExperience: candidate.skills?.map((skill: string) => ({ skill, years: 0 })) || [],
+            expectedSalary: candidate.salary_expectation ? `$${candidate.salary_expectation}` : '',
+            noticePeriod: candidate.availability || '',
+            resumeLink: '#',
+            linkedinProfile: '#',
+            notes: '',
+            interviewHistory: [],
+            feedbackSummary: '',
+            progress: 0, // Available/not yet applied
+            resumeText: candidate.resume_text || '',
+            // Additional fields for job matching
+            first_name: candidate.first_name,
+            last_name: candidate.last_name,
+            skills: candidate.skills || [],
+            experience_years: candidate.experience_years,
+            experience_level: candidate.experience_level,
+            current_position: candidate.current_position
+          })) as Candidate[]
         
         // Remove duplicates based on email and name
         const uniqueCandidates = transformedCandidates.filter((candidate, index, self) => {
@@ -543,7 +543,7 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
   // Get selected job for matching
   const selectedJob = filterJob && filterJob !== 'all' ? jobs.find(job => String(job.id) === filterJob) : null
 
-  // Enhanced filtering with job matching
+  // Enhanced filtering - ALWAYS SHOW ALL CANDIDATES but sort by job match
   const filteredAndSortedCandidates = candidatesWithJobMatch.filter((candidate) => {
     if (!candidate || typeof candidate !== 'object') {
       return false;
@@ -556,8 +556,8 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
         (candidate.notes || '').toLowerCase().includes(searchTerm.toLowerCase())
       : true
     
-    // If a specific job is selected, show all candidates (we'll show match percentages)
-    const matchesJob = true // Show all candidates when job is selected for matching
+    // REMOVED JOB FILTERING - Always show all candidates regardless of selected job
+    // This ensures all candidates are visible, but we'll sort by match percentage
     
     const matchesStage = filterStage && filterStage !== 'all' ? candidate.stage === filterStage : true
     const matchesRating = filterRating && filterRating !== 'all'
@@ -566,7 +566,7 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
           return candidate.rating >= min && candidate.rating <= max
         })()
       : true
-    return matchesSearch && matchesJob && matchesStage && matchesRating
+    return matchesSearch && matchesStage && matchesRating
   })
   
   // If a job is selected, add match percentages and sort by match score
@@ -591,12 +591,28 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
     return candidate
   })
   .sort((a, b) => {
-    // If a job is selected, sort by match percentage first
-    if (selectedJob && a.selectedJobMatch && b.selectedJobMatch) {
-      return b.selectedJobMatch.matchPercentage - a.selectedJobMatch.matchPercentage
+    // PRIORITY SORTING: If a job is selected, always prioritize by match percentage first
+    if (selectedJob) {
+      const aMatch = a.selectedJobMatch?.matchPercentage || 0
+      const bMatch = b.selectedJobMatch?.matchPercentage || 0
+      
+      // First, prioritize candidates with job title matches (high match scores)
+      if (aMatch !== bMatch) {
+        return bMatch - aMatch // Higher match percentage first
+      }
+      
+      // If match percentages are equal, then use secondary sorting
+      if (aMatch === bMatch && aMatch > 0) {
+        // For tied matches, sort by job title score specifically
+        const aJobTitleScore = a.selectedJobMatch?.jobMatchDetails?.jobTitleScore || 0
+        const bJobTitleScore = b.selectedJobMatch?.jobMatchDetails?.jobTitleScore || 0
+        if (aJobTitleScore !== bJobTitleScore) {
+          return bJobTitleScore - aJobTitleScore
+        }
+      }
     }
     
-    // Otherwise use normal sorting
+    // Fallback to normal sorting when no job selected or for tied matches
     let aValue: any, bValue: any
     
     switch (sortBy) {
@@ -879,7 +895,7 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
     })
   }
 
-  const handleMoveToScreeningForJob = (candidate: Candidate, jobId: number) => {
+  const handleMoveToScreeningForJob = async (candidate: Candidate, jobId: number) => {
     console.log('handleMoveToScreeningForJob called with:', { candidate, jobId })
     
     // Find the job match - use selectedJobMatch if available, otherwise find from allJobMatches
@@ -902,45 +918,72 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
       return
     }
 
-    // Prepare parsed resume data to pass to screening
-    const candidateData = {
-      id: candidate.id,
-      name: candidate.name,
-      email: candidate.email,
-      phone: candidate.phone,
-      location: candidate.location,
-      experience_years: (candidate as any).experience_years || candidate.totalExperience,
-      experience_level: (candidate as any).experience_level,
-      current_company: (candidate as any).current_company,
-      current_position: (candidate as any).current_position,
-      skills: (candidate as any).skills || [],
-      education: (candidate as any).education || [],
-      certifications: (candidate as any).certifications || [],
-      salary_expectation: (candidate as any).salary_expectation,
-      jobId: jobId,
-      jobTitle: jobMatch.jobTitle
+    try {
+      // Update candidate status in backend to 'screening' - this makes the change permanent
+      console.log('Updating candidate status to screening in database...')
+      const response = await fetchWithTimeout(`http://localhost:8000/api/candidates/${candidate.id}/`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          status: 'screening'
+        })
+      }, 5000)
+
+      if (!response.ok) {
+        throw new Error(`Failed to update candidate status: ${response.status}`)
+      }
+
+      console.log('Candidate status successfully updated to screening')
+
+      // Prepare parsed resume data to pass to screening
+      const candidateData = {
+        id: candidate.id,
+        name: candidate.name,
+        email: candidate.email,
+        phone: candidate.phone,
+        location: candidate.location,
+        experience_years: (candidate as any).experience_years || candidate.totalExperience,
+        experience_level: (candidate as any).experience_level,
+        current_position: (candidate as any).current_position,
+        skills: (candidate as any).skills || [],
+        education: (candidate as any).education || [],
+        certifications: (candidate as any).certifications || [],
+        salary_expectation: (candidate as any).salary_expectation,
+        jobId: jobId,
+        jobTitle: jobMatch.jobTitle
+      }
+
+      console.log('Candidate data prepared:', candidateData)
+
+      // Store candidate data using utility function for the screening page
+      setScreeningCandidateData(candidateData)
+      
+      // Remove candidate from current list (they are now permanently in screening)
+      setCandidates(prev => {
+        const filtered = prev.filter(c => c.id !== candidate.id)
+        console.log('Candidates after filtering:', filtered.length, 'remaining')
+        return filtered
+      })
+      
+      // Navigate to screening page with candidate and job info as query parameters
+      router.push(`/screening?candidateId=${candidate.id}&jobId=${jobId}`)
+      
+      toast({
+        title: "Moved to Screening",
+        description: `${candidate.name} has been permanently moved to screening for ${jobMatch.jobTitle}.`,
+        variant: "default"
+      })
+
+    } catch (error) {
+      console.error('Error updating candidate status:', error)
+      toast({
+        title: "Error",
+        description: "Failed to move candidate to screening. Please try again.",
+        variant: "destructive"
+      })
     }
-
-    console.log('Candidate data prepared:', candidateData)
-
-    // Store candidate data using utility function for the screening page
-    setScreeningCandidateData(candidateData)
-    
-    // Remove candidate from current list
-    setCandidates(prev => {
-      const filtered = prev.filter(c => c.id !== candidate.id)
-      console.log('Candidates after filtering:', filtered.length, 'remaining')
-      return filtered
-    })
-    
-    // Navigate to screening page with candidate and job info as query parameters
-    router.push(`/screening?candidateId=${candidate.id}&jobId=${jobId}`)
-    
-    toast({
-      title: "Moved to Screening",
-      description: `${candidate.name} has been moved to screening for ${jobMatch.jobTitle}.`,
-      variant: "default"
-    })
   }
 
   return (
@@ -981,18 +1024,46 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
                 </button>
               )}
             </div>
-            <div className="w-full md:w-[180px]">
+            <div className="w-full md:w-[220px]">
               <Select value={filterJob || ""} onValueChange={setFilterJob}>
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="All Jobs" />
                 </SelectTrigger>
-                <SelectContent className="bg-white text-black">
+                <SelectContent className="bg-white text-black max-h-80 overflow-y-auto">
                   <SelectItem value="all" className="text-black hover:bg-gray-100">All Jobs</SelectItem>
-                  {jobs.map((job) => (
-                    <SelectItem key={job.id} value={String(job.id)} className="text-black hover:bg-gray-100">
-                      {job.title}
-                    </SelectItem>
-                  ))}
+                  {jobs.map((job) => {
+                    // Calculate average match percentage for this job across all candidates
+                    const jobMatches = candidatesWithJobMatch.map(candidate => {
+                      const match = candidate.allJobMatches?.find(m => m.jobId === job.id)
+                      return match ? match.matchPercentage : 0
+                    }).filter(score => score > 0)
+                    
+                    const avgMatch = jobMatches.length > 0 
+                      ? Math.round(jobMatches.reduce((sum, score) => sum + score, 0) / jobMatches.length)
+                      : 0
+                    
+                    const candidateCount = jobMatches.length
+                    
+                    return (
+                      <SelectItem key={job.id} value={String(job.id)} className="text-black hover:bg-gray-100 py-3">
+                        <div className="flex flex-col w-full">
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium">{job.title}</span>
+                            {avgMatch > 0 && (
+                              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full ml-2">
+                                {avgMatch}% avg
+                              </span>
+                            )}
+                          </div>
+                          {candidateCount > 0 && (
+                            <span className="text-xs text-gray-500 mt-1">
+                              {candidateCount} matching candidate{candidateCount !== 1 ? 's' : ''}
+                            </span>
+                          )}
+                        </div>
+                      </SelectItem>
+                    )
+                  })}
                 </SelectContent>
               </Select>
             </div>
@@ -1092,38 +1163,139 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 auto-rows-fr">
-        {isLoading ? (
-          <div className="col-span-full flex justify-center items-center py-8">
-            <Loader2 className="h-8 w-8 animate-spin" />
-            <span className="ml-2 text-black">Loading candidates...</span>
-          </div>
-        ) : filteredAndSortedCandidates.length === 0 ? (
-          <div className="col-span-full text-center text-gray-600 py-8">
-            No candidates found matching your criteria.
-          </div>
-        ) : (
-          filteredAndSortedCandidates.map((candidate) => (
-            <CandidateCard
-              key={candidate.id}
-              candidate={candidate}
-              onViewDetails={handleViewDetails}
-              onAdvanceStage={handleAdvanceStage}
-              onRejectCandidate={handleRejectCandidate}
-              onDeleteCandidate={handleDeleteCandidate}
-              onScheduleInterview={handleScheduleInterviewClick}
-              onAddNote={handleAddNoteClick}
-              onEditProfile={handleEditProfile}
-              onViewResume={handleViewResumeClick}
-              onEditCandidate={handleEditCandidate}
-              onMoveToScreening={handleMoveToScreening}
-              onMoveToScreeningForJob={handleMoveToScreeningForJob}
-              showJobMatch={true} // Always show job match now
-              jobs={jobs}
-            />
-          ))
-        )}
-      </div>
+      <Card className="shadow-sm">
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="flex justify-center items-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin" />
+              <span className="ml-2 text-black">Loading candidates...</span>
+            </div>
+          ) : filteredAndSortedCandidates.length === 0 ? (
+            <div className="text-center text-gray-600 py-8">
+              No candidates found matching your criteria.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b bg-gray-50">
+                    <th className="text-left p-4 font-semibold text-gray-900">Name</th>
+                    <th className="text-left p-4 font-semibold text-gray-900">Job Title</th>
+                    {selectedJob && (
+                      <th className="text-center p-4 font-semibold text-gray-900">
+                        Match Score for {selectedJob.title}
+                      </th>
+                    )}
+                    <th className="text-center p-4 font-semibold text-gray-900">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredAndSortedCandidates.map((candidate, index) => (
+                    <tr key={candidate.id} className={`border-b hover:bg-gray-50 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-25'}`}>
+                      <td className="p-4">
+                        <div className="flex flex-col">
+                          <span className="font-medium text-gray-900">{candidate.name}</span>
+                          <span className="text-sm text-gray-600">{candidate.email}</span>
+                          {candidate.location && (
+                            <span className="text-xs text-gray-500">{candidate.location}</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex flex-col">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-gray-900">
+                              {candidate.current_position || 'Position not specified'}
+                            </span>
+                            {candidate.selectedJobMatch && (
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                {candidate.selectedJobMatch.matchPercentage}% match
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-xs text-gray-500">
+                            {candidate.totalExperience || candidate.experience_years || 0} years experience
+                          </span>
+                        </div>
+                      </td>
+                      {selectedJob && (
+                        <td className="p-4">
+                          <div className="flex flex-col items-center gap-2">
+                            {candidate.selectedJobMatch ? (
+                              <>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-2xl font-bold text-purple-600">
+                                    {candidate.selectedJobMatch.matchPercentage}%
+                                  </span>
+                                  <div className={`w-2 h-2 rounded-full ${
+                                    candidate.selectedJobMatch.matchPercentage >= 80 ? 'bg-green-500' :
+                                    candidate.selectedJobMatch.matchPercentage >= 60 ? 'bg-yellow-500' :
+                                    'bg-red-500'
+                                  }`} />
+                                </div>
+                                <div className="grid grid-cols-2 gap-1 text-xs text-gray-600">
+                                  <div>Title: {candidate.selectedJobMatch.jobMatchDetails.jobTitleScore}%</div>
+                                  <div>Dept: {candidate.selectedJobMatch.jobMatchDetails.departmentScore}%</div>
+                                  <div>Exp: {candidate.selectedJobMatch.jobMatchDetails.experienceScore}%</div>
+                                  <div>Loc: {candidate.selectedJobMatch.jobMatchDetails.locationScore}%</div>
+                                </div>
+                              </>
+                            ) : (
+                              <span className="text-gray-400">No match</span>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                      <td className="p-4">
+                        <div className="flex gap-2 justify-center">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleViewDetails(candidate.id)}
+                            className="text-white bg-blue-600 hover:bg-blue-700 border-blue-600"
+                          >
+                            View Details
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleViewResumeClick(candidate)}
+                            className="text-white bg-green-600 hover:bg-green-700 border-green-600 p-2"
+                            title="View Resume"
+                          >
+                            <FileText className="h-4 w-4" />
+                          </Button>
+                          {selectedJob && candidate.selectedJobMatch && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleMoveToScreeningForJob(candidate, selectedJob.id)}
+                              className="text-white bg-purple-600 hover:bg-purple-700 border-purple-600"
+                              title="Move to Screening"
+                            >
+                              <Target className="h-4 w-4 mr-2" />
+                              Screening
+                            </Button>
+                          )}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDeleteCandidate(candidate.id)}
+                            className="text-white bg-red-600 hover:bg-red-700 border-red-600 p-2"
+                            title="Delete Candidate"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Dialog open={isSchedulerOpen} onOpenChange={setIsSchedulerOpen}>
         <DialogContent className="max-w-2xl">
@@ -1231,10 +1403,7 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
                     Deleting...
                   </>
                 ) : (
-                  <>
-                    <Trash2 className="h-4 w-4" />
-                    Delete Candidate
-                  </>
+                  <Trash2 className="h-4 w-4" />
                 )}
               </Button>
             </div>
