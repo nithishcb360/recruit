@@ -47,24 +47,35 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutM
 }
 
 export async function saveFormResponse(responseData: FormResponseSubmission): Promise<FormResponse> {
+  console.log('Attempting to save response:', {
+    formId: responseData.form_id,
+    questionId: responseData.question_id,
+    type: responseData.response_type,
+    hasFile: !!responseData.response_file,
+    fileSize: responseData.response_file?.length || 0
+  })
+
   try {
+    // Use longer timeout for file uploads
+    const timeoutMs = responseData.response_file ? 15000 : 5000 // 15s for files, 5s for text
     const response = await fetchWithTimeout(`${API_BASE_URL}/form-responses/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(responseData),
-    })
+    }, timeoutMs)
     
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`)
     }
     
     const data = await response.json()
+    console.log('Response saved to backend successfully:', data.id)
     return data
   } catch (error) {
     // Fallback to localStorage if backend is not available
-    console.warn('Backend unavailable for saving response, using localStorage')
+    console.warn('Backend unavailable for saving response, using localStorage. Error:', error instanceof Error ? error.message : 'Unknown error')
     
     const mockResponse: FormResponse = {
       id: Date.now(),
@@ -80,21 +91,40 @@ export async function saveFormResponse(responseData: FormResponseSubmission): Pr
     }
     
     // Store in localStorage as fallback
-    const existingResponses = localStorage.getItem('individual-form-responses')
-    const responses = existingResponses ? JSON.parse(existingResponses) : []
-    
-    // Update existing response or add new one
-    const existingIndex = responses.findIndex((r: FormResponse) => 
-      r.form_id === responseData.form_id && r.question_id === responseData.question_id
-    )
-    
-    if (existingIndex !== -1) {
-      responses[existingIndex] = mockResponse
-    } else {
-      responses.push(mockResponse)
+    try {
+      const existingResponses = localStorage.getItem('individual-form-responses')
+      let responses: FormResponse[] = []
+      
+      if (existingResponses) {
+        const parsedResponses = JSON.parse(existingResponses)
+        if (Array.isArray(parsedResponses)) {
+          responses = parsedResponses
+        } else {
+          console.warn('Stored responses is not an array, starting fresh')
+          responses = []
+        }
+      }
+      
+      // Update existing response or add new one
+      const existingIndex = responses.findIndex((r: FormResponse) => 
+        r.form_id === responseData.form_id && r.question_id === responseData.question_id
+      )
+      
+      if (existingIndex !== -1) {
+        responses[existingIndex] = mockResponse
+        console.log(`Updated existing response at index ${existingIndex}`)
+      } else {
+        responses.push(mockResponse)
+        console.log(`Added new response, total responses: ${responses.length}`)
+      }
+      
+      localStorage.setItem('individual-form-responses', JSON.stringify(responses))
+      console.log('Successfully saved response to localStorage')
+      
+    } catch (storageError) {
+      console.error('Error handling localStorage save:', storageError)
+      throw new Error('Failed to save response to storage')
     }
-    
-    localStorage.setItem('individual-form-responses', JSON.stringify(responses))
     return mockResponse
   }
 }
@@ -113,10 +143,34 @@ export async function getFormResponses(formId: number): Promise<FormResponse[]> 
     // Fallback to localStorage if backend is not available
     console.warn('Backend unavailable for loading responses, using localStorage')
     
-    const existingResponses = localStorage.getItem('individual-form-responses')
-    const allResponses = existingResponses ? JSON.parse(existingResponses) : []
-    
-    return allResponses.filter((r: FormResponse) => r.form_id === formId)
+    try {
+      const existingResponses = localStorage.getItem('individual-form-responses')
+      if (!existingResponses) {
+        console.log('No existing responses found in localStorage')
+        return []
+      }
+
+      const parsedResponses = JSON.parse(existingResponses)
+      console.log('Parsed responses from localStorage:', parsedResponses)
+
+      // Validate that parsedResponses is an array
+      if (!Array.isArray(parsedResponses)) {
+        console.error('Stored responses is not an array:', typeof parsedResponses, parsedResponses)
+        // Clear invalid data and return empty array
+        localStorage.removeItem('individual-form-responses')
+        return []
+      }
+
+      const filteredResponses = parsedResponses.filter((r: FormResponse) => r.form_id === formId)
+      console.log(`Found ${filteredResponses.length} responses for form ${formId}`)
+      return filteredResponses
+      
+    } catch (parseError) {
+      console.error('Error parsing localStorage data:', parseError)
+      // Clear corrupted data
+      localStorage.removeItem('individual-form-responses')
+      return []
+    }
   }
 }
 
@@ -137,13 +191,76 @@ export async function deleteFormResponse(formId: number, questionId: number): Pr
     // Fallback to localStorage if backend is not available
     console.warn('Backend unavailable for deleting response, using localStorage')
     
+    try {
+      const existingResponses = localStorage.getItem('individual-form-responses')
+      let responses: FormResponse[] = []
+      
+      if (existingResponses) {
+        const parsedResponses = JSON.parse(existingResponses)
+        if (Array.isArray(parsedResponses)) {
+          responses = parsedResponses
+        } else {
+          console.warn('Stored responses is not an array during delete')
+          return // Nothing to delete
+        }
+      }
+      
+      const originalLength = responses.length
+      const filteredResponses = responses.filter((r: FormResponse) => 
+        !(r.form_id === formId && r.question_id === questionId)
+      )
+      
+      console.log(`Deleted ${originalLength - filteredResponses.length} responses`)
+      localStorage.setItem('individual-form-responses', JSON.stringify(filteredResponses))
+      
+    } catch (storageError) {
+      console.error('Error handling localStorage delete:', storageError)
+      throw new Error('Failed to delete response from storage')
+    }
+  }
+}
+
+// Utility function to clean up and validate localStorage data
+export function cleanupFormResponsesStorage(): void {
+  try {
     const existingResponses = localStorage.getItem('individual-form-responses')
-    const responses = existingResponses ? JSON.parse(existingResponses) : []
+    if (!existingResponses) {
+      console.log('No form responses data to cleanup')
+      return
+    }
+
+    const parsedResponses = JSON.parse(existingResponses)
     
-    const filteredResponses = responses.filter((r: FormResponse) => 
-      !(r.form_id === formId && r.question_id === questionId)
-    )
+    if (!Array.isArray(parsedResponses)) {
+      console.warn('Form responses storage contains invalid data, clearing...')
+      localStorage.removeItem('individual-form-responses')
+      return
+    }
+
+    // Validate each response has required fields
+    const validResponses = parsedResponses.filter((response: any) => {
+      const isValid = response && 
+        typeof response.form_id === 'number' && 
+        typeof response.question_id === 'number' &&
+        response.response_type &&
+        (response.response_text || response.response_file)
+      
+      if (!isValid) {
+        console.warn('Removing invalid response:', response)
+      }
+      
+      return isValid
+    })
+
+    if (validResponses.length !== parsedResponses.length) {
+      console.log(`Cleaned up ${parsedResponses.length - validResponses.length} invalid responses`)
+      localStorage.setItem('individual-form-responses', JSON.stringify(validResponses))
+    }
+
+    console.log(`Form responses storage validated: ${validResponses.length} valid responses`)
     
-    localStorage.setItem('individual-form-responses', JSON.stringify(filteredResponses))
+  } catch (error) {
+    console.error('Error during storage cleanup:', error)
+    localStorage.removeItem('individual-form-responses')
   }
 }

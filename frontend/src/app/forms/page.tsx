@@ -23,7 +23,7 @@ import {
   type FeedbackTemplate,
   type Question
 } from "@/lib/api/feedback-templates"
-import { saveFormResponse, getFormResponses, deleteFormResponse, type FormResponse } from "@/lib/api/form-responses"
+import { saveFormResponse, getFormResponses, deleteFormResponse, cleanupFormResponsesStorage, type FormResponse } from "@/lib/api/form-responses"
 
 // Helper function for fetch with timeout and complete error suppression
 async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs: number = 3000): Promise<Response> {
@@ -102,6 +102,9 @@ export default function FeedbackFormBuilder() {
     const fetchTemplates = async () => {
       try {
         setIsLoading(true)
+        
+        // Clean up any corrupted form response data on startup
+        cleanupFormResponsesStorage()
         
         // Try to load from backend first
         let backendForms: FeedbackTemplate[] = []
@@ -354,7 +357,17 @@ export default function FeedbackFormBuilder() {
       
       // Populate form responses state with existing data
       const responseMap: Record<number, any> = {}
+      console.log('Loading saved form responses:', responses.length, 'responses found')
+      
       responses.forEach(response => {
+        console.log(`Processing response for question ${response.question_id}:`, {
+          type: response.response_type,
+          fileName: response.file_name,
+          fileType: response.file_type,
+          hasFileData: !!response.response_file,
+          fileDataPreview: response.response_file?.substring(0, 50)
+        })
+        
         if (response.response_type === 'text' || response.response_type === 'textarea') {
           responseMap[response.question_id] = response.response_text || ''
         } else if (response.response_type === 'audio' || response.response_type === 'video') {
@@ -367,6 +380,8 @@ export default function FeedbackFormBuilder() {
         }
       })
       setFormResponses(responseMap)
+      
+      console.log('Form responses state updated:', Object.keys(responseMap))
     } catch (error) {
       console.error('Error loading form responses:', error)
       setSavedFormResponses([])
@@ -455,22 +470,29 @@ export default function FeedbackFormBuilder() {
         throw new Error('Unsupported question type')
       }
 
-      await saveFormResponse(responseData)
+      const savedResponse = await saveFormResponse(responseData)
+      console.log('Response saved successfully:', savedResponse)
       
       // Update saved responses
       const responses = await getFormResponses(previewForm.id)
+      console.log('Reloaded responses after save:', responses.length, 'responses')
       setSavedFormResponses(responses)
 
+      // Show appropriate success message based on storage method
+      const isLocalStorage = savedResponse.id && savedResponse.id > 1000000000000 // localStorage uses timestamp IDs
       toast({
-        title: "Saved!",
-        description: `Response for question ${questionId} has been saved.`,
+        title: isLocalStorage ? "Saved Locally!" : "Saved!",
+        description: isLocalStorage ? 
+          `Response saved to local storage (backend unavailable). Data will persist until browser storage is cleared.` :
+          `Response for question ${questionId} has been saved to server.`,
         variant: "default"
       })
     } catch (error) {
       console.error('Error saving question response:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
       toast({
-        title: "Error",
-        description: "Failed to save response. Please try again.",
+        title: "Save Failed",
+        description: `Failed to save response: ${errorMessage}. Please check your connection and try again.`,
         variant: "destructive"
       })
     } finally {
@@ -1449,10 +1471,84 @@ export default function FeedbackFormBuilder() {
                                     {question.type === 'video' && savedResponse.response_file && (
                                       <div className="bg-white p-3 rounded border">
                                         <p className="text-sm text-purple-700 font-medium mb-2">Video Response: {savedResponse.file_name}</p>
-                                        <video controls className="w-full max-w-md">
-                                          <source src={savedResponse.response_file} type={savedResponse.file_type} />
-                                          Your browser does not support the video element.
-                                        </video>
+                                        {(() => {
+                                          console.log('Rendering saved video response:', {
+                                            fileName: savedResponse.file_name,
+                                            fileType: savedResponse.file_type,
+                                            hasData: !!savedResponse.response_file,
+                                            dataLength: savedResponse.response_file?.length,
+                                            dataPreview: savedResponse.response_file?.substring(0, 50)
+                                          });
+                                          return null;
+                                        })()}
+                                        {savedResponse.response_file?.startsWith('data:') ? (
+                                          <div className="relative">
+                                            <video 
+                                              controls 
+                                              className="w-full max-w-md" 
+                                              preload="metadata"
+                                              style={{ maxHeight: '300px' }}
+                                              onLoadStart={() => console.log('Saved video loading started:', savedResponse.file_name)}
+                                              onCanPlay={() => {
+                                                console.log('Saved video can play:', savedResponse.file_name);
+                                                // Remove any existing error messages when video loads successfully
+                                                const errorDiv = document.querySelector('.saved-video-error');
+                                                if (errorDiv) errorDiv.remove();
+                                              }}
+                                              onLoadedMetadata={(e) => {
+                                                const video = e.target as HTMLVideoElement;
+                                                console.log('Saved video metadata loaded:', {
+                                                  name: savedResponse.file_name,
+                                                  duration: video.duration,
+                                                  videoWidth: video.videoWidth,
+                                                  videoHeight: video.videoHeight
+                                                });
+                                              }}
+                                              onError={(e) => {
+                                                console.error('Saved video playback error:', e, 'for file:', savedResponse.file_name);
+                                                console.error('Saved video data length:', savedResponse.response_file?.length);
+                                                console.error('Saved video data preview:', savedResponse.response_file?.substring(0, 100));
+                                                const target = e.target as HTMLVideoElement;
+                                                target.style.display = 'none';
+                                                const parent = target.parentElement;
+                                                if (parent && !parent.querySelector('.saved-video-error')) {
+                                                  const errorDiv = document.createElement('div');
+                                                  errorDiv.className = 'text-sm text-red-600 p-2 border border-red-200 rounded bg-red-50 saved-video-error';
+                                                  errorDiv.innerHTML = `
+                                                    <p><strong>Saved Video Playback Error</strong></p>
+                                                    <p>File: ${savedResponse.file_name}</p>
+                                                    <p>Type: ${savedResponse.file_type}</p>
+                                                    <p>Data length: ${savedResponse.response_file?.length || 0} chars</p>
+                                                    <p class="text-xs mt-1">The saved video may be corrupted or in an unsupported format.</p>
+                                                  `;
+                                                  parent.appendChild(errorDiv);
+                                                }
+                                              }}
+                                            >
+                                              <source src={savedResponse.response_file} type={savedResponse.file_type || 'video/mp4'} />
+                                              <source src={savedResponse.response_file} type="video/mp4" />
+                                              <source src={savedResponse.response_file} type="video/webm" />
+                                              <source src={savedResponse.response_file} type="video/ogg" />
+                                              Your browser does not support the video element.
+                                            </video>
+                                          </div>
+                                        ) : (
+                                          <div className="text-sm text-gray-500 p-2 border border-gray-200 rounded bg-gray-50">
+                                            <p><strong>Saved Video Issue</strong></p>
+                                            <p><strong>File:</strong> {savedResponse.file_name}</p>
+                                            <p><strong>Type:</strong> {savedResponse.file_type}</p>
+                                            <p><strong>Issue:</strong> Video data format appears invalid or missing.</p>
+                                            <p className="text-xs mt-2 font-mono truncate">
+                                              Data format: {savedResponse.response_file ? 
+                                                (savedResponse.response_file.startsWith('data:') ? 'Base64 Data URL' : 'Raw data') : 
+                                                'No data'
+                                              }
+                                            </p>
+                                            {savedResponse.response_file && (
+                                              <p className="text-xs font-mono truncate">Preview: {savedResponse.response_file.substring(0, 50)}...</p>
+                                            )}
+                                          </div>
+                                        )}
                                       </div>
                                     )}
                                   </div>

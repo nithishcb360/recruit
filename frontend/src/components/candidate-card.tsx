@@ -225,7 +225,7 @@ export default function CandidateCard({
             <div className="flex justify-between">
               <span className="text-sm text-blue-800">Total:</span>
               <span className="text-sm font-medium text-blue-900">
-                {formatExperience((candidate.experience_years || candidate.totalExperience || 0) * 12)}
+                {formatExperience(((candidate as any).experience_years || candidate.totalExperience || 0) * 12)}
               </span>
             </div>
             {(candidate as any).experience_level && (
@@ -329,7 +329,7 @@ export default function CandidateCard({
               {/* Move to Screening Button */}
               <div className="mt-4 pt-3 border-t border-white border-opacity-30">
                 <Button
-                  onClick={() => onMoveToScreeningForJob(candidate, candidate.selectedJobMatch.jobId)}
+                  onClick={() => candidate.selectedJobMatch && onMoveToScreeningForJob(candidate, candidate.selectedJobMatch.jobId)}
                   className="w-full bg-white bg-opacity-20 hover:bg-white hover:bg-opacity-30 text-purple-800 hover:text-purple-900 border border-white border-opacity-30 hover:border-opacity-50 font-medium py-2 px-4 rounded-lg transition-all duration-200 text-sm"
                 >
                   🎯 Move to Screening
