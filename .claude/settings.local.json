@@ -50,7 +50,9 @@
       "Bash(dir:*)",
       "Bash(findstr:*)",
       "Bash(npm uninstall:*)",
-      "Bash(pip.exe install:*)"
+      "Bash(pip.exe install:*)",
+      "Bash(venv/Scripts/activate.bat)",
+      "Bash(start-backend.bat)"
     ],
     "deny": [],
     "ask": []
