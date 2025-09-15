@@ -355,9 +355,16 @@ def parse_resume(request):
                 temp_file.write(chunk)
             temp_file_path = temp_file.name
         
-        # Parse the resume
-        parser = ResumeParser()
-        parsed_data = parser.parse_resume(temp_file_path)
+        # Parse the resume using enhanced parser
+        try:
+            from .utils.enhanced_resume_parser import EnhancedResumeParser
+            parser = EnhancedResumeParser()
+            parsed_data = parser.parse_resume(temp_file_path)
+        except ImportError as e:
+            print(f"Enhanced parser not available, falling back to original: {e}")
+            # Fallback to original parser
+            parser = ResumeParser()
+            parsed_data = parser.parse_resume(temp_file_path)
         
         # Clean up temporary file
         os.unlink(temp_file_path)
@@ -433,11 +440,35 @@ def bulk_create_candidates(request):
                 name_parts = name.split()
                 candidate_data['first_name'] = name_parts[0] if name_parts else ''
                 candidate_data['last_name'] = ' '.join(name_parts[1:]) if len(name_parts) > 1 else ''
+            else:
+                # Skip candidates without a name as first_name and last_name are required
+                if not candidate_data.get('first_name') or not candidate_data.get('last_name'):
+                    errors.append(f"Candidate {i+1}: Name is required (first_name and last_name cannot be empty)")
+                    continue
+            
+            # Ensure we have valid first_name and last_name after parsing
+            first_name = candidate_data.get('first_name', '').strip()
+            last_name = candidate_data.get('last_name', '').strip()
+            
+            if not first_name:
+                errors.append(f"Candidate {i+1}: First name is required")
+                continue
+            if not last_name:
+                # If only first name is available, use a default for last name
+                candidate_data['last_name'] = 'Unknown'
             
             # Map experience data
             experience_data = candidate_data.get('experience', {})
             if isinstance(experience_data, dict):
                 candidate_data['experience_years'] = experience_data.get('years')
+            
+            # Extract current_position and current_company if available
+            if 'current_position' in candidate_data and candidate_data['current_position']:
+                # Keep the current_position field as is
+                pass
+            if 'current_company' in candidate_data and candidate_data['current_company']:
+                # Keep the current_company field as is
+                pass
             
             # Clean up data
             candidate_data.pop('name', None)
@@ -449,7 +480,11 @@ def bulk_create_candidates(request):
             first_name = candidate_data.get('first_name', '').strip()
             last_name = candidate_data.get('last_name', '').strip()
             
-            if email:
+            # Handle empty email - convert to None for database storage
+            if not email:
+                candidate_data['email'] = None
+            else:
+                # Check for email duplicates only if email is provided
                 existing_candidate = Candidate.objects.filter(email__iexact=email).first()
                 if existing_candidate:
                     errors.append(f"Candidate {i+1}: Email '{email}' already exists")
@@ -481,6 +516,9 @@ def bulk_create_candidates(request):
                     candidate.resume_file.name = resume_file_path
                     candidate.save(update_fields=['resume_file'])
                 
+                # Note: current_position should come directly from parsed resume data
+                # No longer auto-generating job titles from skills and experience
+                
                 created_candidates.append(CandidateListSerializer(candidate).data)
             else:
                 errors.append(f"Candidate {i+1}: {serializer.errors}")
@@ -497,13 +535,29 @@ def bulk_create_candidates(request):
     })
 
 
-@api_view(['GET'])
+@api_view(['GET', 'HEAD'])
 def view_resume(request, candidate_id):
     """
     Serve resume file for viewing/download
     """
     try:
         candidate = Candidate.objects.get(id=candidate_id)
+        
+        # Handle HEAD request
+        if request.method == 'HEAD':
+            if not candidate.resume_file or not default_storage.exists(candidate.resume_file.name):
+                return HttpResponse(status=404)
+            else:
+                response = HttpResponse(status=200)
+                # Set content type for HEAD request
+                file_name = candidate.resume_file.name.lower()
+                if file_name.endswith('.pdf'):
+                    response['Content-Type'] = 'application/pdf'
+                elif file_name.endswith('.docx'):
+                    response['Content-Type'] = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                elif file_name.endswith('.doc'):
+                    response['Content-Type'] = 'application/msword'
+                return response
         
         if not candidate.resume_file:
             # Return HTML page for better user experience
@@ -639,6 +693,310 @@ def view_resume(request, candidate_id):
         </html>
         """
         return HttpResponse(html_content, content_type='text/html')
+
+
+def generate_job_title_for_candidate(candidate):
+    """
+    DEPRECATED: Generate a job title for a single candidate based on their skills and experience
+    This function is no longer used as job titles now come directly from parsed resume data.
+    """
+    if not candidate.skills:
+        return None
+    
+    # Skill-based job title mapping (same as in API endpoint)
+    skill_to_job_mapping = {
+        # Frontend Development
+        'react': 'Frontend Developer',
+        'angular': 'Frontend Developer', 
+        'vue': 'Frontend Developer',
+        'html': 'Frontend Developer',
+        'css': 'Frontend Developer',
+        'javascript': 'Frontend Developer',
+        'typescript': 'Frontend Developer',
+        
+        # Backend Development
+        'python': 'Backend Developer',
+        'java': 'Backend Developer',
+        'node.js': 'Backend Developer',
+        'php': 'Backend Developer',
+        'c#': 'Backend Developer',
+        'go': 'Backend Developer',
+        'ruby': 'Backend Developer',
+        'express': 'Backend Developer',
+        'django': 'Backend Developer',
+        'flask': 'Backend Developer',
+        'spring': 'Backend Developer',
+        
+        # Full Stack
+        'full stack': 'Full Stack Developer',
+        'fullstack': 'Full Stack Developer',
+        
+        # Mobile Development
+        'ios': 'Mobile Developer',
+        'android': 'Mobile Developer',
+        'react native': 'Mobile Developer',
+        'flutter': 'Mobile Developer',
+        'swift': 'iOS Developer',
+        'kotlin': 'Android Developer',
+        
+        # DevOps/Cloud
+        'aws': 'Cloud Engineer',
+        'azure': 'Cloud Engineer',
+        'docker': 'DevOps Engineer',
+        'kubernetes': 'DevOps Engineer',
+        'jenkins': 'DevOps Engineer',
+        'terraform': 'DevOps Engineer',
+        'ci/cd': 'DevOps Engineer',
+        
+        # Data Science/Analytics
+        'machine learning': 'Data Scientist',
+        'data science': 'Data Scientist',
+        'pandas': 'Data Analyst',
+        'numpy': 'Data Analyst',
+        'tensorflow': 'Machine Learning Engineer',
+        'pytorch': 'Machine Learning Engineer',
+        'tableau': 'Data Analyst',
+        'power bi': 'Business Analyst',
+        
+        # Database/Data
+        'sql': 'Database Developer',
+        'mysql': 'Database Developer',
+        'postgresql': 'Database Developer',
+        'mongodb': 'Database Developer',
+        'oracle': 'Database Administrator',
+        
+        # Quality Assurance
+        'qa': 'QA Engineer',
+        'testing': 'QA Engineer',
+        'selenium': 'Test Automation Engineer',
+        
+        # UI/UX
+        'ui': 'UI Designer',
+        'ux': 'UX Designer',
+        'figma': 'UI/UX Designer',
+        'adobe': 'Graphic Designer',
+        
+        # Security
+        'security': 'Security Engineer',
+        'cybersecurity': 'Security Analyst',
+        
+        # General
+        'project management': 'Project Manager',
+        'agile': 'Scrum Master',
+        'scrum': 'Scrum Master',
+    }
+    
+    # Experience level mapping
+    experience_prefixes = {
+        0: '', 1: 'Junior ', 2: 'Junior ', 3: '', 4: '',
+        5: 'Senior ', 6: 'Senior ', 7: 'Senior ', 8: 'Lead ',
+        9: 'Lead ', 10: 'Principal '
+    }
+    
+    # Convert skills to lowercase for matching
+    candidate_skills = [skill.lower() for skill in candidate.skills]
+    
+    # Score different job titles based on skills
+    job_scores = {}
+    
+    for skill in candidate_skills:
+        for skill_keyword, job_title in skill_to_job_mapping.items():
+            if skill_keyword in skill:
+                if job_title not in job_scores:
+                    job_scores[job_title] = 0
+                job_scores[job_title] += 1
+    
+    # Special logic for full stack detection
+    has_frontend = any(skill in candidate_skills for skill in ['react', 'angular', 'vue', 'html', 'css', 'javascript'])
+    has_backend = any(skill in candidate_skills for skill in ['python', 'java', 'node.js', 'php', 'django', 'flask', 'spring'])
+    
+    if has_frontend and has_backend:
+        job_scores['Full Stack Developer'] = job_scores.get('Full Stack Developer', 0) + 5
+    
+    # Get the best matching job title
+    if job_scores:
+        best_job_title = max(job_scores.keys(), key=lambda k: job_scores[k])
+        
+        # Add experience level prefix
+        experience_years = candidate.experience_years or 0
+        experience_years = min(experience_years, 10)  # Cap at 10 for mapping
+        
+        prefix = experience_prefixes.get(experience_years, '')
+        return f"{prefix}{best_job_title}".strip()
+    
+    return None
+
+
+@api_view(['POST'])
+def generate_job_titles(request):
+    """
+    DEPRECATED: Generate job titles for candidates based on their skills and experience
+    This endpoint is deprecated as job titles now come directly from parsed resume data.
+    """
+    try:
+        # Skill-based job title mapping
+        skill_to_job_mapping = {
+            # Frontend Development
+            'react': 'Frontend Developer',
+            'angular': 'Frontend Developer', 
+            'vue': 'Frontend Developer',
+            'html': 'Frontend Developer',
+            'css': 'Frontend Developer',
+            'javascript': 'Frontend Developer',
+            'typescript': 'Frontend Developer',
+            
+            # Backend Development
+            'python': 'Backend Developer',
+            'java': 'Backend Developer',
+            'node.js': 'Backend Developer',
+            'php': 'Backend Developer',
+            'c#': 'Backend Developer',
+            'go': 'Backend Developer',
+            'ruby': 'Backend Developer',
+            'express': 'Backend Developer',
+            'django': 'Backend Developer',
+            'flask': 'Backend Developer',
+            'spring': 'Backend Developer',
+            
+            # Full Stack
+            'full stack': 'Full Stack Developer',
+            'fullstack': 'Full Stack Developer',
+            
+            # Mobile Development
+            'ios': 'Mobile Developer',
+            'android': 'Mobile Developer',
+            'react native': 'Mobile Developer',
+            'flutter': 'Mobile Developer',
+            'swift': 'iOS Developer',
+            'kotlin': 'Android Developer',
+            
+            # DevOps/Cloud
+            'aws': 'Cloud Engineer',
+            'azure': 'Cloud Engineer',
+            'docker': 'DevOps Engineer',
+            'kubernetes': 'DevOps Engineer',
+            'jenkins': 'DevOps Engineer',
+            'terraform': 'DevOps Engineer',
+            'ci/cd': 'DevOps Engineer',
+            
+            # Data Science/Analytics
+            'machine learning': 'Data Scientist',
+            'data science': 'Data Scientist',
+            'pandas': 'Data Analyst',
+            'numpy': 'Data Analyst',
+            'tensorflow': 'Machine Learning Engineer',
+            'pytorch': 'Machine Learning Engineer',
+            'tableau': 'Data Analyst',
+            'power bi': 'Business Analyst',
+            
+            # Database/Data
+            'sql': 'Database Developer',
+            'mysql': 'Database Developer',
+            'postgresql': 'Database Developer',
+            'mongodb': 'Database Developer',
+            'oracle': 'Database Administrator',
+            
+            # Quality Assurance
+            'qa': 'QA Engineer',
+            'testing': 'QA Engineer',
+            'selenium': 'Test Automation Engineer',
+            
+            # UI/UX
+            'ui': 'UI Designer',
+            'ux': 'UX Designer',
+            'figma': 'UI/UX Designer',
+            'adobe': 'Graphic Designer',
+            
+            # Security
+            'security': 'Security Engineer',
+            'cybersecurity': 'Security Analyst',
+            
+            # General
+            'project management': 'Project Manager',
+            'agile': 'Scrum Master',
+            'scrum': 'Scrum Master',
+        }
+        
+        # Experience level mapping
+        experience_prefixes = {
+            0: '',
+            1: 'Junior ',
+            2: 'Junior ',
+            3: '',
+            4: '',
+            5: 'Senior ',
+            6: 'Senior ',
+            7: 'Senior ',
+            8: 'Lead ',
+            9: 'Lead ',
+            10: 'Principal '
+        }
+        
+        # Find candidates with missing job titles
+        candidates_to_update = Candidate.objects.filter(
+            current_position__in=['', None]
+        ).exclude(skills__exact=[])
+        
+        updated_candidates = []
+        
+        for candidate in candidates_to_update:
+            if not candidate.skills:
+                continue
+                
+            # Convert skills to lowercase for matching
+            candidate_skills = [skill.lower() for skill in candidate.skills]
+            
+            # Score different job titles based on skills
+            job_scores = {}
+            
+            for skill in candidate_skills:
+                for skill_keyword, job_title in skill_to_job_mapping.items():
+                    if skill_keyword in skill:
+                        if job_title not in job_scores:
+                            job_scores[job_title] = 0
+                        job_scores[job_title] += 1
+            
+            # Special logic for full stack detection
+            has_frontend = any(skill in candidate_skills for skill in ['react', 'angular', 'vue', 'html', 'css', 'javascript'])
+            has_backend = any(skill in candidate_skills for skill in ['python', 'java', 'node.js', 'php', 'django', 'flask', 'spring'])
+            
+            if has_frontend and has_backend:
+                job_scores['Full Stack Developer'] = job_scores.get('Full Stack Developer', 0) + 5
+            
+            # Get the best matching job title
+            if job_scores:
+                best_job_title = max(job_scores.keys(), key=lambda k: job_scores[k])
+                
+                # Add experience level prefix
+                experience_years = candidate.experience_years or 0
+                experience_years = min(experience_years, 10)  # Cap at 10 for mapping
+                
+                prefix = experience_prefixes.get(experience_years, '')
+                final_job_title = f"{prefix}{best_job_title}".strip()
+                
+                # Update candidate
+                candidate.current_position = final_job_title
+                candidate.save(update_fields=['current_position'])
+                
+                updated_candidates.append({
+                    'id': candidate.id,
+                    'name': candidate.full_name,
+                    'generated_title': final_job_title,
+                    'skills': candidate.skills,
+                    'experience_years': candidate.experience_years
+                })
+        
+        return Response({
+            'message': f'Generated job titles for {len(updated_candidates)} candidates',
+            'updated_candidates': updated_candidates,
+            'total_processed': candidates_to_update.count()
+        })
+        
+    except Exception as e:
+        return Response(
+            {'error': f'Error generating job titles: {str(e)}'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
 @api_view(['POST'])
