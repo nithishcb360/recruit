@@ -236,11 +236,6 @@ export default function CandidateCard({
                 </span>
               </div>
             )}
-            {(candidate as any).current_company && (
-              <div className="text-sm text-blue-800">
-                <span className="font-medium">Company:</span> {(candidate as any).current_company}
-              </div>
-            )}
           </div>
         </div>
 

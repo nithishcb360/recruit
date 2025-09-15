@@ -436,8 +436,9 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
         requirements: generatedContent.requirements
       }));
 
-      alert('Job description generated successfully with AI!');
-    } catch (error) {
+        alert('Job description generated successfully with local AI!');
+      }
+     catch (error) {
       console.error('Error generating with AI:', error);
       alert(`Error generating job description: ${error instanceof Error ? error.message : 'Please check your Claude AI API configuration and try again.'}`);
     } finally {
