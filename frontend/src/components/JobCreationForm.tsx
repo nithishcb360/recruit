@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createJob, getDepartments, createDepartment, type JobCreateData, type Department, type Job, type DepartmentCreateData } from '@/lib/api/jobs';
 import { searchLocations, type Location } from '@/lib/api/locations';
+import { generateJobDescriptionWithAI } from '@/lib/api/claude';
 
 interface FormData {
   jobTitle: string;
@@ -53,6 +54,7 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
   const [locationSuggestions, setLocationSuggestions] = useState<Location[]>([]);
   const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
   const [isSearchingLocations, setIsSearchingLocations] = useState(false);
+  const [isGeneratingWithAI, setIsGeneratingWithAI] = useState(false);
 
   const steps = [
     { number: 1, name: 'Job Details', active: activeStep === 1 },
@@ -404,27 +406,42 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
       return;
     }
 
+    if (!formData.experienceLevel) {
+      alert('Please select an Experience Level before generating with AI.');
+      return;
+    }
+
+    if (!formData.experienceRange) {
+      alert('Please select an Experience Range before generating with AI.');
+      return;
+    }
+
+    setIsGeneratingWithAI(true);
+
     try {
       const department = departments.find(d => d.id.toString() === formData.department)?.name || formData.department;
-      const jobTitle = formData.jobTitle;
-      const experienceLevel = formData.experienceLevel;
-      const location = formData.location || 'our office';
-      const workType = formData.workType || 'full-time';
-      const experienceRange = formData.experienceRange || '3-5 years';
-
-      // Generate role-specific content based on job title and department
-      const roleSpecificContent = generateRoleSpecificContent(jobTitle, department, experienceLevel, workType, location, experienceRange);
+      
+      const generatedContent = await generateJobDescriptionWithAI({
+        jobTitle: formData.jobTitle,
+        department: department,
+        experienceLevel: formData.experienceLevel,
+        experienceRange: formData.experienceRange,
+        workType: formData.workType || undefined,
+        location: formData.location || undefined
+      });
 
       setFormData(prev => ({
         ...prev,
-        jobDescription: roleSpecificContent.description,
-        requirements: roleSpecificContent.requirements
+        jobDescription: generatedContent.description,
+        requirements: generatedContent.requirements
       }));
 
       alert('Job description generated successfully with AI!');
     } catch (error) {
       console.error('Error generating with AI:', error);
-      alert('Error generating job description. Please try again.');
+      alert(`Error generating job description: ${error instanceof Error ? error.message : 'Please check your Claude AI API configuration and try again.'}`);
+    } finally {
+      setIsGeneratingWithAI(false);
     }
   };
 
@@ -1593,12 +1610,22 @@ ${preferredQuals.map(qual => `• ${qual}`).join('\n')}`
               <button
                 type="button"
                 onClick={handleGenerateWithAI}
-                className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold px-6 py-3 rounded-lg transition-all duration-200 flex items-center justify-center gap-2"
+                disabled={isGeneratingWithAI}
+                className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 disabled:from-purple-400 disabled:to-blue-400 disabled:cursor-not-allowed text-white font-semibold px-6 py-3 rounded-lg transition-all duration-200 flex items-center justify-center gap-2"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-                Generate with AI
+                {isGeneratingWithAI ? (
+                  <>
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    Generate with AI
+                  </>
+                )}
               </button>
             </div>
 

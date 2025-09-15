@@ -1,5 +1,5 @@
 // Location API for place name search using Geoapify
-const GEOAPIFY_API_KEY = '6bbfc7e0fe0f4f6983a61b7d1b5a97b6' // You should move this to environment variables
+const GEOAPIFY_API_KEY = process.env.NEXT_PUBLIC_GEOAPIFY_API_KEY
 
 export interface Location {
   id: string
@@ -40,6 +40,11 @@ export async function searchLocations(query: string): Promise<Location[]> {
   }
 
   try {
+    // Check if API key is available, if not use fallback immediately
+    if (!GEOAPIFY_API_KEY) {
+      throw new Error('Geoapify API key not configured')
+    }
+
     // Use Geoapify Places API for location search
     const geoapifyUrl = `https://api.geoapify.com/v2/places?categories=administrative&filter=name:${encodeURIComponent(query)}&apiKey=${GEOAPIFY_API_KEY}&limit=10`
     
