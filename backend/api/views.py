@@ -20,11 +20,34 @@ from .serializers import (
     FeedbackTemplateSerializer, FeedbackTemplateCreateSerializer, FeedbackTemplateUpdateSerializer
 )
 from .utils.enhanced_resume_parser import EnhancedResumeParser
+from .utils.resume_parser import ResumeParser
+
+# Safe import for semantic matcher with fallback
+try:
+    from .utils.semantic_matcher import get_semantic_matcher
+    SEMANTIC_MATCHING_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Semantic matching not available: {e}")
+    SEMANTIC_MATCHING_AVAILABLE = False
+    
+    # Create a dummy function to prevent errors
+    def get_semantic_matcher():
+        class DummyMatcher:
+            def calculate_job_match_score(self, candidate_data, job_data):
+                return 0.0
+            def find_best_matching_jobs(self, candidate_data, jobs, top_k=5):
+                return []
+            def find_matching_candidates(self, job_data, candidates, threshold=30.0):
+                return []
+        return DummyMatcher()
 import os
 import tempfile
+import logging
 from django.http import HttpResponse, Http404
 from django.core.files.storage import default_storage
 import datetime
+
+logger = logging.getLogger(__name__)
 
 
 @api_view(['GET'])
@@ -363,6 +386,87 @@ class CandidateViewSet(viewsets.ModelViewSet):
         stats['by_experience'] = list(experience_stats)
         
         return Response(stats)
+    
+    @action(detail=True, methods=['get'])
+    def matching_jobs(self, request, pk=None):
+        """
+        Get semantically matching jobs for a specific candidate.
+        Uses sentence-transformers all-MiniLM-L6-v2 for semantic similarity.
+        """
+        try:
+            candidate = self.get_object()
+            limit = int(request.query_params.get('limit', 10))
+            min_score = float(request.query_params.get('min_score', 25.0))
+            
+            # Get active jobs
+            active_jobs = Job.objects.select_related('department').filter(status='active')
+            
+            # Prepare candidate data
+            candidate_data = {
+                'id': candidate.id,
+                'skills': candidate.skills or [],
+                'current_position': candidate.current_position or '',
+                'current_company': candidate.current_company or '',
+                'experience_years': candidate.experience_years or 0,
+                'education': candidate.education or []
+            }
+            
+            # Prepare jobs data
+            jobs_data = []
+            for job in active_jobs:
+                job_data = {
+                    'id': job.id,
+                    'title': job.title,
+                    'description': job.description or '',
+                    'requirements': job.requirements or '',
+                    'experience_level': job.experience_level or '',
+                    'department': {
+                        'name': job.department.name if job.department else '',
+                        'id': job.department.id if job.department else None
+                    },
+                    'job_type': job.job_type or '',
+                    'work_type': getattr(job, 'work_type', ''),
+                    'location': getattr(job, 'location', ''),
+                    'salary_min': getattr(job, 'salary_min', None),
+                    'salary_max': getattr(job, 'salary_max', None)
+                }
+                jobs_data.append(job_data)
+            
+            # Find matching jobs using semantic analysis
+            matcher = get_semantic_matcher()
+            job_matches = matcher.find_best_matching_jobs(candidate_data, jobs_data, top_k=limit)
+            
+            # Filter by minimum score and prepare response
+            matching_jobs = []
+            for job_data, score in job_matches:
+                if score >= min_score:
+                    matching_jobs.append({
+                        'id': job_data['id'],
+                        'title': job_data['title'],
+                        'department': job_data['department']['name'],
+                        'experience_level': job_data['experience_level'],
+                        'job_type': job_data['job_type'],
+                        'location': job_data.get('location', ''),
+                        'salary_min': job_data.get('salary_min'),
+                        'salary_max': job_data.get('salary_max'),
+                        'match_score': score,
+                        'match_level': 'high' if score >= 75 else 'medium' if score >= 50 else 'low'
+                    })
+            
+            return Response({
+                'candidate_id': candidate.id,
+                'candidate_name': candidate.full_name,
+                'matching_jobs': matching_jobs,
+                'total_matches': len(matching_jobs),
+                'algorithm': 'semantic_similarity_all_minilm_l6_v2'
+            })
+            
+        except Exception as e:
+            logger.error(f"Error in candidate matching jobs: {e}")
+            return Response(
+                {'error': f'Failed to find matching jobs: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 @csrf_exempt
@@ -1299,3 +1403,269 @@ class FeedbackTemplateViewSet(viewsets.ModelViewSet):
             return Response(response_serializer.data, status=status.HTTP_201_CREATED)
         else:
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+def calculate_job_match(request):
+    """
+    Calculate semantic job match score between a candidate and a job.
+    
+    Expected POST data:
+    {
+        "candidate_id": int,
+        "job_id": int
+    }
+    """
+    try:
+        candidate_id = request.data.get('candidate_id')
+        job_id = request.data.get('job_id')
+        
+        if not candidate_id or not job_id:
+            return Response(
+                {'error': 'Both candidate_id and job_id are required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get candidate and job objects
+        try:
+            candidate = Candidate.objects.get(id=candidate_id)
+            job = Job.objects.select_related('department').get(id=job_id)
+        except (Candidate.DoesNotExist, Job.DoesNotExist) as e:
+            return Response(
+                {'error': f'Object not found: {str(e)}'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Prepare candidate data for matching
+        candidate_data = {
+            'id': candidate.id,
+            'skills': candidate.skills or [],
+            'current_position': candidate.current_position or '',
+            'current_company': candidate.current_company or '',
+            'experience_years': candidate.experience_years or 0,
+            'education': candidate.education or []
+        }
+        
+        # Prepare job data for matching
+        job_data = {
+            'id': job.id,
+            'title': job.title,
+            'description': job.description or '',
+            'requirements': job.requirements or '',
+            'experience_level': job.experience_level or '',
+            'department': {
+                'name': job.department.name if job.department else '',
+                'id': job.department.id if job.department else None
+            },
+            'job_type': job.job_type or '',
+            'work_type': getattr(job, 'work_type', '')
+        }
+        
+        # Calculate semantic match score
+        matcher = get_semantic_matcher()
+        match_score = matcher.calculate_job_match_score(candidate_data, job_data)
+        
+        return Response({
+            'candidate_id': candidate_id,
+            'job_id': job_id,
+            'match_score': match_score,
+            'match_level': 'high' if match_score >= 75 else 'medium' if match_score >= 50 else 'low',
+            'candidate_name': candidate.full_name,
+            'job_title': job.title
+        })
+        
+    except Exception as e:
+        logger.error(f"Error calculating job match: {e}")
+        return Response(
+            {'error': f'Failed to calculate job match: {str(e)}'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+def find_matching_jobs(request, candidate_id):
+    """
+    Find best matching jobs for a specific candidate using semantic analysis.
+    
+    Query parameters:
+    - limit: Number of top matches to return (default: 5)
+    - min_score: Minimum match score threshold (default: 20.0)
+    """
+    try:
+        limit = int(request.GET.get('limit', 5))
+        min_score = float(request.GET.get('min_score', 20.0))
+        
+        # Get candidate
+        try:
+            candidate = Candidate.objects.get(id=candidate_id)
+        except Candidate.DoesNotExist:
+            return Response(
+                {'error': 'Candidate not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Get all active jobs
+        active_jobs = Job.objects.select_related('department').filter(status='active')
+        
+        # Prepare candidate data
+        candidate_data = {
+            'id': candidate.id,
+            'skills': candidate.skills or [],
+            'current_position': candidate.current_position or '',
+            'current_company': candidate.current_company or '',
+            'experience_years': candidate.experience_years or 0,
+            'education': candidate.education or []
+        }
+        
+        # Prepare jobs data
+        jobs_data = []
+        for job in active_jobs:
+            job_data = {
+                'id': job.id,
+                'title': job.title,
+                'description': job.description or '',
+                'requirements': job.requirements or '',
+                'experience_level': job.experience_level or '',
+                'department': {
+                    'name': job.department.name if job.department else '',
+                    'id': job.department.id if job.department else None
+                },
+                'job_type': job.job_type or '',
+                'work_type': getattr(job, 'work_type', ''),
+                'location': getattr(job, 'location', ''),
+                'salary_min': getattr(job, 'salary_min', None),
+                'salary_max': getattr(job, 'salary_max', None)
+            }
+            jobs_data.append(job_data)
+        
+        # Find matching jobs
+        matcher = get_semantic_matcher()
+        job_matches = matcher.find_best_matching_jobs(candidate_data, jobs_data, top_k=limit)
+        
+        # Filter by minimum score and prepare response
+        matching_jobs = []
+        for job_data, score in job_matches:
+            if score >= min_score:
+                matching_jobs.append({
+                    'job': {
+                        'id': job_data['id'],
+                        'title': job_data['title'],
+                        'department': job_data['department']['name'],
+                        'experience_level': job_data['experience_level'],
+                        'job_type': job_data['job_type'],
+                        'location': job_data.get('location', ''),
+                        'salary_min': job_data.get('salary_min'),
+                        'salary_max': job_data.get('salary_max')
+                    },
+                    'match_score': score,
+                    'match_level': 'high' if score >= 75 else 'medium' if score >= 50 else 'low'
+                })
+        
+        return Response({
+            'candidate_id': candidate_id,
+            'candidate_name': candidate.full_name,
+            'matching_jobs': matching_jobs,
+            'total_matches': len(matching_jobs),
+            'total_jobs_analyzed': len(jobs_data)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error finding matching jobs: {e}")
+        return Response(
+            {'error': f'Failed to find matching jobs: {str(e)}'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+def find_matching_candidates(request, job_id):
+    """
+    Find candidates that match a specific job using semantic analysis.
+    
+    Query parameters:
+    - limit: Maximum number of candidates to return (default: 20)
+    - min_score: Minimum match score threshold (default: 30.0)
+    """
+    try:
+        limit = int(request.GET.get('limit', 20))
+        min_score = float(request.GET.get('min_score', 30.0))
+        
+        # Get job
+        try:
+            job = Job.objects.select_related('department').get(id=job_id)
+        except Job.DoesNotExist:
+            return Response(
+                {'error': 'Job not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Get all candidates
+        candidates = Candidate.objects.all()
+        
+        # Prepare job data
+        job_data = {
+            'id': job.id,
+            'title': job.title,
+            'description': job.description or '',
+            'requirements': job.requirements or '',
+            'experience_level': job.experience_level or '',
+            'department': {
+                'name': job.department.name if job.department else '',
+                'id': job.department.id if job.department else None
+            },
+            'job_type': job.job_type or '',
+            'work_type': getattr(job, 'work_type', '')
+        }
+        
+        # Prepare candidates data
+        candidates_data = []
+        for candidate in candidates:
+            candidate_data = {
+                'id': candidate.id,
+                'skills': candidate.skills or [],
+                'current_position': candidate.current_position or '',
+                'current_company': candidate.current_company or '',
+                'experience_years': candidate.experience_years or 0,
+                'education': candidate.education or [],
+                'email': candidate.email,
+                'phone': candidate.phone_number or '',
+                'status': candidate.status
+            }
+            candidates_data.append(candidate_data)
+        
+        # Find matching candidates
+        matcher = get_semantic_matcher()
+        candidate_matches = matcher.find_matching_candidates(job_data, candidates_data, threshold=min_score)
+        
+        # Limit results and prepare response
+        matching_candidates = []
+        for candidate_data, score in candidate_matches[:limit]:
+            matching_candidates.append({
+                'candidate': {
+                    'id': candidate_data['id'],
+                    'name': f"{candidates.get(id=candidate_data['id']).first_name} {candidates.get(id=candidate_data['id']).last_name}",
+                    'email': candidate_data['email'],
+                    'current_position': candidate_data['current_position'],
+                    'current_company': candidate_data['current_company'],
+                    'experience_years': candidate_data['experience_years'],
+                    'skills': candidate_data['skills'][:10] if candidate_data['skills'] else [],  # Limit skills for response
+                    'status': candidate_data['status']
+                },
+                'match_score': score,
+                'match_level': 'high' if score >= 75 else 'medium' if score >= 50 else 'low'
+            })
+        
+        return Response({
+            'job_id': job_id,
+            'job_title': job.title,
+            'matching_candidates': matching_candidates,
+            'total_matches': len(matching_candidates),
+            'total_candidates_analyzed': len(candidates_data)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error finding matching candidates: {e}")
+        return Response(
+            {'error': f'Failed to find matching candidates: {str(e)}'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
