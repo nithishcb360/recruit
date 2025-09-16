@@ -53,7 +53,8 @@
       "Bash(pip.exe install:*)",
       "Bash(venv/Scripts/activate.bat)",
       "Bash(start-backend.bat)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []
