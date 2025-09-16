@@ -20,7 +20,6 @@ from .serializers import (
     FeedbackTemplateSerializer, FeedbackTemplateCreateSerializer, FeedbackTemplateUpdateSerializer
 )
 from .utils.enhanced_resume_parser import EnhancedResumeParser
-from .utils.resume_parser import ResumeParser
 
 # Safe import for semantic matcher with fallback
 try:
