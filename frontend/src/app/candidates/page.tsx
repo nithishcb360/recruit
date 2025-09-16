@@ -1180,7 +1180,6 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
                 <thead>
                   <tr className="border-b bg-gray-50">
                     <th className="text-left p-4 font-semibold text-gray-900">Name</th>
-                    <th className="text-left p-4 font-semibold text-gray-900">Job Title</th>
                     {selectedJob && (
                       <th className="text-center p-4 font-semibold text-gray-900">
                         Match Score for {selectedJob.title}
@@ -1199,23 +1198,6 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
                           {candidate.location && (
                             <span className="text-xs text-gray-500">{candidate.location}</span>
                           )}
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div className="flex flex-col">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium text-gray-900">
-                              {candidate.current_position || 'Position not specified'}
-                            </span>
-                            {candidate.selectedJobMatch && (
-                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                {candidate.selectedJobMatch.matchPercentage}% match
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-xs text-gray-500">
-                            {candidate.totalExperience || candidate.experience_years || 0} years experience
-                          </span>
                         </div>
                       </td>
                       {selectedJob && (

@@ -19,7 +19,7 @@ from .serializers import (
     JobApplicationSerializer, JobApplicationCreateSerializer,
     FeedbackTemplateSerializer, FeedbackTemplateCreateSerializer, FeedbackTemplateUpdateSerializer
 )
-from .utils.resume_parser import ResumeParser
+from .utils.enhanced_resume_parser import EnhancedResumeParser
 import os
 import tempfile
 from django.http import HttpResponse, Http404
@@ -94,6 +94,7 @@ def dashboard_overview(request):
     return Response(data)
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class TaskViewSet(viewsets.ModelViewSet):
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
@@ -141,6 +142,7 @@ class ActivityLogViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(serializer.data)
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class DepartmentViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing departments
@@ -157,6 +159,7 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class JobViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing jobs with full CRUD operations
@@ -182,6 +185,40 @@ class JobViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         """Set created_by when creating a job"""
         serializer.save(created_by=self.request.user if self.request.user.is_authenticated else None)
+
+    def update(self, request, *args, **kwargs):
+        """Custom update method with detailed error logging"""
+        try:
+            print(f"Job update request data: {request.data}")
+            return super().update(request, *args, **kwargs)
+        except Exception as e:
+            print(f"Job update error: {str(e)}")
+            print(f"Job update exception type: {type(e)}")
+            if hasattr(e, 'detail'):
+                print(f"Job update error detail: {e.detail}")
+            raise
+
+    def partial_update(self, request, *args, **kwargs):
+        """Custom partial update method with detailed error logging"""
+        try:
+            print(f"Job partial update request data: {request.data}")
+            instance = self.get_object()
+            print(f"Job being updated: ID={instance.id}, Title={instance.title}")
+            print(f"Current job data: salary_min={instance.salary_min}, salary_max={instance.salary_max}, openings={instance.openings}")
+
+            serializer = self.get_serializer(instance, data=request.data, partial=True)
+            if not serializer.is_valid():
+                print(f"Job validation errors: {serializer.errors}")
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+            self.perform_update(serializer)
+            return Response(serializer.data)
+        except Exception as e:
+            print(f"Job partial update error: {str(e)}")
+            print(f"Job partial update exception type: {type(e)}")
+            if hasattr(e, 'detail'):
+                print(f"Job partial update error detail: {e.detail}")
+            raise
     
     @action(detail=False, methods=['get'])
     def active(self, request):
@@ -284,6 +321,7 @@ class JobViewSet(viewsets.ModelViewSet):
         return Response(stats)
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class CandidateViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing candidates with full CRUD operations
@@ -355,16 +393,24 @@ def parse_resume(request):
                 temp_file.write(chunk)
             temp_file_path = temp_file.name
         
-        # Parse the resume using enhanced parser
+        # Parse the resume using PyTorch parser
         try:
-            from .utils.enhanced_resume_parser import EnhancedResumeParser
-            parser = EnhancedResumeParser()
-            parsed_data = parser.parse_resume(temp_file_path)
+            from .utils.pytorch_resume_parser import PyTorchResumeParser
+            parser = PyTorchResumeParser()
+            parsed_data = parser.parse_resume(temp_file_path, uploaded_file.name)
+            print(f"Using PyTorch parser for: {uploaded_file.name}")
         except ImportError as e:
-            print(f"Enhanced parser not available, falling back to original: {e}")
-            # Fallback to original parser
-            parser = ResumeParser()
-            parsed_data = parser.parse_resume(temp_file_path)
+            print(f"PyTorch parser not available, falling back to enhanced parser: {e}")
+            # Fallback to enhanced parser
+            try:
+                from .utils.enhanced_resume_parser import EnhancedResumeParser
+                parser = EnhancedResumeParser()
+                parsed_data = parser.parse_resume(temp_file_path, uploaded_file.name)
+            except ImportError as e2:
+                print(f"Enhanced parser not available, falling back to original: {e2}")
+                # Final fallback to enhanced parser
+                parser = EnhancedResumeParser()
+                parsed_data = parser.parse_resume(temp_file_path)
         
         # Clean up temporary file
         os.unlink(temp_file_path)
@@ -391,6 +437,18 @@ def parse_resume(request):
         file_path = default_storage.save(f'resumes/{unique_filename}', ContentFile(uploaded_file.read()))
         file_url = default_storage.url(file_path)
         
+        # Clean parsed data to remove null characters that cause serializer issues
+        def clean_null_chars(obj):
+            if isinstance(obj, str):
+                return obj.replace('\x00', '').replace('\0', '')
+            elif isinstance(obj, list):
+                return [clean_null_chars(item) for item in obj]
+            elif isinstance(obj, dict):
+                return {key: clean_null_chars(value) for key, value in obj.items()}
+            return obj
+
+        parsed_data = clean_null_chars(parsed_data)
+
         # Add file information to parsed data
         parsed_data['resume_file_url'] = file_url
         parsed_data['resume_file_path'] = file_path
@@ -406,6 +464,8 @@ def parse_resume(request):
             response_data['original_filename'] = uploaded_file.name
             return Response(response_data)
         else:
+            print(f"Serializer validation failed for {uploaded_file.name}: {serializer.errors}")
+            print(f"Parsed data: {parsed_data}")
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
             
     except Exception as e:
@@ -436,26 +496,40 @@ def bulk_create_candidates(request):
         try:
             # Parse name into first_name and last_name
             name = candidate_data.get('name', '').strip()
+            original_filename = candidate_data.get('original_filename', '')
+
             if name:
                 name_parts = name.split()
                 candidate_data['first_name'] = name_parts[0] if name_parts else ''
-                candidate_data['last_name'] = ' '.join(name_parts[1:]) if len(name_parts) > 1 else ''
+                candidate_data['last_name'] = ' '.join(name_parts[1:]) if len(name_parts) > 1 else 'Unknown'
             else:
-                # Skip candidates without a name as first_name and last_name are required
-                if not candidate_data.get('first_name') or not candidate_data.get('last_name'):
-                    errors.append(f"Candidate {i+1}: Name is required (first_name and last_name cannot be empty)")
-                    continue
-            
+                # Try to extract name from filename as fallback
+                if original_filename:
+                    # Extract name from filename (e.g., "John_Doe_Resume.pdf" -> "John Doe")
+                    filename_base = original_filename.replace('.pdf', '').replace('.docx', '').replace('.doc', '')
+                    # Remove common resume-related words
+                    filename_base = filename_base.replace('_Resume', '').replace('_CV', '').replace('_react', '').replace('_React', '')
+                    name_from_file = filename_base.replace('_', ' ').strip()
+
+                    if name_from_file:
+                        name_parts = name_from_file.split()
+                        candidate_data['first_name'] = name_parts[0] if name_parts else 'Unknown'
+                        candidate_data['last_name'] = ' '.join(name_parts[1:]) if len(name_parts) > 1 else 'Candidate'
+                    else:
+                        candidate_data['first_name'] = 'Unknown'
+                        candidate_data['last_name'] = 'Candidate'
+                else:
+                    candidate_data['first_name'] = 'Unknown'
+                    candidate_data['last_name'] = 'Candidate'
+
             # Ensure we have valid first_name and last_name after parsing
             first_name = candidate_data.get('first_name', '').strip()
             last_name = candidate_data.get('last_name', '').strip()
-            
+
             if not first_name:
-                errors.append(f"Candidate {i+1}: First name is required")
-                continue
+                candidate_data['first_name'] = 'Unknown'
             if not last_name:
-                # If only first name is available, use a default for last name
-                candidate_data['last_name'] = 'Unknown'
+                candidate_data['last_name'] = 'Candidate'
             
             # Map experience data
             experience_data = candidate_data.get('experience', {})
@@ -479,11 +553,24 @@ def bulk_create_candidates(request):
             email = candidate_data.get('email', '').strip()
             first_name = candidate_data.get('first_name', '').strip()
             last_name = candidate_data.get('last_name', '').strip()
-            
+
             # Handle empty email - convert to None for database storage
             if not email:
                 candidate_data['email'] = None
             else:
+                # Clean email - remove non-printable characters and extra whitespace
+                email = ''.join(char for char in email if char.isprintable()).strip()
+                candidate_data['email'] = email
+
+                # Validate email format before proceeding
+                from django.core.validators import validate_email
+                from django.core.exceptions import ValidationError
+                try:
+                    validate_email(email)
+                except ValidationError:
+                    errors.append(f"Candidate {i+1}: Invalid email format '{email}'")
+                    continue
+
                 # Check for email duplicates only if email is provided
                 existing_candidate = Candidate.objects.filter(email__iexact=email).first()
                 if existing_candidate:
@@ -1008,7 +1095,7 @@ def update_candidate_experience(request):
         # Find candidates with null experience_years
         candidates_to_update = Candidate.objects.filter(experience_years__isnull=True)
         
-        parser = ResumeParser()
+        parser = EnhancedResumeParser()
         updated_count = 0
         current_year = datetime.datetime.now().year
         
@@ -1049,6 +1136,7 @@ def update_candidate_experience(request):
         )
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class JobApplicationViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing job applications
@@ -1107,6 +1195,7 @@ class JobApplicationViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class FeedbackTemplateViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing feedback templates

@@ -73,7 +73,7 @@ class JobSerializer(serializers.ModelSerializer):
 
 class JobCreateSerializer(serializers.ModelSerializer):
     department = serializers.PrimaryKeyRelatedField(queryset=Department.objects.all())
-    
+
     class Meta:
         model = Job
         fields = [
@@ -83,7 +83,7 @@ class JobCreateSerializer(serializers.ModelSerializer):
             'required_skills', 'preferred_skills',
             'status', 'urgency', 'openings', 'sla_days',
             'publish_internal', 'publish_external', 'publish_company_website',
-            'screening_questions'
+            'screening_questions', 'created_at', 'updated_at'
         ]
     
     def validate(self, data):
@@ -100,7 +100,7 @@ class JobCreateSerializer(serializers.ModelSerializer):
 
 class JobUpdateSerializer(serializers.ModelSerializer):
     department = serializers.PrimaryKeyRelatedField(queryset=Department.objects.all(), required=False)
-    
+
     class Meta:
         model = Job
         fields = [
@@ -110,7 +110,7 @@ class JobUpdateSerializer(serializers.ModelSerializer):
             'required_skills', 'preferred_skills',
             'status', 'urgency', 'openings', 'sla_days',
             'publish_internal', 'publish_external', 'publish_company_website',
-            'screening_questions'
+            'screening_questions', 'created_at', 'updated_at'
         ]
     
     def validate(self, data):
@@ -251,7 +251,7 @@ class JobApplicationSerializer(serializers.ModelSerializer):
 class ResumeParseSerializer(serializers.Serializer):
     """Serializer for resume parsing results"""
     name = serializers.CharField(required=False, allow_blank=True)
-    email = serializers.EmailField(required=False, allow_blank=True)
+    email = serializers.CharField(required=False, allow_blank=True)
     phone = serializers.CharField(required=False, allow_blank=True)
     skills = serializers.ListField(child=serializers.CharField(), required=False)
     experience = serializers.DictField(required=False)

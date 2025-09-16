@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createJob, getDepartments, createDepartment, type JobCreateData, type Department, type Job, type DepartmentCreateData } from '@/lib/api/jobs';
+import { createJob, updateJob, getDepartments, createDepartment, type JobCreateData, type Department, type Job, type DepartmentCreateData } from '@/lib/api/jobs';
 import { searchLocations, type Location } from '@/lib/api/locations';
 import { generateJobDescriptionWithAI } from '@/lib/api/claude';
 
@@ -290,9 +290,9 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
       };
 
       if (editingJob) {
-        // For now, we'll just simulate updating the job
+        const updatedJob = await updateJob(editingJob.id, jobData);
         alert('Job updated successfully!');
-        console.log('Updated job:', jobData);
+        console.log('Updated job:', updatedJob);
       } else {
         const createdJob = await createJob(jobData);
         alert('Job created successfully!');

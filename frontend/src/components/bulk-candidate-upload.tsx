@@ -117,7 +117,7 @@ export default function BulkCandidateUpload({ onClose, onCandidatesCreated }: Bu
           formData.append('file', file)
           
           const controller = new AbortController()
-          const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
+          const timeoutId = setTimeout(() => controller.abort(), 180000) // 3 minute timeout for PyTorch model
           
           const parseResponse = await fetch('http://localhost:8000/api/parse-resume/', {
             method: 'POST',
@@ -149,8 +149,8 @@ export default function BulkCandidateUpload({ onClose, onCandidatesCreated }: Bu
           if (error instanceof Error) {
             if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
               errorMessage = 'Backend server unavailable'
-            } else if (error.message.includes('AbortError')) {
-              errorMessage = 'Request timeout'
+            } else if (error.name === 'AbortError' || error.message.includes('AbortError') || error.message.includes('aborted')) {
+              errorMessage = 'Processing timeout (PyTorch model may be initializing on first run)'
             } else {
               errorMessage = error.message
             }
@@ -185,7 +185,7 @@ export default function BulkCandidateUpload({ onClose, onCandidatesCreated }: Bu
         })
 
         const createController = new AbortController()
-        const createTimeoutId = setTimeout(() => createController.abort(), 30000) // 30 second timeout
+        const createTimeoutId = setTimeout(() => createController.abort(), 60000) // 1 minute timeout for bulk create
         
         const createResponse = await fetch('http://localhost:8000/api/bulk-create-candidates/', {
           method: 'POST',

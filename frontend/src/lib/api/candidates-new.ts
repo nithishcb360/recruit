@@ -94,17 +94,32 @@ export const updateCandidate = async (id: number, candidateData: Partial<Candida
 }
 
 export const deleteCandidate = async (id: number): Promise<void> => {
-  const response = await fetch(`${API_BASE_URL}/candidates/${id}/`, {
+  // Add timestamp to prevent caching issues
+  const timestamp = new Date().getTime()
+  const url = `${API_BASE_URL}/candidates/${id}/?t=${timestamp}`
+
+  console.log(`Attempting to delete candidate ${id} from ${url}`)
+
+  const response = await fetch(url, {
     method: 'DELETE',
     headers: {
       'Content-Type': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest',
     },
     credentials: 'include',
+    mode: 'cors',
+    cache: 'no-store',
   })
-  
+
+  console.log(`Delete response: ${response.status} ${response.statusText}`)
+
   if (!response.ok) {
+    const responseText = await response.text().catch(() => 'Could not read response')
+    console.error(`DELETE request failed: ${response.status} ${response.statusText}`, responseText)
     throw new Error(`HTTP error! status: ${response.status}`)
   }
+
+  console.log('Delete successful')
 }
 
 export const getCandidateStatistics = async () => {
