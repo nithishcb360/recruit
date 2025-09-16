@@ -54,7 +54,10 @@
       "Bash(venv/Scripts/activate.bat)",
       "Bash(start-backend.bat)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(git rm:*)",
+      "Bash(git push:*)",
+      "Bash(git filter-branch:*)"
     ],
     "deny": [],
     "ask": []
