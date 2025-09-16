@@ -70,6 +70,8 @@ interface OrganizationSettings {
     phone: string
     timezone: string
     locale: string
+    aiProvider: string
+    aiApiKey: string
   }
   security: {
     mfaRequired: boolean
@@ -284,7 +286,9 @@ export default function ClientOrganizationSettings() {
       contactEmail: "hr@acmecorp.com",
       phone: "+1 (555) 123-4567",
       timezone: "America/Los_Angeles",
-      locale: "en-US"
+      locale: "en-US",
+      aiProvider: "anthropic",
+      aiApiKey: ""
     },
     security: {
       mfaRequired: true,
@@ -1007,14 +1011,14 @@ export default function ClientOrganizationSettings() {
                       <SelectTrigger>
                         <SelectValue placeholder="Select industry" />
                       </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Technology">Technology</SelectItem>
-                        <SelectItem value="Healthcare">Healthcare</SelectItem>
-                        <SelectItem value="Finance">Finance</SelectItem>
-                        <SelectItem value="Education">Education</SelectItem>
-                        <SelectItem value="Retail">Retail</SelectItem>
-                        <SelectItem value="Manufacturing">Manufacturing</SelectItem>
-                        <SelectItem value="Other">Other</SelectItem>
+                      <SelectContent className="bg-white border border-gray-200 shadow-lg z-50">
+                        <SelectItem value="Technology" className="text-black hover:bg-gray-100">Technology</SelectItem>
+                        <SelectItem value="Healthcare" className="text-black hover:bg-gray-100">Healthcare</SelectItem>
+                        <SelectItem value="Finance" className="text-black hover:bg-gray-100">Finance</SelectItem>
+                        <SelectItem value="Education" className="text-black hover:bg-gray-100">Education</SelectItem>
+                        <SelectItem value="Retail" className="text-black hover:bg-gray-100">Retail</SelectItem>
+                        <SelectItem value="Manufacturing" className="text-black hover:bg-gray-100">Manufacturing</SelectItem>
+                        <SelectItem value="Other" className="text-black hover:bg-gray-100">Other</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -1027,13 +1031,13 @@ export default function ClientOrganizationSettings() {
                       <SelectTrigger>
                         <SelectValue placeholder="Select size" />
                       </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1-10">1-10 employees</SelectItem>
-                        <SelectItem value="11-50">11-50 employees</SelectItem>
-                        <SelectItem value="51-200">51-200 employees</SelectItem>
-                        <SelectItem value="201-500">201-500 employees</SelectItem>
-                        <SelectItem value="501-1000">501-1000 employees</SelectItem>
-                        <SelectItem value="1000+">1000+ employees</SelectItem>
+                      <SelectContent className="bg-white border border-gray-200 shadow-lg z-50">
+                        <SelectItem value="1-10" className="text-black hover:bg-gray-100">1-10 employees</SelectItem>
+                        <SelectItem value="11-50" className="text-black hover:bg-gray-100">11-50 employees</SelectItem>
+                        <SelectItem value="51-200" className="text-black hover:bg-gray-100">51-200 employees</SelectItem>
+                        <SelectItem value="201-500" className="text-black hover:bg-gray-100">201-500 employees</SelectItem>
+                        <SelectItem value="501-1000" className="text-black hover:bg-gray-100">501-1000 employees</SelectItem>
+                        <SelectItem value="1000+" className="text-black hover:bg-gray-100">1000+ employees</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -1094,13 +1098,13 @@ export default function ClientOrganizationSettings() {
                       <SelectTrigger>
                         <SelectValue placeholder="Select timezone" />
                       </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="America/Los_Angeles">Pacific Time</SelectItem>
-                        <SelectItem value="America/Denver">Mountain Time</SelectItem>
-                        <SelectItem value="America/Chicago">Central Time</SelectItem>
-                        <SelectItem value="America/New_York">Eastern Time</SelectItem>
-                        <SelectItem value="Europe/London">GMT</SelectItem>
-                        <SelectItem value="Europe/Paris">CET</SelectItem>
+                      <SelectContent className="bg-white border border-gray-200 shadow-lg z-50">
+                        <SelectItem value="America/Los_Angeles" className="text-black hover:bg-gray-100">Pacific Time</SelectItem>
+                        <SelectItem value="America/Denver" className="text-black hover:bg-gray-100">Mountain Time</SelectItem>
+                        <SelectItem value="America/Chicago" className="text-black hover:bg-gray-100">Central Time</SelectItem>
+                        <SelectItem value="America/New_York" className="text-black hover:bg-gray-100">Eastern Time</SelectItem>
+                        <SelectItem value="Europe/London" className="text-black hover:bg-gray-100">GMT</SelectItem>
+                        <SelectItem value="Europe/Paris" className="text-black hover:bg-gray-100">CET</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -1113,14 +1117,81 @@ export default function ClientOrganizationSettings() {
                       <SelectTrigger>
                         <SelectValue placeholder="Select locale" />
                       </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="en-US">English (US)</SelectItem>
-                        <SelectItem value="en-GB">English (UK)</SelectItem>
-                        <SelectItem value="es-ES">Spanish</SelectItem>
-                        <SelectItem value="fr-FR">French</SelectItem>
-                        <SelectItem value="de-DE">German</SelectItem>
+                      <SelectContent className="bg-white border border-gray-200 shadow-lg z-50">
+                        <SelectItem value="en-US" className="text-black hover:bg-gray-100">English (US)</SelectItem>
+                        <SelectItem value="en-GB" className="text-black hover:bg-gray-100">English (UK)</SelectItem>
+                        <SelectItem value="es-ES" className="text-black hover:bg-gray-100">Spanish</SelectItem>
+                        <SelectItem value="fr-FR" className="text-black hover:bg-gray-100">French</SelectItem>
+                        <SelectItem value="de-DE" className="text-black hover:bg-gray-100">German</SelectItem>
                       </SelectContent>
                     </Select>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+          
+          {/* AI Configuration Card - Full Width */}
+          <div className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Zap className="h-5 w-5 mr-2" />
+                  AI Configuration
+                </CardTitle>
+                <CardDescription>Configure AI provider and API settings for job description generation</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>AI Provider</Label>
+                    <Select
+                      value={orgSettings.general.aiProvider}
+                      onValueChange={(value) => handleSettingsChange('general', 'aiProvider', value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select AI provider" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border border-gray-200 shadow-lg z-50">
+                        <SelectItem value="anthropic" className="text-black hover:bg-gray-100">Anthropic (Claude)</SelectItem>
+                        <SelectItem value="openai" className="text-black hover:bg-gray-100">OpenAI (GPT)</SelectItem>
+                        <SelectItem value="google" className="text-black hover:bg-gray-100">Google (Gemini)</SelectItem>
+                        <SelectItem value="azure" className="text-black hover:bg-gray-100">Azure OpenAI</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="ai-api-key">API Key</Label>
+                    <div className="relative">
+                      <Input
+                        id="ai-api-key"
+                        type="password"
+                        value={orgSettings.general.aiApiKey}
+                        onChange={(e) => handleSettingsChange('general', 'aiApiKey', e.target.value)}
+                        placeholder="Enter your API key"
+                      />
+                      <Key className="absolute right-3 top-3 h-4 w-4 text-gray-400" />
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      Your API key is encrypted and stored securely. It's used for AI-powered job description generation.
+                    </p>
+                  </div>
+                </div>
+                <div className="pt-2 border-t border-gray-100">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-600">Current Provider:</span>
+                    <Badge variant={orgSettings.general.aiProvider ? "default" : "secondary"}>
+                      {orgSettings.general.aiProvider ? 
+                        orgSettings.general.aiProvider.charAt(0).toUpperCase() + orgSettings.general.aiProvider.slice(1) : 
+                        "Not configured"
+                      }
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between text-sm mt-2">
+                    <span className="text-gray-600">API Key Status:</span>
+                    <Badge variant={orgSettings.general.aiApiKey ? "default" : "destructive"}>
+                      {orgSettings.general.aiApiKey ? "Configured" : "Not set"}
+                    </Badge>
                   </div>
                 </div>
               </CardContent>
@@ -1172,11 +1243,11 @@ export default function ClientOrganizationSettings() {
                       <SelectTrigger>
                         <SelectValue placeholder="Select SSO provider" />
                       </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="google">Google Workspace</SelectItem>
-                        <SelectItem value="microsoft">Microsoft 365</SelectItem>
-                        <SelectItem value="okta">Okta</SelectItem>
-                        <SelectItem value="saml">Custom SAML</SelectItem>
+                      <SelectContent className="bg-white border border-gray-200 shadow-lg z-50">
+                        <SelectItem value="google" className="text-black hover:bg-gray-100">Google Workspace</SelectItem>
+                        <SelectItem value="microsoft" className="text-black hover:bg-gray-100">Microsoft 365</SelectItem>
+                        <SelectItem value="okta" className="text-black hover:bg-gray-100">Okta</SelectItem>
+                        <SelectItem value="saml" className="text-black hover:bg-gray-100">Custom SAML</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -2079,11 +2150,11 @@ export default function ClientOrganizationSettings() {
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="admin">Admin</SelectItem>
-                    <SelectItem value="manager">Manager</SelectItem>
-                    <SelectItem value="user">User</SelectItem>
-                    <SelectItem value="viewer">Viewer</SelectItem>
+                  <SelectContent className="bg-white border border-gray-200 shadow-lg z-50">
+                    <SelectItem value="admin" className="text-black hover:bg-gray-100">Admin</SelectItem>
+                    <SelectItem value="manager" className="text-black hover:bg-gray-100">Manager</SelectItem>
+                    <SelectItem value="user" className="text-black hover:bg-gray-100">User</SelectItem>
+                    <SelectItem value="viewer" className="text-black hover:bg-gray-100">Viewer</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

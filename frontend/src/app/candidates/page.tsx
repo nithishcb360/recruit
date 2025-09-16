@@ -123,128 +123,92 @@ interface CandidatePipelineProps {
   selectedJobId?: number | null
 }
 
-// Job matching algorithm (adapted from screening page)
-const calculateJobMatchPercentage = (candidate: any, job: Job) => {
-  const baseRandomness = (candidate.id * 7 + job.id * 3) % 30 - 15
-  
-  // 1. Job Title Matching (30%)
-  let jobTitleScore = 70 + baseRandomness + Math.random() * 20
+// Enhanced job matching using backend semantic matching API
+const calculateJobMatchPercentage = async (candidate: any, job: Job) => {
+  try {
+    // Try to call backend semantic matching API
+    const response = await fetchWithTimeout(`http://localhost:8000/api/calculate-job-match/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        candidate_id: candidate.id,
+        job_id: job.id
+      })
+    }, 3000)
+
+    if (response.ok) {
+      const matchResult = await response.json()
+      const totalScore = Math.round(matchResult.match_score || 0)
+
+      // For UI consistency, create breakdown scores (estimated from total)
+      const baseScore = totalScore
+      return {
+        totalScore: baseScore,
+        jobTitleScore: Math.round(baseScore * 0.85), // Title gets high weight
+        departmentScore: Math.round(baseScore * 0.75), // Department moderate
+        experienceScore: Math.round(baseScore * 0.90), // Experience high weight
+        locationScore: 85 // Location assumed good for remote
+      }
+    }
+  } catch (error) {
+    console.log('Backend unavailable for semantic matching, using fallback algorithm')
+  }
+
+  // Fallback to simplified client-side matching if backend unavailable
   const candidateTitle = (candidate.current_position || "").toLowerCase()
   const jobTitle = job.title.toLowerCase()
-  
+
+  let baseScore = 50 // Default base score
+
+  // Simple title matching
   if (candidateTitle && jobTitle) {
     const titleWords = jobTitle.split(' ')
     const candidateTitleWords = candidateTitle.split(' ')
-    
+
     let titleMatches = 0
     titleWords.forEach(word => {
-      if (candidateTitleWords.some((cWord: string) => 
+      if (candidateTitleWords.some((cWord: string) =>
         cWord.includes(word) || word.includes(cWord) ||
-        (word.includes('senior') && cWord.includes('sr')) ||
-        (word.includes('junior') && cWord.includes('jr')) ||
         (word.includes('engineer') && cWord.includes('developer')) ||
         (word.includes('developer') && cWord.includes('engineer'))
       )) {
         titleMatches++
       }
     })
-    
+
     if (titleWords.length > 0) {
-      jobTitleScore = (titleMatches / titleWords.length) * 100
+      const titleMatchRatio = titleMatches / titleWords.length
+      baseScore = Math.round(30 + (titleMatchRatio * 40)) // 30-70 range
     }
   }
-  jobTitleScore = Math.max(0, Math.min(100, jobTitleScore))
 
-  // 2. Department Matching (25%)
-  let departmentScore = 75 + baseRandomness + Math.random() * 15
-  const candidateCompany = ""
-  const jobDepartment = job.department.name.toLowerCase()
-  
-  if (candidateCompany || candidateTitle) {
-    const candidateBackground = `${candidateCompany} ${candidateTitle}`.toLowerCase()
-    
-    const departmentKeywords: Record<string, string[]> = {
-      'engineering': ['engineer', 'developer', 'software', 'tech', 'programming', 'coding'],
-      'product': ['product', 'pm', 'manager', 'strategy', 'roadmap'],
-      'design': ['designer', 'ux', 'ui', 'creative', 'visual'],
-      'marketing': ['marketing', 'growth', 'campaign', 'brand', 'content'],
-      'sales': ['sales', 'business development', 'account', 'revenue'],
-      'hr': ['hr', 'human resources', 'talent', 'recruiting', 'people'],
-      'finance': ['finance', 'accounting', 'financial', 'budget', 'analyst']
-    }
-    
-    const relevantKeywords = departmentKeywords[jobDepartment] || []
-    let departmentMatches = 0
-    
-    relevantKeywords.forEach(keyword => {
-      if (candidateBackground.includes(keyword)) {
-        departmentMatches++
-      }
-    })
-    
-    if (relevantKeywords.length > 0) {
-      departmentScore = (departmentMatches / relevantKeywords.length) * 100
-    }
-  }
-  departmentScore = Math.max(0, Math.min(100, departmentScore))
-
-  // 3. Experience Range Matching (25%)
+  // Experience level adjustment
   const jobLevel = EXPERIENCE_LEVELS[job.experience_level as keyof typeof EXPERIENCE_LEVELS] || 3
   const candidateLevel = EXPERIENCE_LEVELS[candidate.experience_level as keyof typeof EXPERIENCE_LEVELS] || 3
   const levelDifference = Math.abs(jobLevel - candidateLevel)
-  
-  let experienceLevelMatch = 100
-  if (levelDifference === 1) experienceLevelMatch = 80
-  else if (levelDifference === 2) experienceLevelMatch = 60
-  else if (levelDifference === 3) experienceLevelMatch = 40
-  else if (levelDifference > 3) experienceLevelMatch = 20
 
-  const expectedYears = EXPERIENCE_YEARS_MAP[job.experience_level as keyof typeof EXPERIENCE_YEARS_MAP]
-  let experienceYearsMatch = 80 + baseRandomness
-  
-  if (candidate.experience_years !== null && expectedYears) {
-    if (candidate.experience_years >= expectedYears.min && candidate.experience_years <= expectedYears.max) {
-      experienceYearsMatch = 100
-    } else if (candidate.experience_years < expectedYears.min) {
-      experienceYearsMatch = Math.max(30, (candidate.experience_years / expectedYears.min) * 80)
-    } else if (candidate.experience_years > expectedYears.max) {
-      experienceYearsMatch = Math.max(70, 100 - ((candidate.experience_years - expectedYears.max) * 5))
-    }
+  if (levelDifference === 0) baseScore += 10
+  else if (levelDifference === 1) baseScore += 5
+  else if (levelDifference > 2) baseScore -= 10
+
+  // Technology stack mismatch penalties (simplified)
+  if (jobTitle.includes('.net') && candidateTitle.includes('frontend')) {
+    baseScore -= 20 // Frontend dev for .NET role
+  }
+  if (jobTitle.includes('devops') && candidateTitle.includes('frontend')) {
+    baseScore -= 25 // Frontend dev for DevOps role
   }
 
-  experienceYearsMatch = Math.max(0, Math.min(100, experienceYearsMatch))
-  const experienceScore = (experienceLevelMatch * 0.6 + experienceYearsMatch * 0.4)
-
-  // 4. Location Matching (20%)
-  let locationScore = 85 + baseRandomness + Math.random() * 10
-  const candidateLocation = (candidate.location || "").toLowerCase()
-  const jobLocation: string = "remote" // Default assumption
-  
-  if (candidateLocation) {
-    if (jobLocation === "remote" || candidateLocation.includes("remote")) {
-      locationScore = 100
-    } else if (candidateLocation.includes(jobLocation) || jobLocation.includes(candidateLocation)) {
-      locationScore = 95
-    } else {
-      locationScore = 70 + Math.random() * 20
-    }
-  }
-  locationScore = Math.max(0, Math.min(100, locationScore))
-
-  // Calculate total weighted score
-  const totalScore = Math.round(
-    jobTitleScore * 0.30 + 
-    departmentScore * 0.25 + 
-    experienceScore * 0.25 + 
-    locationScore * 0.20
-  )
+  const finalScore = Math.max(0, Math.min(100, baseScore))
 
   return {
-    totalScore,
-    jobTitleScore: Math.round(jobTitleScore),
-    departmentScore: Math.round(departmentScore),
-    experienceScore: Math.round(experienceScore),
-    locationScore: Math.round(locationScore)
+    totalScore: finalScore,
+    jobTitleScore: Math.round(finalScore * 0.85),
+    departmentScore: Math.round(finalScore * 0.75),
+    experienceScore: Math.round(finalScore * 0.90),
+    locationScore: 85
   }
 }
 
@@ -478,70 +442,116 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
   const stages = ["Available", "Applied", "Screening", "Interview", "Offer", "Hired", "Rejected"]
 
   // Calculate job match percentages for all active jobs
-  const candidatesWithJobMatch = React.useMemo(() => {
-    if (!jobs || jobs.length === 0) {
-      return candidates
-    }
-    
-    // Filter only active/open jobs
-    const activeJobs = jobs.filter(job => (job as any).status === 'active' || (job as any).status === 'open' || !(job as any).status)
-    
-    return candidates.map(candidate => {
-      const allMatches: Array<{jobId: number, jobTitle: string, matchPercentage: number}> = []
-      let bestMatch: {
-        jobId: number
-        jobTitle: string
-        matchPercentage: number
-        jobMatchDetails: {
-          jobTitleScore: number
-          departmentScore: number
-          experienceScore: number
-          locationScore: number
-        }
-      } | null = null
-      let bestScore = 0
-      
-      // Calculate match for all active jobs
-      activeJobs.forEach(job => {
-        const matchData = calculateJobMatchPercentage(candidate, job as any)
-        const match = {
-          jobId: job.id,
-          jobTitle: job.title,
-          matchPercentage: matchData.totalScore
-        }
-        allMatches.push(match)
-        
-        // Track best match
-        if (matchData.totalScore > bestScore) {
-          bestScore = matchData.totalScore
-          bestMatch = {
-            jobId: job.id,
-            jobTitle: job.title,
-            matchPercentage: matchData.totalScore,
+  const [candidatesWithJobMatch, setCandidatesWithJobMatch] = useState<Candidate[]>([])
+  const [isCalculatingMatches, setIsCalculatingMatches] = useState(false)
+
+  // Calculate matches when candidates or jobs change
+  React.useEffect(() => {
+    const calculateMatches = async () => {
+      if (!jobs || jobs.length === 0 || candidates.length === 0) {
+        setCandidatesWithJobMatch(candidates)
+        return
+      }
+
+      setIsCalculatingMatches(true)
+
+      // Include all jobs for matching (draft, active, open, etc.)
+      const activeJobs = jobs.filter(job => {
+        const status = (job as any).status?.toLowerCase()
+        // Include all jobs except archived/closed for matching purposes
+        return !status || !['archived', 'closed', 'cancelled'].includes(status)
+      })
+
+      console.log(`Found ${activeJobs.length} jobs for matching:`, activeJobs.map(j => `${j.id}:${j.title}(${(j as any).status})`))
+      console.log(`Calculating matches for ${candidates.length} candidates`)
+
+      const candidatesWithMatches = await Promise.all(
+        candidates.map(async (candidate) => {
+          const allMatches: Array<{jobId: number, jobTitle: string, matchPercentage: number}> = []
+          let bestMatch: {
+            jobId: number
+            jobTitle: string
+            matchPercentage: number
             jobMatchDetails: {
-              jobTitleScore: matchData.jobTitleScore,
-              departmentScore: matchData.departmentScore,
-              experienceScore: matchData.experienceScore,
-              locationScore: matchData.locationScore
+              jobTitleScore: number
+              departmentScore: number
+              experienceScore: number
+              locationScore: number
+            }
+          } | null = null
+          let bestScore = 0
+
+          // Calculate match for all active jobs
+          for (const job of activeJobs) {
+            try {
+              const matchData = await calculateJobMatchPercentage(candidate, job as any)
+              const match = {
+                jobId: job.id,
+                jobTitle: job.title,
+                matchPercentage: matchData.totalScore
+              }
+              allMatches.push(match)
+
+              console.log(`Match calculated: ${candidate.name} -> ${job.title}: ${matchData.totalScore}%`)
+
+              // Track best match
+              if (matchData.totalScore > bestScore) {
+                bestScore = matchData.totalScore
+                bestMatch = {
+                  jobId: job.id,
+                  jobTitle: job.title,
+                  matchPercentage: matchData.totalScore,
+                  jobMatchDetails: {
+                    jobTitleScore: matchData.jobTitleScore,
+                    departmentScore: matchData.departmentScore,
+                    experienceScore: matchData.experienceScore,
+                    locationScore: matchData.locationScore
+                  }
+                }
+              }
+            } catch (error) {
+              console.log(`Failed to calculate match for ${candidate.name} -> ${job.title}:`, error)
+              // Add fallback match with low score
+              allMatches.push({
+                jobId: job.id,
+                jobTitle: job.title,
+                matchPercentage: 25
+              })
             }
           }
-        }
-      })
-      
-      // Sort matches by percentage (highest first)
-      allMatches.sort((a, b) => b.matchPercentage - a.matchPercentage)
-      
-      return {
-        ...candidate,
-        bestJobMatch: bestMatch || undefined,
-        allJobMatches: allMatches,
-        progress: (bestMatch as any)?.matchPercentage ?? candidate.progress
-      }
-    })
+
+          console.log(`Candidate ${candidate.name} matches:`, allMatches)
+
+          // Sort matches by percentage (highest first)
+          allMatches.sort((a, b) => b.matchPercentage - a.matchPercentage)
+
+          return {
+            ...candidate,
+            bestJobMatch: bestMatch || undefined,
+            allJobMatches: allMatches,
+            progress: bestMatch?.matchPercentage ?? candidate.progress
+          }
+        })
+      )
+
+      setCandidatesWithJobMatch(candidatesWithMatches)
+      setIsCalculatingMatches(false)
+    }
+
+    calculateMatches()
   }, [candidates, jobs])
 
   // Get selected job for matching
   const selectedJob = filterJob && filterJob !== 'all' ? jobs.find(job => String(job.id) === filterJob) : null
+
+  // Debug selected job
+  React.useEffect(() => {
+    if (selectedJob) {
+      console.log('Selected job for matching:', selectedJob.title, 'ID:', selectedJob.id)
+    } else {
+      console.log('No job selected, filterJob:', filterJob)
+    }
+  }, [selectedJob, filterJob])
 
   // Enhanced filtering - ALWAYS SHOW ALL CANDIDATES but sort by job match
   const filteredAndSortedCandidates = candidatesWithJobMatch.filter((candidate) => {
@@ -569,21 +579,43 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
     return matchesSearch && matchesStage && matchesRating
   })
   
-  // If a job is selected, add match percentages and sort by match score
+  // If a job is selected, use pre-calculated matches or calculate on-demand
   .map(candidate => {
     if (selectedJob) {
-      const matchData = calculateJobMatchPercentage(candidate, selectedJob as any)
-      return {
-        ...candidate,
-        selectedJobMatch: {
-          jobId: selectedJob.id,
-          jobTitle: selectedJob.title,
-          matchPercentage: matchData.totalScore,
-          jobMatchDetails: {
-            jobTitleScore: matchData.jobTitleScore,
-            departmentScore: matchData.departmentScore,
-            experienceScore: matchData.experienceScore,
-            locationScore: matchData.locationScore
+      // Try to find existing match from pre-calculated matches
+      const existingMatch = candidate.allJobMatches?.find(match => match.jobId === selectedJob.id)
+
+      if (existingMatch) {
+        return {
+          ...candidate,
+          selectedJobMatch: {
+            jobId: selectedJob.id,
+            jobTitle: selectedJob.title,
+            matchPercentage: existingMatch.matchPercentage,
+            jobMatchDetails: {
+              jobTitleScore: Math.round(existingMatch.matchPercentage * 0.85),
+              departmentScore: Math.round(existingMatch.matchPercentage * 0.75),
+              experienceScore: Math.round(existingMatch.matchPercentage * 0.90),
+              locationScore: 85
+            }
+          }
+        }
+      } else {
+        // If no pre-calculated match exists, create a placeholder that will be calculated
+        console.log(`⚠️ No pre-calculated match found for candidate ${candidate.name} and job ${selectedJob.title}`)
+        console.log(`Available matches for ${candidate.name}:`, candidate.allJobMatches?.map(m => `${m.jobId}:${m.jobTitle}`) || 'none')
+        return {
+          ...candidate,
+          selectedJobMatch: {
+            jobId: selectedJob.id,
+            jobTitle: selectedJob.title,
+            matchPercentage: 0, // Will be updated once calculation completes
+            jobMatchDetails: {
+              jobTitleScore: 0,
+              departmentScore: 0,
+              experienceScore: 0,
+              locationScore: 0
+            }
           }
         }
       }
@@ -1049,17 +1081,17 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
                         <div className="flex flex-col w-full">
                           <div className="flex items-center justify-between">
                             <span className="font-medium">{job.title}</span>
-                            {avgMatch > 0 && (
+                            {/* {avgMatch > 0 && (
                               <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full ml-2">
                                 {avgMatch}% avg
                               </span>
-                            )}
+                            )} */}
                           </div>
-                          {candidateCount > 0 && (
+                          {/* {candidateCount > 0 && (
                             <span className="text-xs text-gray-500 mt-1">
                               {candidateCount} matching candidate{candidateCount !== 1 ? 's' : ''}
                             </span>
-                          )}
+                          )} */}
                         </div>
                       </SelectItem>
                     )
@@ -1165,10 +1197,12 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
 
       <Card className="shadow-sm">
         <CardContent className="p-0">
-          {isLoading ? (
+          {isLoading || isCalculatingMatches ? (
             <div className="flex justify-center items-center py-8">
               <Loader2 className="h-8 w-8 animate-spin" />
-              <span className="ml-2 text-black">Loading candidates...</span>
+              <span className="ml-2 text-black">
+                {isLoading ? "Loading candidates..." : "Calculating job matches..."}
+              </span>
             </div>
           ) : filteredAndSortedCandidates.length === 0 ? (
             <div className="text-center text-gray-600 py-8">

@@ -19,5 +19,9 @@ urlpatterns = [
     path('candidates/<int:candidate_id>/resume/', views.view_resume, name='view-resume'),
     path('generate-job-titles/', views.generate_job_titles, name='generate-job-titles'),
     path('update-candidate-experience/', views.update_candidate_experience, name='update-candidate-experience'),
+    # Semantic job matching endpoints
+    path('calculate-job-match/', views.calculate_job_match, name='calculate-job-match'),
+    path('candidates/<int:candidate_id>/matching-jobs/', views.find_matching_jobs, name='find-matching-jobs'),
+    path('jobs/<int:job_id>/matching-candidates/', views.find_matching_candidates, name='find-matching-candidates'),
     path('', include(router.urls)),
 ]
