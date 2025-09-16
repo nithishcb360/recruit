@@ -78,27 +78,27 @@ class EnhancedExperienceExtractor:
         # Date range patterns for employment history
         self.date_patterns = [
             # Year ranges
-            r'(\d{4})\s*[-]\s*(\d{4})',  # 2019-2023
-            r'(\d{4})\s*[-]\s*(?:present|current|now)',  # 2019-Present
+            r'(\d{4})\s*[-–—]\s*(\d{4})',  # 2019-2023, 2019–2023, 2019—2023
+            r'(\d{4})\s*[-–—]\s*(?:present|current|now)',  # 2019-Present
             
             # Month-Year ranges
-            r'(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s*(\d{4})\s*[-]\s*(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s*(\d{4})',
-            r'(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s*(\d{4})\s*[-]\s*(?:present|current|now)',
+            r'(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s*(\d{4})\s*[-–—]\s*(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s*(\d{4})',
+            r'(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s*(\d{4})\s*[-–—]\s*(?:present|current|now)',
             
             # MM/YYYY format
-            r'(\d{1,2})/(\d{4})\s*[-]\s*(\d{1,2})/(\d{4})',
-            r'(\d{1,2})/(\d{4})\s*[-]\s*(?:present|current|now)',
+            r'(\d{1,2})/(\d{4})\s*[-–—]\s*(\d{1,2})/(\d{4})',
+            r'(\d{1,2})/(\d{4})\s*[-–—]\s*(?:present|current|now)',
             
             # MM-YYYY format  
-            r'(\d{1,2})-(\d{4})\s*[-]\s*(\d{1,2})-(\d{4})',
-            r'(\d{1,2})-(\d{4})\s*[-]\s*(?:present|current|now)',
+            r'(\d{1,2})-(\d{4})\s*[-–—]\s*(\d{1,2})-(\d{4})',
+            r'(\d{1,2})-(\d{4})\s*[-–—]\s*(?:present|current|now)',
         ]
         
         # Education graduation patterns
         self.graduation_patterns = [
             r'graduated\s*(?:in\s*)?(\d{4})',
             r'graduation\s*:?\s*(\d{4})',
-            r'(\d{4})\s*[-]\s*(\d{4})\s*.*(?:bachelor|master|degree|b\.?s\.?|b\.?a\.?|m\.?s\.?|m\.?a\.?)',
+            r'(\d{4})\s*[-–—]\s*(\d{4})\s*.*(?:bachelor|master|degree|b\.?s\.?|b\.?a\.?|m\.?s\.?|m\.?a\.?)',
             r'(?:bachelor|master|degree|b\.?s\.?|b\.?a\.?|m\.?s\.?|m\.?a\.?).*(\d{4})',
             r'class\s*of\s*(\d{4})',
             r'(\d{4})\s*graduate',

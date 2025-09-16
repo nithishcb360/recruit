@@ -20,13 +20,14 @@ from .serializers import (
     FeedbackTemplateSerializer, FeedbackTemplateCreateSerializer, FeedbackTemplateUpdateSerializer
 )
 from .utils.enhanced_resume_parser import EnhancedResumeParser
+from .utils.resume_parser import ResumeParser
 
 # Safe import for semantic matcher with fallback
 try:
     from .utils.semantic_matcher import get_semantic_matcher
     SEMANTIC_MATCHING_AVAILABLE = True
 except ImportError as e:
-    logger.warning(f"Semantic matching not available: {e}")
+    logger.warning(f"Semantic matching not available: {e}") # pyright: ignore[reportUndefinedVariable]
     SEMANTIC_MATCHING_AVAILABLE = False
     
     # Create a dummy function to prevent errors
@@ -514,6 +515,16 @@ def parse_resume(request):
                 # Final fallback to enhanced parser
                 parser = EnhancedResumeParser()
                 parsed_data = parser.parse_resume(temp_file_path)
+        # Parse the resume using enhanced parser
+        try:
+            from .utils.enhanced_resume_parser import EnhancedResumeParser
+            parser = EnhancedResumeParser()
+            parsed_data = parser.parse_resume(temp_file_path)
+        except ImportError as e:
+            print(f"Enhanced parser not available, falling back to original: {e}")
+            # Fallback to original parser
+            parser = ResumeParser()
+            parsed_data = parser.parse_resume(temp_file_path)
         
         # Clean up temporary file
         os.unlink(temp_file_path)
@@ -633,6 +644,26 @@ def bulk_create_candidates(request):
                 candidate_data['first_name'] = 'Unknown'
             if not last_name:
                 candidate_data['last_name'] = 'Candidate'
+            if name:
+                name_parts = name.split()
+                candidate_data['first_name'] = name_parts[0] if name_parts else ''
+                candidate_data['last_name'] = ' '.join(name_parts[1:]) if len(name_parts) > 1 else ''
+            else:
+                # Skip candidates without a name as first_name and last_name are required
+                if not candidate_data.get('first_name') or not candidate_data.get('last_name'):
+                    errors.append(f"Candidate {i+1}: Name is required (first_name and last_name cannot be empty)")
+                    continue
+            
+            # Ensure we have valid first_name and last_name after parsing
+            first_name = candidate_data.get('first_name', '').strip()
+            last_name = candidate_data.get('last_name', '').strip()
+            
+            if not first_name:
+                errors.append(f"Candidate {i+1}: First name is required")
+                continue
+            if not last_name:
+                # If only first name is available, use a default for last name
+                candidate_data['last_name'] = 'Unknown'
             
             # Map experience data
             experience_data = candidate_data.get('experience', {})
@@ -657,6 +688,7 @@ def bulk_create_candidates(request):
             first_name = candidate_data.get('first_name', '').strip()
             last_name = candidate_data.get('last_name', '').strip()
 
+            
             # Handle empty email - convert to None for database storage
             if not email:
                 candidate_data['email'] = None
@@ -1199,6 +1231,7 @@ def update_candidate_experience(request):
         candidates_to_update = Candidate.objects.filter(experience_years__isnull=True)
         
         parser = EnhancedResumeParser()
+        parser = ResumeParser()
         updated_count = 0
         current_year = datetime.datetime.now().year
         

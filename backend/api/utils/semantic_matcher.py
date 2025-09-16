@@ -40,7 +40,7 @@ class SemanticMatcher:
             logger.error(f"Failed to initialize semantic model: {e}")
             self.model = None
     
-    def generate_embedding(self, text: str) -> Optional[np.ndarray]:
+    def generate_embedding(self, text: str) -> Optional[np.ndarray]: # pyright: ignore[reportInvalidTypeForm]
         """
         Generate embedding vector for input text.
         
@@ -85,7 +85,7 @@ class SemanticMatcher:
             
         return text
     
-    def calculate_similarity(self, embedding1: np.ndarray, embedding2: np.ndarray) -> float:
+    def calculate_similarity(self, embedding1: np.ndarray, embedding2: np.ndarray) -> float: # pyright: ignore[reportInvalidTypeForm]
         """
         Calculate cosine similarity between two embeddings.
         
@@ -296,7 +296,7 @@ def get_semantic_matcher() -> SemanticMatcher:
 
 
 # Utility functions for easy use in views
-def generate_text_embedding(text: str) -> Optional[np.ndarray]:
+def generate_text_embedding(text: str) -> Optional[np.ndarray]: # pyright: ignore[reportInvalidTypeForm]
     """Generate embedding for text using global matcher."""
     return semantic_matcher.generate_embedding(text)
 
@@ -988,4 +988,5 @@ def get_semantic_matcher() -> SemanticJobMatcher:
 def clear_semantic_matching_cache():
     """Clear semantic matching cache for testing."""
     matcher = get_semantic_matcher()
+    matcher.clear_caches()
     matcher.clear_caches()

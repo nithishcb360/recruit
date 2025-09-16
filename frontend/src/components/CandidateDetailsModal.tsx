@@ -41,14 +41,6 @@ interface Candidate {
   feedbackSummary: string
   progress: number
   resumeText?: string
-  // Additional fields from backend
-  skills?: string[]
-  education?: string[]
-  certifications?: string[]
-  experience_years?: number
-  experience_level?: string
-  current_position?: string
-  current_company?: string
   // Enhanced job matching fields
   bestJobMatch?: {
     jobId: number
@@ -114,21 +106,6 @@ const getInitials = (name: string) => {
     .slice(0, 2)
 }
 
-const formatExperience = (experienceValue: number | string) => {
-  if (!experienceValue) return '0 years'
-
-  const numValue = typeof experienceValue === 'string' ? parseFloat(experienceValue) : experienceValue
-
-  if (numValue < 1) {
-    const months = Math.round(numValue * 12)
-    return months === 1 ? '1 month' : `${months} months`
-  } else if (numValue === 1) {
-    return '1 year'
-  } else {
-    return `${numValue} years`
-  }
-}
-
 export default function CandidateDetailsModal({ isOpen, onClose, candidate }: CandidateDetailsModalProps) {
   if (!candidate) return null
 
@@ -160,6 +137,10 @@ export default function CandidateDetailsModal({ isOpen, onClose, candidate }: Ca
               <h2 className="text-2xl font-bold text-gray-900 mb-2">{candidate.name}</h2>
               <div className="flex items-center gap-4 mb-4">
                 <Badge className={getStageColor(candidate.stage)}>{candidate.stage}</Badge>
+                <div className="flex items-center gap-1">
+                  {renderStars(candidate.rating)}
+                  <span className="ml-2 text-sm text-gray-600">({candidate.rating}/5)</span>
+                </div>
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -197,7 +178,7 @@ export default function CandidateDetailsModal({ isOpen, onClose, candidate }: Ca
               <div className="space-y-3">
                 <div className="flex justify-between">
                   <span className="text-gray-700">Total Experience:</span>
-                  <span className="font-medium text-gray-900">{formatExperience(candidate.totalExperience || candidate.experience_years || 0)}</span>
+                  <span className="font-medium text-gray-900">{candidate.totalExperience || candidate.experience_years || 0} years</span>
                 </div>
                 {candidate.experience_level && (
                   <div className="flex justify-between">
@@ -209,12 +190,6 @@ export default function CandidateDetailsModal({ isOpen, onClose, candidate }: Ca
                   <div>
                     <span className="text-gray-700">Current Position:</span>
                     <p className="font-medium mt-1 text-gray-900">{candidate.current_position}</p>
-                  </div>
-                )}
-                {candidate.current_company && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-700">Current Company:</span>
-                    <span className="font-medium text-gray-900">{candidate.current_company}</span>
                   </div>
                 )}
               </div>
@@ -234,40 +209,6 @@ export default function CandidateDetailsModal({ isOpen, onClose, candidate }: Ca
                   <Badge key={index} variant="secondary" className="bg-blue-100 text-blue-800">
                     {skill}
                   </Badge>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Education */}
-          {candidate.education && candidate.education.length > 0 && (
-            <div className="bg-white border rounded-lg p-4">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                <GraduationCap className="w-5 h-5 mr-2" />
-                Education
-              </h3>
-              <div className="space-y-2">
-                {candidate.education.map((edu, index) => (
-                  <div key={index} className="text-gray-900">
-                    {edu}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Certifications */}
-          {candidate.certifications && candidate.certifications.length > 0 && (
-            <div className="bg-white border rounded-lg p-4">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                <GraduationCap className="w-5 h-5 mr-2" />
-                Certifications
-              </h3>
-              <div className="space-y-2">
-                {candidate.certifications.map((cert, index) => (
-                  <div key={index} className="text-gray-900">
-                    {cert}
-                  </div>
                 ))}
               </div>
             </div>

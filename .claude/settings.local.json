@@ -52,14 +52,7 @@
       "Bash(npm uninstall:*)",
       "Bash(pip.exe install:*)",
       "Bash(venv/Scripts/activate.bat)",
-      "Bash(start-backend.bat)",
-      "Bash(venv/Scripts/pip.exe install:*)",
-      "Bash(backendvenvScriptspip.exe install torch transformers)",
-      "Bash(backend/venv/Scripts/pip.exe install torch transformers)",
-      "Bash(git add:*)",
-      "Bash(git commit:*)",
-      "Bash(git push:*)",
-      "Bash(git pull:*)"
+      "Bash(start-backend.bat)"
     ],
     "deny": [],
     "ask": []
