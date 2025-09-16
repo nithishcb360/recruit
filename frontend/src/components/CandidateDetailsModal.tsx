@@ -178,7 +178,12 @@ export default function CandidateDetailsModal({ isOpen, onClose, candidate }: Ca
               <div className="space-y-3">
                 <div className="flex justify-between">
                   <span className="text-gray-700">Total Experience:</span>
-                  <span className="font-medium text-gray-900">{candidate.totalExperience || candidate.experience_years || 0} years</span>
+                  <span className="font-medium text-gray-900">
+                    {candidate.totalExperience || candidate.experience_years ?
+                      `${candidate.totalExperience || candidate.experience_years} years` :
+                      'Not specified'
+                    }
+                  </span>
                 </div>
                 {candidate.experience_level && (
                   <div className="flex justify-between">

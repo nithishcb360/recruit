@@ -78,7 +78,7 @@ class SimpleComprehensiveParser:
             return {'error': f'Error parsing resume: {str(e)}'}
 
     def _extract_text_from_file(self, file_path: str) -> str:
-        """Extract text from file"""
+        """Extract text from file with Unicode handling"""
         try:
             if file_path.lower().endswith('.pdf') and PDF_AVAILABLE:
                 text = ""
@@ -87,20 +87,55 @@ class SimpleComprehensiveParser:
                         page_text = page.extract_text()
                         if page_text:
                             text += page_text + "\n"
-                return text
+                return self._clean_unicode_text(text)
 
             elif file_path.lower().endswith('.docx') and DOCX_AVAILABLE:
                 doc = Document(file_path)
-                return '\n'.join([para.text for para in doc.paragraphs])
+                text = '\n'.join([para.text for para in doc.paragraphs])
+                return self._clean_unicode_text(text)
 
             else:
                 # Try to read as text file
                 with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                    return f.read()
+                    text = f.read()
+                return self._clean_unicode_text(text)
 
         except Exception as e:
             print(f"Text extraction error: {e}")
             return ""
+
+    def _clean_unicode_text(self, text: str) -> str:
+        """Clean text from problematic Unicode characters"""
+        if not text:
+            return ""
+
+        try:
+            # Replace problematic Unicode characters with safe alternatives
+            replacements = {
+                '\U0001f4de': 'phone',  # 📞 phone emoji
+                '\U0001f4e7': 'email',  # 📧 email emoji
+                '\U0001f4cd': '',       # 📍 location emoji
+                '\U0001f310': '',       # 🌐 globe emoji
+                '\U0001f517': '',       # 🔗 link emoji
+                '\u2022': '•',          # bullet point
+                '\u2013': '-',          # en dash
+                '\u2014': '-',          # em dash
+                '\u2019': "'",          # right single quotation mark
+                '\u201c': '"',          # left double quotation mark
+                '\u201d': '"',          # right double quotation mark
+            }
+
+            for old, new in replacements.items():
+                text = text.replace(old, new)
+
+            # Remove any remaining non-printable characters but keep newlines and tabs
+            text = ''.join(char for char in text if char.isprintable() or char in '\n\t\r ')
+
+            return text.strip()
+        except Exception as e:
+            print(f"Unicode cleaning error: {e}")
+            # Fallback: encode to ASCII and ignore errors
+            return text.encode('ascii', errors='ignore').decode('ascii')
 
     def _extract_name(self, text: str) -> str:
         """Extract name from first few lines"""
@@ -115,9 +150,20 @@ class SimpleComprehensiveParser:
         return ""
 
     def _extract_email(self, text: str) -> str:
-        """Extract email"""
+        """Extract email with better validation"""
         emails = self.email_pattern.findall(text)
-        return emails[0] if emails else ""
+        if emails:
+            # Take the first email and clean it from any surrounding text
+            email = emails[0].strip()
+            # Remove any trailing non-email characters (like |GitHub|LinkedIn)
+            if '|' in email:
+                email = email.split('|')[0].strip()
+            if ' ' in email:
+                email = email.split(' ')[0].strip()
+            # Validate that it's still a proper email
+            if '@' in email and '.' in email.split('@')[1]:
+                return email
+        return ""
 
     def _extract_phone(self, text: str) -> str:
         """Extract phone"""
@@ -293,14 +339,38 @@ class SimpleComprehensiveParser:
         return []
 
     def _extract_linkedin(self, text: str) -> str:
-        """Extract LinkedIn URL"""
+        """Extract LinkedIn URL with validation"""
         matches = self.linkedin_pattern.findall(text)
-        return matches[0] if matches else ""
+        if matches:
+            url = matches[0]
+            # Ensure it starts with http
+            if not url.startswith('http'):
+                url = 'https://' + url
+            return url
+
+        # Also look for linkedin.com/in/ patterns without full URL
+        simple_pattern = re.search(r'linkedin\.com/in/[a-zA-Z0-9\-_]+', text, re.IGNORECASE)
+        if simple_pattern:
+            return 'https://' + simple_pattern.group(0)
+
+        return ""
 
     def _extract_github(self, text: str) -> str:
-        """Extract GitHub URL"""
+        """Extract GitHub URL with validation"""
         matches = self.github_pattern.findall(text)
-        return matches[0] if matches else ""
+        if matches:
+            url = matches[0]
+            # Ensure it starts with http
+            if not url.startswith('http'):
+                url = 'https://' + url
+            return url
+
+        # Also look for github.com/ patterns without full URL
+        simple_pattern = re.search(r'github\.com/[a-zA-Z0-9\-_]+', text, re.IGNORECASE)
+        if simple_pattern:
+            return 'https://' + simple_pattern.group(0)
+
+        return ""
 
     def _extract_portfolio(self, text: str) -> str:
         """Extract portfolio URL"""

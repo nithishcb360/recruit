@@ -688,7 +688,7 @@ class EnhancedResumeParser:
 
         for skill in self.technical_skills:
             if skill.lower() in text_lower:
-                found_skills.append(self._format_skill(skill))
+                found_skills.append(self._format_skill_name(skill))
 
         return list(set(found_skills))  # Remove duplicates
 

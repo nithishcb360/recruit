@@ -44,7 +44,7 @@ export default function JobMatchingModal({ isOpen, onClose, job }: JobMatchingMo
   }
 
   const formatExperience = (experienceValue: number | string) => {
-    if (!experienceValue) return '0 years'
+    if (!experienceValue) return 'Not specified'
     const numValue = typeof experienceValue === 'string' ? parseFloat(experienceValue) : experienceValue
     if (numValue < 1) {
       const months = Math.round(numValue * 12)

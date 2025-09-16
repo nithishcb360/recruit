@@ -149,7 +149,7 @@ class JobListSerializer(serializers.ModelSerializer):
 class CandidateSerializer(serializers.ModelSerializer):
     full_name = serializers.ReadOnlyField()
     name = serializers.SerializerMethodField()  # For frontend compatibility
-    
+
     class Meta:
         model = Candidate
         fields = [
@@ -157,9 +157,12 @@ class CandidateSerializer(serializers.ModelSerializer):
             'resume_file', 'resume_text', 'skills', 'experience_years', 'experience_level',
             'education', 'certifications', 'current_company', 'current_position',
             'salary_expectation', 'availability', 'status', 'source', 'rating',
+            'summary', 'projects', 'work_experience', 'languages', 'achievements',
+            'linkedin_url', 'github_url', 'portfolio_url', 'visa_status',
+            'preferred_location', 'notice_period',
             'created_at', 'updated_at'
         ]
-    
+
     def get_name(self, obj):
         """Return full name for frontend compatibility"""
         return f"{obj.first_name} {obj.last_name}".strip()
@@ -168,21 +171,53 @@ class CandidateSerializer(serializers.ModelSerializer):
 class CandidateCreateSerializer(serializers.ModelSerializer):
     # Make email optional and allow blank values and null
     email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
-    
+
+    # Comprehensive fields with defaults
+    summary = serializers.CharField(required=False, allow_blank=True, default='')
+    projects = serializers.ListField(required=False, default=list)
+    work_experience = serializers.ListField(required=False, default=list)
+    languages = serializers.ListField(required=False, default=list)
+    achievements = serializers.ListField(required=False, default=list)
+    linkedin_url = serializers.URLField(required=False, allow_blank=True, default='')
+    github_url = serializers.URLField(required=False, allow_blank=True, default='')
+    portfolio_url = serializers.URLField(required=False, allow_blank=True, default='')
+    visa_status = serializers.CharField(required=False, allow_blank=True, default='')
+    preferred_location = serializers.CharField(required=False, allow_blank=True, default='')
+    notice_period = serializers.CharField(required=False, allow_blank=True, default='')
+
     class Meta:
         model = Candidate
         fields = [
             'first_name', 'last_name', 'email', 'phone', 'location',
             'resume_file', 'skills', 'experience_years', 'experience_level',
             'education', 'certifications', 'current_company', 'current_position',
-            'salary_expectation', 'availability', 'source'
+            'salary_expectation', 'availability', 'source',
+            'summary', 'projects', 'work_experience', 'languages', 'achievements',
+            'linkedin_url', 'github_url', 'portfolio_url', 'visa_status',
+            'preferred_location', 'notice_period'
         ]
-    
+
     def validate_email(self, value):
         """Handle empty email validation"""
         if value == '' or value is None:
             return None  # Convert empty string or None to None
         return value
+
+    def create(self, validated_data):
+        """Create candidate with proper default values"""
+        # Ensure all list fields have default values
+        list_fields = ['skills', 'education', 'certifications', 'projects', 'work_experience', 'languages', 'achievements']
+        for field in list_fields:
+            if field not in validated_data or validated_data[field] is None:
+                validated_data[field] = []
+
+        # Ensure string fields have default values
+        string_fields = ['summary', 'linkedin_url', 'github_url', 'portfolio_url', 'visa_status', 'preferred_location', 'notice_period']
+        for field in string_fields:
+            if field not in validated_data or validated_data[field] is None:
+                validated_data[field] = ''
+
+        return super().create(validated_data)
 
 
 class CandidateListSerializer(serializers.ModelSerializer):
@@ -249,16 +284,44 @@ class JobApplicationSerializer(serializers.ModelSerializer):
 
 
 class ResumeParseSerializer(serializers.Serializer):
-    """Serializer for resume parsing results"""
+    """Comprehensive serializer for resume parsing results"""
+    # Basic information
     name = serializers.CharField(required=False, allow_blank=True)
     email = serializers.EmailField(required=False, allow_blank=True)
     phone = serializers.CharField(required=False, allow_blank=True)
-    skills = serializers.ListField(child=serializers.CharField(), required=False)
-    experience = serializers.DictField(required=False)
-    education = serializers.ListField(child=serializers.CharField(), required=False)
+    location = serializers.CharField(required=False, allow_blank=True)
+
+    # Professional information
+    summary = serializers.CharField(required=False, allow_blank=True)
     current_position = serializers.CharField(required=False, allow_blank=True)
     current_company = serializers.CharField(required=False, allow_blank=True)
+    experience_years = serializers.IntegerField(required=False, allow_null=True)
+
+    # Skills and qualifications
+    skills = serializers.ListField(child=serializers.CharField(), required=False)
+    education = serializers.ListField(required=False)
+    certifications = serializers.ListField(child=serializers.CharField(), required=False)
+    languages = serializers.ListField(child=serializers.CharField(), required=False)
+
+    # Detailed experience and projects
+    work_experience = serializers.ListField(required=False)
+    projects = serializers.ListField(required=False)
+    achievements = serializers.ListField(child=serializers.CharField(), required=False)
+
+    # Social profiles and links
+    linkedin_url = serializers.URLField(required=False, allow_blank=True)
+    github_url = serializers.URLField(required=False, allow_blank=True)
+    portfolio_url = serializers.URLField(required=False, allow_blank=True)
+
+    # Work authorization and availability
+    visa_status = serializers.CharField(required=False, allow_blank=True)
+    notice_period = serializers.CharField(required=False, allow_blank=True)
+
+    # Raw data
     text = serializers.CharField(required=False, allow_blank=True)
+
+    # Backward compatibility
+    experience = serializers.DictField(required=False)
 
 
 class FeedbackTemplateSerializer(serializers.ModelSerializer):

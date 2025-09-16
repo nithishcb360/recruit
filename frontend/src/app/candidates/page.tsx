@@ -951,23 +951,23 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
     }
 
     try {
-      // Update candidate status in backend to 'screening' - this makes the change permanent
-      console.log('Updating candidate status to screening in database...')
+      // DELETE candidate from database when moving to screening to prevent "already exists" errors
+      console.log('Deleting candidate from database when moving to screening...')
       const response = await fetchWithTimeout(`http://localhost:8000/api/candidates/${candidate.id}/`, {
-        method: 'PATCH',
+        method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
+          'X-CSRFToken': '', // Empty CSRF token for exempted views
         },
-        body: JSON.stringify({
-          status: 'screening'
-        })
+        credentials: 'include'
       }, 5000)
 
       if (!response.ok) {
-        throw new Error(`Failed to update candidate status: ${response.status}`)
+        const errorText = await response.text()
+        throw new Error(`Failed to delete candidate: ${response.status} - ${errorText}`)
       }
 
-      console.log('Candidate status successfully updated to screening')
+      console.log('Candidate successfully deleted from database')
 
       // Prepare parsed resume data to pass to screening
       const candidateData = {
@@ -1004,7 +1004,7 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
       
       toast({
         title: "Moved to Screening",
-        description: `${candidate.name} has been permanently moved to screening for ${jobMatch.jobTitle}.`,
+        description: `${candidate.name} has been removed from candidate list and moved to screening for ${jobMatch.jobTitle}.`,
         variant: "default"
       })
 
@@ -1214,7 +1214,6 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
                 <thead>
                   <tr className="border-b bg-gray-50">
                     <th className="text-left p-4 font-semibold text-gray-900">Name</th>
-                    <th className="text-left p-4 font-semibold text-gray-900">Job Title</th>
                     {selectedJob && (
                       <th className="text-center p-4 font-semibold text-gray-900">
                         Match Score for {selectedJob.title}
@@ -1230,26 +1229,6 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
                         <div className="flex flex-col">
                           <span className="font-medium text-gray-900">{candidate.name}</span>
                           <span className="text-sm text-gray-600">{candidate.email}</span>
-                          {candidate.location && (
-                            <span className="text-xs text-gray-500">{candidate.location}</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div className="flex flex-col">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium text-gray-900">
-                              {candidate.current_position || 'Position not specified'}
-                            </span>
-                            {candidate.selectedJobMatch && (
-                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                {candidate.selectedJobMatch.matchPercentage}% match
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-xs text-gray-500">
-                            {candidate.totalExperience || candidate.experience_years || 0} years experience
-                          </span>
                         </div>
                       </td>
                       {selectedJob && (
@@ -1315,10 +1294,15 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
                             variant="outline"
                             size="sm"
                             onClick={() => handleDeleteCandidate(candidate.id)}
-                            className="text-white bg-red-600 hover:bg-red-700 border-red-600 p-2"
+                            disabled={isActionLoading === candidate.id}
+                            className="text-white bg-red-600 hover:bg-red-700 border-red-600 p-2 disabled:opacity-50 disabled:cursor-not-allowed"
                             title="Delete Candidate"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            {isActionLoading === candidate.id ? (
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
                           </Button>
                         </div>
                       </td>

@@ -344,7 +344,6 @@ class JobViewSet(viewsets.ModelViewSet):
         return Response(stats)
 
 
-@method_decorator(csrf_exempt, name='dispatch')
 class CandidateViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing candidates with full CRUD operations
@@ -356,7 +355,11 @@ class CandidateViewSet(viewsets.ModelViewSet):
     search_fields = ['first_name', 'last_name', 'email', 'current_company', 'skills']
     ordering_fields = ['created_at', 'updated_at', 'first_name', 'last_name']
     ordering = ['-created_at']
-    
+
+    def destroy(self, request, *args, **kwargs):
+        """Delete a candidate"""
+        return super().destroy(request, *args, **kwargs)
+
     def get_serializer_class(self):
         """Return appropriate serializer based on action"""
         if self.action == 'create':
@@ -497,34 +500,26 @@ def parse_resume(request):
                 temp_file.write(chunk)
             temp_file_path = temp_file.name
         
-        # Parse the resume using PyTorch parser
+        # Parse the resume using comprehensive parser (lightweight, no ML dependencies)
         try:
-            from .utils.pytorch_resume_parser import PyTorchResumeParser
-            parser = PyTorchResumeParser()
+            from .utils.simple_comprehensive_parser import SimpleComprehensiveParser
+            parser = SimpleComprehensiveParser()
             parsed_data = parser.parse_resume(temp_file_path, uploaded_file.name)
-            print(f"Using PyTorch parser for: {uploaded_file.name}")
-        except ImportError as e:
-            print(f"PyTorch parser not available, falling back to enhanced parser: {e}")
+            print(f"Using comprehensive parser for: {uploaded_file.name}")
+        except Exception as e:
+            print(f"Comprehensive parser error, falling back to enhanced parser: {e}")
             # Fallback to enhanced parser
             try:
                 from .utils.enhanced_resume_parser import EnhancedResumeParser
                 parser = EnhancedResumeParser()
                 parsed_data = parser.parse_resume(temp_file_path, uploaded_file.name)
-            except ImportError as e2:
-                print(f"Enhanced parser not available, falling back to original: {e2}")
-                # Final fallback to enhanced parser
-                parser = EnhancedResumeParser()
+                print(f"Using enhanced parser for: {uploaded_file.name}")
+            except Exception as e2:
+                print(f"Enhanced parser error, falling back to basic parser: {e2}")
+                # Final fallback to basic parser
+                from .utils.resume_parser import ResumeParser
+                parser = ResumeParser()
                 parsed_data = parser.parse_resume(temp_file_path)
-        # Parse the resume using enhanced parser
-        try:
-            from .utils.enhanced_resume_parser import EnhancedResumeParser
-            parser = EnhancedResumeParser()
-            parsed_data = parser.parse_resume(temp_file_path)
-        except ImportError as e:
-            print(f"Enhanced parser not available, falling back to original: {e}")
-            # Fallback to original parser
-            parser = ResumeParser()
-            parsed_data = parser.parse_resume(temp_file_path)
         
         # Clean up temporary file
         os.unlink(temp_file_path)
@@ -709,24 +704,49 @@ def bulk_create_candidates(request):
                 # Check for email duplicates only if email is provided
                 existing_candidate = Candidate.objects.filter(email__iexact=email).first()
                 if existing_candidate:
-                    errors.append(f"Candidate {i+1}: Email '{email}' already exists")
-                    continue
-            
-            if first_name and last_name:
+                    # Update existing candidate instead of rejecting
+                    resume_file_path = candidate_data.get('resume_file_path')
+                    serializer = CandidateCreateSerializer(existing_candidate, data=candidate_data, partial=True)
+                    if serializer.is_valid():
+                        candidate = serializer.save()
+                        # Set resume file path after candidate update if available
+                        if resume_file_path:
+                            candidate.resume_file = resume_file_path
+                            candidate.save()
+                        created_candidates.append(candidate)
+                        continue
+                    else:
+                        errors.append(f"Candidate {i+1}: Error updating existing candidate with email '{email}': {serializer.errors}")
+                        continue
+
+            # Check for name duplicates only if no email provided
+            if not email and first_name and last_name:
                 existing_candidate = Candidate.objects.filter(
-                    first_name__iexact=first_name, 
+                    first_name__iexact=first_name,
                     last_name__iexact=last_name
                 ).first()
                 if existing_candidate:
-                    errors.append(f"Candidate {i+1}: Name '{first_name} {last_name}' already exists")
-                    continue
+                    # Update existing candidate instead of rejecting
+                    resume_file_path = candidate_data.get('resume_file_path')
+                    serializer = CandidateCreateSerializer(existing_candidate, data=candidate_data, partial=True)
+                    if serializer.is_valid():
+                        candidate = serializer.save()
+                        # Set resume file path after candidate update if available
+                        if resume_file_path:
+                            candidate.resume_file = resume_file_path
+                            candidate.save()
+                        created_candidates.append(candidate)
+                        continue
+                    else:
+                        errors.append(f"Candidate {i+1}: Error updating existing candidate '{first_name} {last_name}': {serializer.errors}")
+                        continue
             
             # Handle resume file path if present
             resume_file_path = candidate_data.get('resume_file_path')
             if resume_file_path:
                 # Remove file-related fields from candidate_data as we'll set them after creation
                 candidate_data.pop('resume_file_path', None)
-                candidate_data.pop('resume_file_url', None) 
+                candidate_data.pop('resume_file_url', None)
                 candidate_data.pop('original_filename', None)
             
             serializer = CandidateCreateSerializer(data=candidate_data)

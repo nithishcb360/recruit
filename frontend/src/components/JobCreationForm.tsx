@@ -34,8 +34,8 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
     experienceLevel: '',
     location: '',
     workType: '',
-    minSalary: 80000,
-    maxSalary: 120000,
+    minSalary: 0,
+    maxSalary: 0,
     experienceRange: '',
     jobDescription: '',
     requirements: '',
@@ -306,8 +306,8 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
         experienceLevel: '',
         location: '',
         workType: '',
-        minSalary: 80000,
-        maxSalary: 120000,
+        minSalary: 0,
+        maxSalary: 0,
         experienceRange: '',
         jobDescription: '',
         requirements: '',
@@ -1518,13 +1518,14 @@ ${preferredQuals.map(qual => `• ${qual}`).join('\n')}`
                 </label>
                 <input
                   type="number"
-                  value={formData.minSalary}
+                  value={formData.minSalary === 0 ? '' : formData.minSalary}
                   onChange={(e) => handleInputChange('minSalary', parseInt(e.target.value) || 0)}
                   onFocus={() => handleFieldFocus('minSalary')}
                   onBlur={() => handleFieldBlur('minSalary')}
                   className={getInputClasses('minSalary')}
                   min="0"
                   step="1000"
+                  placeholder="Enter minimum salary"
                 />
               </div>
 
@@ -1534,13 +1535,14 @@ ${preferredQuals.map(qual => `• ${qual}`).join('\n')}`
                 </label>
                 <input
                   type="number"
-                  value={formData.maxSalary}
+                  value={formData.maxSalary === 0 ? '' : formData.maxSalary}
                   onChange={(e) => handleInputChange('maxSalary', parseInt(e.target.value) || 0)}
                   onFocus={() => handleFieldFocus('maxSalary')}
                   onBlur={() => handleFieldBlur('maxSalary')}
                   className={getInputClasses('maxSalary')}
                   min="0"
                   step="1000"
+                  placeholder="Enter maximum salary"
                 />
               </div>
             </div>
