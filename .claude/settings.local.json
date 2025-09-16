@@ -55,7 +55,11 @@
       "Bash(start-backend.bat)",
       "Bash(venv/Scripts/pip.exe install:*)",
       "Bash(backendvenvScriptspip.exe install torch transformers)",
-      "Bash(backend/venv/Scripts/pip.exe install torch transformers)"
+      "Bash(backend/venv/Scripts/pip.exe install torch transformers)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git pull:*)"
     ],
     "deny": [],
     "ask": []
