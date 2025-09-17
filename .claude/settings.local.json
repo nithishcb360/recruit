@@ -77,7 +77,8 @@
       "Bash(\"C:\\Python312\\python.exe\" manage.py createsuperuser)",
       "Bash(\"C:\\Python312\\python.exe\" D:recruitbackendcreate_admin.py)",
       "Bash(\"C:\\Python312\\python.exe\":*)",
-      "Bash(del backendtest_filename_extraction.py)"
+      "Bash(del backendtest_filename_extraction.py)",
+      "Bash(node:*)"
     ],
     "deny": [],
     "ask": []

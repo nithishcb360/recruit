@@ -951,23 +951,26 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
     }
 
     try {
-      // DELETE candidate from database when moving to screening to prevent "already exists" errors
-      console.log('Deleting candidate from database when moving to screening...')
+      // UPDATE candidate status to "screening" instead of deleting them
+      console.log('Updating candidate status to screening...')
       const response = await fetchWithTimeout(`http://localhost:8000/api/candidates/${candidate.id}/`, {
-        method: 'DELETE',
+        method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
           'X-CSRFToken': '', // Empty CSRF token for exempted views
         },
+        body: JSON.stringify({
+          status: 'screening'
+        }),
         credentials: 'include'
       }, 5000)
 
       if (!response.ok) {
         const errorText = await response.text()
-        throw new Error(`Failed to delete candidate: ${response.status} - ${errorText}`)
+        throw new Error(`Failed to update candidate status: ${response.status} - ${errorText}`)
       }
 
-      console.log('Candidate successfully deleted from database')
+      console.log('Candidate status successfully updated to screening')
 
       // Prepare parsed resume data to pass to screening
       const candidateData = {
@@ -1004,7 +1007,7 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
       
       toast({
         title: "Moved to Screening",
-        description: `${candidate.name} has been removed from candidate list and moved to screening for ${jobMatch.jobTitle}.`,
+        description: `${candidate.name} has been moved to screening for ${jobMatch.jobTitle}. Status updated to 'screening'.`,
         variant: "default"
       })
 

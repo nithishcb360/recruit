@@ -151,25 +151,7 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
       handleLocationSearch(value);
     }
 
-    // Handle salary validation - only for number fields
-    if (field === 'minSalary' && typeof value === 'number') {
-      const numValue = value as number;
-      if (numValue > formData.maxSalary) {
-        setFormData(prev => ({
-          ...prev,
-          maxSalary: numValue
-        }));
-      }
-    }
-    if (field === 'maxSalary' && typeof value === 'number') {
-      const numValue = value as number;
-      if (numValue < formData.minSalary) {
-        setFormData(prev => ({
-          ...prev,
-          minSalary: numValue
-        }));
-      }
-    }
+    // Remove automatic salary synchronization to allow independent input
   };
 
   const handleLocationSearch = async (query: string) => {
@@ -226,6 +208,14 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
         isValid = false;
       }
     });
+
+    // Validate salary range only if both values are provided
+    if (formData.minSalary > 0 && formData.maxSalary > 0 && formData.minSalary > formData.maxSalary) {
+      alert('Minimum salary cannot be greater than maximum salary.');
+      errors['minSalary'] = true;
+      errors['maxSalary'] = true;
+      isValid = false;
+    }
 
     setValidationErrors(errors);
     return isValid;
@@ -1525,7 +1515,6 @@ ${preferredQuals.map(qual => `• ${qual}`).join('\n')}`
                   className={getInputClasses('minSalary')}
                   min="0"
                   step="1000"
-                  placeholder="Enter minimum salary"
                 />
               </div>
 
@@ -1542,7 +1531,6 @@ ${preferredQuals.map(qual => `• ${qual}`).join('\n')}`
                   className={getInputClasses('maxSalary')}
                   min="0"
                   step="1000"
-                  placeholder="Enter maximum salary"
                 />
               </div>
             </div>

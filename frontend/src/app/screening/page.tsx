@@ -86,6 +86,88 @@ const EXPERIENCE_YEARS_MAP = {
   'vp': { min: 15, max: 30 }
 }
 
+const extractCurrentRole = (position: string): string => {
+  if (!position) return 'Not specified'
+
+  // Common role keywords that should be prioritized
+  const roleKeywords = [
+    'developer', 'engineer', 'manager', 'lead', 'senior', 'junior', 'principal', 'architect',
+    'analyst', 'consultant', 'specialist', 'coordinator', 'director', 'designer', 'tester',
+    'qa', 'devops', 'frontend', 'backend', 'fullstack', 'full-stack', 'ui', 'ux', 'product',
+    'project', 'software', 'web', 'data', 'business', 'technical', 'system',
+    'network', 'security', 'cloud', 'database', 'ai', 'ml', 'machine', 'learning',
+    'react', 'angular', 'vue', 'node', 'python', 'java', 'javascript', 'typescript'
+  ]
+
+  // Words to completely filter out (contact info, email domains, numbers, etc.)
+  const filterOutWords = [
+    // Contact information
+    'email', 'gmail', 'yahoo', 'hotmail', 'outlook', 'mail', 'com', 'net', 'org',
+    'phone', 'mobile', 'tel', 'contact', 'call', 'number', 'no',
+    // Common non-role words
+    'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from',
+    'as', 'an', 'a', 'is', 'was', 'are', 'were', 'be', 'been', 'being', 'have', 'has',
+    'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might',
+    'must', 'can', 'shall', 'very', 'highly', 'skilled', 'experienced', 'professional',
+    'passionate', 'about', 'innovation', 'technologies', 'frameworks', 'building',
+    'scalable', 'applications', 'microservices', 'architecture', 'using', 'modern',
+    'extensive', 'experience', 'years', 'year', 'yrs', 'yr', 'months', 'days'
+  ]
+
+  // Clean and split the position text
+  let words = position
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, ' ') // Remove punctuation except hyphens
+    .split(/\s+/)
+    .filter(word => {
+      // Filter out short words, numbers, and unwanted words
+      return word.length > 1 &&
+             !filterOutWords.includes(word) &&
+             !word.match(/^\d+$/) && // Remove pure numbers
+             !word.match(/^[a-z]+@/) && // Remove email patterns
+             !word.match(/^\d+[a-z]*$/) // Remove number-letter combinations
+    })
+
+  // If the cleaned text results in nonsensical combinations, return a default
+  if (words.length === 0 || words.every(word => word.length < 3)) {
+    return 'Position Not Available'
+  }
+
+  // Find important role-related words
+  const roleWords = words.filter(word =>
+    roleKeywords.some(keyword =>
+      word.includes(keyword) || keyword.includes(word)
+    )
+  )
+
+  // If we found role-specific words, use them (max 3)
+  if (roleWords.length > 0) {
+    return roleWords
+      .slice(0, 3)
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ')
+  }
+
+  // Otherwise, take the first few meaningful words (but validate they make sense)
+  const meaningfulWords = words.slice(0, 3)
+
+  // Additional validation: if the words don't seem like a job title, return default
+  const combinedText = meaningfulWords.join(' ').toLowerCase()
+  if (combinedText.includes('gmail') ||
+      combinedText.includes('email') ||
+      combinedText.includes('phone') ||
+      combinedText.includes('mobile') ||
+      meaningfulWords.length === 0) {
+    return 'Position Not Available'
+  }
+
+  return meaningfulWords.length > 0
+    ? meaningfulWords
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ')
+    : 'Position Not Available'
+}
+
 export default function ScreeningPage() {
   const { toast } = useToast()
   const [jobs, setJobs] = useState<Job[]>([])
@@ -518,14 +600,46 @@ export default function ScreeningPage() {
   }
 
   // Handle closing the moved candidate data
-  const handleCloseMovedCandidate = () => {
-    setMovedCandidateData(null)
-    clearScreeningCandidateData()
-    toast({
-      title: "Candidate Data Cleared",
-      description: "The moved candidate data has been cleared from the screening view.",
-      variant: "default"
-    })
+  const handleCloseMovedCandidate = async () => {
+    if (!movedCandidateData) return
+
+    try {
+      // Update candidate status back to "new" so they appear in candidates page again
+      const response = await fetch(`http://localhost:8000/api/candidates/${movedCandidateData.id}/`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          status: 'new'
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error(`Failed to update candidate status: ${response.statusText}`)
+      }
+
+      setMovedCandidateData(null)
+      clearScreeningCandidateData()
+
+      toast({
+        title: "Candidate Returned",
+        description: `${movedCandidateData.name} has been returned to the candidates page.`,
+        variant: "default"
+      })
+
+    } catch (error) {
+      console.error('Error returning candidate:', error)
+      // Even if the API call fails, clear the local data
+      setMovedCandidateData(null)
+      clearScreeningCandidateData()
+
+      toast({
+        title: "Candidate Data Cleared",
+        description: "The screening data has been cleared. Please check the candidates page manually.",
+        variant: "default"
+      })
+    }
   }
 
   return (
@@ -638,7 +752,9 @@ export default function ScreeningPage() {
                     {movedCandidateData.current_position && (
                       <div>
                         <span className="font-medium text-gray-600">Current Position:</span>
-                        <div className="text-gray-900">{movedCandidateData.current_position}</div>
+                        <div className="text-gray-900" title={movedCandidateData.current_position}>
+                          {extractCurrentRole(movedCandidateData.current_position)}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -962,7 +1078,9 @@ export default function ScreeningPage() {
                               {result.candidate.current_position && (
                                 <div>
                                   <span className="font-medium text-gray-600">Current Position:</span>
-                                  <div className="text-gray-900">{result.candidate.current_position}</div>
+                                  <div className="text-gray-900" title={result.candidate.current_position}>
+                                    {extractCurrentRole(result.candidate.current_position)}
+                                  </div>
                                 </div>
                               )}
 
