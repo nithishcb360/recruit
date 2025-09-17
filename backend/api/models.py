@@ -243,11 +243,24 @@ class Candidate(models.Model):
     salary_expectation = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     availability = models.CharField(max_length=100, blank=True)
     
+    # Comprehensive resume data from enhanced parser
+    summary = models.TextField(blank=True, help_text='Professional summary from resume')
+    projects = models.JSONField(default=list, blank=True, help_text='List of projects with details')
+    work_experience = models.JSONField(default=list, blank=True, help_text='Detailed work experience history')
+    languages = models.JSONField(default=list, blank=True, help_text='Programming/spoken languages')
+    achievements = models.JSONField(default=list, blank=True, help_text='Notable achievements and awards')
+    linkedin_url = models.URLField(blank=True, help_text='LinkedIn profile URL')
+    github_url = models.URLField(blank=True, help_text='GitHub profile URL')
+    portfolio_url = models.URLField(blank=True, help_text='Portfolio website URL')
+    visa_status = models.CharField(max_length=100, blank=True, help_text='Work authorization status')
+    preferred_location = models.CharField(max_length=200, blank=True, help_text='Preferred work location')
+    notice_period = models.CharField(max_length=100, blank=True, help_text='Notice period for current job')
+
     # Status and tracking
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='new')
     source = models.CharField(max_length=100, default='Direct Application')
     rating = models.PositiveIntegerField(null=True, blank=True)
-    
+
     # Metadata
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)

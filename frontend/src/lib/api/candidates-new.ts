@@ -98,12 +98,15 @@ export const deleteCandidate = async (id: number): Promise<void> => {
     method: 'DELETE',
     headers: {
       'Content-Type': 'application/json',
+      'X-CSRFToken': '', // Empty CSRF token for exempted views
     },
     credentials: 'include',
   })
-  
+
   if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`)
+    const errorText = await response.text()
+    console.error('Delete failed:', response.status, errorText)
+    throw new Error(`Failed to delete candidate: ${response.status} - ${errorText}`)
   }
 }
 

@@ -372,6 +372,31 @@ export async function generateJD(request: GenerateJDRequest): Promise<GenerateJD
   }
 }
 
+export async function updateJob(jobId: number, jobData: Partial<JobCreateData>): Promise<Job> {
+  try {
+    console.log('Updating job with data:', jobData) // Debug log
+
+    const response = await fetch(`${API_BASE_URL}/jobs/${jobId}/`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(jobData),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      console.error('Job update failed:', errorData) // Debug log
+      throw new Error(JSON.stringify(errorData) || `HTTP error! status: ${response.status}`)
+    }
+
+    return await response.json()
+  } catch (error) {
+    console.error('Error updating job:', error)
+    throw error
+  }
+}
+
 export async function deleteJob(jobId: number): Promise<void> {
   try {
     const response = await fetch(`${API_BASE_URL}/jobs/${jobId}/`, {

@@ -19,6 +19,7 @@ from .serializers import (
     JobApplicationSerializer, JobApplicationCreateSerializer,
     FeedbackTemplateSerializer, FeedbackTemplateCreateSerializer, FeedbackTemplateUpdateSerializer
 )
+from .utils.enhanced_resume_parser import EnhancedResumeParser
 from .utils.resume_parser import ResumeParser
 
 # Safe import for semantic matcher with fallback
@@ -26,7 +27,7 @@ try:
     from .utils.semantic_matcher import get_semantic_matcher
     SEMANTIC_MATCHING_AVAILABLE = True
 except ImportError as e:
-    logger.warning(f"Semantic matching not available: {e}")
+    logger.warning(f"Semantic matching not available: {e}") # pyright: ignore[reportUndefinedVariable]
     SEMANTIC_MATCHING_AVAILABLE = False
     
     # Create a dummy function to prevent errors
@@ -40,6 +41,7 @@ except ImportError as e:
                 return []
         return DummyMatcher()
 import os
+import re
 import tempfile
 import logging
 from django.http import HttpResponse, Http404
@@ -116,6 +118,7 @@ def dashboard_overview(request):
     return Response(data)
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class TaskViewSet(viewsets.ModelViewSet):
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
@@ -163,6 +166,7 @@ class ActivityLogViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(serializer.data)
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class DepartmentViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing departments
@@ -179,6 +183,7 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class JobViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing jobs with full CRUD operations
@@ -204,6 +209,40 @@ class JobViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         """Set created_by when creating a job"""
         serializer.save(created_by=self.request.user if self.request.user.is_authenticated else None)
+
+    def update(self, request, *args, **kwargs):
+        """Custom update method with detailed error logging"""
+        try:
+            print(f"Job update request data: {request.data}")
+            return super().update(request, *args, **kwargs)
+        except Exception as e:
+            print(f"Job update error: {str(e)}")
+            print(f"Job update exception type: {type(e)}")
+            if hasattr(e, 'detail'):
+                print(f"Job update error detail: {e.detail}")
+            raise
+
+    def partial_update(self, request, *args, **kwargs):
+        """Custom partial update method with detailed error logging"""
+        try:
+            print(f"Job partial update request data: {request.data}")
+            instance = self.get_object()
+            print(f"Job being updated: ID={instance.id}, Title={instance.title}")
+            print(f"Current job data: salary_min={instance.salary_min}, salary_max={instance.salary_max}, openings={instance.openings}")
+
+            serializer = self.get_serializer(instance, data=request.data, partial=True)
+            if not serializer.is_valid():
+                print(f"Job validation errors: {serializer.errors}")
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+            self.perform_update(serializer)
+            return Response(serializer.data)
+        except Exception as e:
+            print(f"Job partial update error: {str(e)}")
+            print(f"Job partial update exception type: {type(e)}")
+            if hasattr(e, 'detail'):
+                print(f"Job partial update error detail: {e.detail}")
+            raise
     
     @action(detail=False, methods=['get'])
     def active(self, request):
@@ -317,7 +356,11 @@ class CandidateViewSet(viewsets.ModelViewSet):
     search_fields = ['first_name', 'last_name', 'email', 'current_company', 'skills']
     ordering_fields = ['created_at', 'updated_at', 'first_name', 'last_name']
     ordering = ['-created_at']
-    
+
+    def destroy(self, request, *args, **kwargs):
+        """Delete a candidate"""
+        return super().destroy(request, *args, **kwargs)
+
     def get_serializer_class(self):
         """Return appropriate serializer based on action"""
         if self.action == 'create':
@@ -458,16 +501,26 @@ def parse_resume(request):
                 temp_file.write(chunk)
             temp_file_path = temp_file.name
         
-        # Parse the resume using enhanced parser
+        # Parse the resume using comprehensive parser (lightweight, no ML dependencies)
         try:
-            from .utils.enhanced_resume_parser import EnhancedResumeParser
-            parser = EnhancedResumeParser()
-            parsed_data = parser.parse_resume(temp_file_path)
-        except ImportError as e:
-            print(f"Enhanced parser not available, falling back to original: {e}")
-            # Fallback to original parser
-            parser = ResumeParser()
-            parsed_data = parser.parse_resume(temp_file_path)
+            from .utils.simple_comprehensive_parser import SimpleComprehensiveParser
+            parser = SimpleComprehensiveParser()
+            parsed_data = parser.parse_resume(temp_file_path, uploaded_file.name)
+            print(f"Using comprehensive parser for: {uploaded_file.name}")
+        except Exception as e:
+            print(f"Comprehensive parser error, falling back to enhanced parser: {e}")
+            # Fallback to enhanced parser
+            try:
+                from .utils.enhanced_resume_parser import EnhancedResumeParser
+                parser = EnhancedResumeParser()
+                parsed_data = parser.parse_resume(temp_file_path, uploaded_file.name)
+                print(f"Using enhanced parser for: {uploaded_file.name}")
+            except Exception as e2:
+                print(f"Enhanced parser error, falling back to basic parser: {e2}")
+                # Final fallback to basic parser
+                from .utils.resume_parser import ResumeParser
+                parser = ResumeParser()
+                parsed_data = parser.parse_resume(temp_file_path)
         
         # Clean up temporary file
         os.unlink(temp_file_path)
@@ -494,6 +547,18 @@ def parse_resume(request):
         file_path = default_storage.save(f'resumes/{unique_filename}', ContentFile(uploaded_file.read()))
         file_url = default_storage.url(file_path)
         
+        # Clean parsed data to remove null characters that cause serializer issues
+        def clean_null_chars(obj):
+            if isinstance(obj, str):
+                return obj.replace('\x00', '').replace('\0', '')
+            elif isinstance(obj, list):
+                return [clean_null_chars(item) for item in obj]
+            elif isinstance(obj, dict):
+                return {key: clean_null_chars(value) for key, value in obj.items()}
+            return obj
+
+        parsed_data = clean_null_chars(parsed_data)
+
         # Add file information to parsed data
         parsed_data['resume_file_url'] = file_url
         parsed_data['resume_file_path'] = file_path
@@ -509,6 +574,8 @@ def parse_resume(request):
             response_data['original_filename'] = uploaded_file.name
             return Response(response_data)
         else:
+            print(f"Serializer validation failed for {uploaded_file.name}: {serializer.errors}")
+            print(f"Parsed data: {parsed_data}")
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
             
     except Exception as e:
@@ -539,39 +606,84 @@ def bulk_create_candidates(request):
         try:
             # Parse name into first_name and last_name
             name = candidate_data.get('name', '').strip()
+            original_filename = candidate_data.get('original_filename', '')
+
             if name:
                 name_parts = name.split()
                 candidate_data['first_name'] = name_parts[0] if name_parts else ''
-                candidate_data['last_name'] = ' '.join(name_parts[1:]) if len(name_parts) > 1 else ''
+                candidate_data['last_name'] = ' '.join(name_parts[1:]) if len(name_parts) > 1 else 'Unknown'
             else:
-                # Skip candidates without a name as first_name and last_name are required
-                if not candidate_data.get('first_name') or not candidate_data.get('last_name'):
-                    errors.append(f"Candidate {i+1}: Name is required (first_name and last_name cannot be empty)")
-                    continue
-            
+                # Try to extract name from filename as fallback
+                if original_filename:
+                    # Extract name from filename (e.g., "John_Doe_Resume.pdf" -> "John Doe")
+                    filename_base = os.path.splitext(original_filename)[0]
+                    # Remove common resume-related words and experience indicators
+                    cleanup_words = ['_Resume', '_CV', '_react', '_React', '_months', '_Months', '_years', '_Years', '_yrs', '_experience', '_exp']
+                    for word in cleanup_words:
+                        filename_base = filename_base.replace(word, '')
+
+                    # Remove numbers followed by time units (e.g., "_7Months", "_24months", "_3Years")
+                    filename_base = re.sub(r'_\d+(?:months?|years?|yrs?|mos?)', '', filename_base, flags=re.IGNORECASE)
+                    name_from_file = filename_base.replace('_', ' ').strip()
+
+                    if name_from_file:
+                        name_parts = name_from_file.split()
+                        # Filter out tech terms that aren't names
+                        name_parts = [part for part in name_parts if part.lower() not in ['react', 'python', 'java', 'js', 'node', 'angular', 'vue']]
+                        candidate_data['first_name'] = name_parts[0] if name_parts else 'Unknown'
+                        candidate_data['last_name'] = ' '.join(name_parts[1:]) if len(name_parts) > 1 else 'Candidate'
+                    else:
+                        candidate_data['first_name'] = 'Unknown'
+                        candidate_data['last_name'] = 'Candidate'
+                else:
+                    candidate_data['first_name'] = 'Unknown'
+                    candidate_data['last_name'] = 'Candidate'
+
             # Ensure we have valid first_name and last_name after parsing
             first_name = candidate_data.get('first_name', '').strip()
             last_name = candidate_data.get('last_name', '').strip()
-            
+
             if not first_name:
-                errors.append(f"Candidate {i+1}: First name is required")
-                continue
+                candidate_data['first_name'] = 'Unknown'
+                first_name = 'Unknown'
             if not last_name:
-                # If only first name is available, use a default for last name
-                candidate_data['last_name'] = 'Unknown'
+                candidate_data['last_name'] = 'Candidate'
+                last_name = 'Candidate'
             
-            # Map experience data
+            # Map experience data and ensure integer conversion
             experience_data = candidate_data.get('experience', {})
+            experience_years = candidate_data.get('experience_years')
+            if experience_years is not None:
+                try:
+                    # Convert to integer (round up for partial years)
+                    candidate_data['experience_years'] = max(1, int(round(float(experience_years))))
+                except (ValueError, TypeError):
+                    candidate_data['experience_years'] = None
             if isinstance(experience_data, dict):
                 candidate_data['experience_years'] = experience_data.get('years')
             
-            # Extract current_position and current_company if available
+            # Extract and truncate current_position and current_company to prevent validation errors
             if 'current_position' in candidate_data and candidate_data['current_position']:
-                # Keep the current_position field as is
-                pass
+                current_position = str(candidate_data['current_position']).strip()
+                if len(current_position) > 200:
+                    candidate_data['current_position'] = current_position[:197] + '...'
+                else:
+                    candidate_data['current_position'] = current_position
+
             if 'current_company' in candidate_data and candidate_data['current_company']:
-                # Keep the current_company field as is
-                pass
+                current_company = str(candidate_data['current_company']).strip()
+                if len(current_company) > 200:
+                    candidate_data['current_company'] = current_company[:197] + '...'
+                else:
+                    candidate_data['current_company'] = current_company
+
+            # Also truncate location if present
+            if 'location' in candidate_data and candidate_data['location']:
+                location = str(candidate_data['location']).strip()
+                if len(location) > 200:
+                    candidate_data['location'] = location[:197] + '...'
+                else:
+                    candidate_data['location'] = location
             
             # Clean up data
             candidate_data.pop('name', None)
@@ -582,32 +694,71 @@ def bulk_create_candidates(request):
             email = candidate_data.get('email', '').strip()
             first_name = candidate_data.get('first_name', '').strip()
             last_name = candidate_data.get('last_name', '').strip()
+
             
             # Handle empty email - convert to None for database storage
             if not email:
                 candidate_data['email'] = None
             else:
+                # Clean email - remove non-printable characters and extra whitespace
+                email = ''.join(char for char in email if char.isprintable()).strip()
+                candidate_data['email'] = email
+
+                # Validate email format before proceeding
+                from django.core.validators import validate_email
+                from django.core.exceptions import ValidationError
+                try:
+                    validate_email(email)
+                except ValidationError:
+                    errors.append(f"Candidate {i+1}: Invalid email format '{email}'")
+                    continue
+
                 # Check for email duplicates only if email is provided
                 existing_candidate = Candidate.objects.filter(email__iexact=email).first()
                 if existing_candidate:
-                    errors.append(f"Candidate {i+1}: Email '{email}' already exists")
-                    continue
-            
-            if first_name and last_name:
+                    # Update existing candidate instead of rejecting
+                    resume_file_path = candidate_data.get('resume_file_path')
+                    serializer = CandidateCreateSerializer(existing_candidate, data=candidate_data, partial=True)
+                    if serializer.is_valid():
+                        candidate = serializer.save()
+                        # Set resume file path after candidate update if available
+                        if resume_file_path:
+                            candidate.resume_file = resume_file_path
+                            candidate.save()
+                        created_candidates.append(candidate)
+                        continue
+                    else:
+                        errors.append(f"Candidate {i+1}: Error updating existing candidate with email '{email}': {serializer.errors}")
+                        continue
+
+            # Check for name duplicates only if no email provided
+            if not email and first_name and last_name:
                 existing_candidate = Candidate.objects.filter(
-                    first_name__iexact=first_name, 
+                    first_name__iexact=first_name,
                     last_name__iexact=last_name
                 ).first()
                 if existing_candidate:
-                    errors.append(f"Candidate {i+1}: Name '{first_name} {last_name}' already exists")
-                    continue
+                    # Update existing candidate instead of rejecting
+                    resume_file_path = candidate_data.get('resume_file_path')
+                    serializer = CandidateCreateSerializer(existing_candidate, data=candidate_data, partial=True)
+                    if serializer.is_valid():
+                        candidate = serializer.save()
+                        # Set resume file path after candidate update if available
+                        if resume_file_path:
+                            candidate.resume_file = resume_file_path
+                            candidate.save()
+                        created_candidates.append(candidate)
+                        continue
+                    else:
+                        errors.append(f"Candidate {i+1}: Error updating existing candidate '{first_name} {last_name}': {serializer.errors}")
+                        continue
             
             # Handle resume file path if present
             resume_file_path = candidate_data.get('resume_file_path')
             if resume_file_path:
                 # Remove file-related fields from candidate_data as we'll set them after creation
                 candidate_data.pop('resume_file_path', None)
-                candidate_data.pop('resume_file_url', None) 
+                candidate_data.pop('resume_file_url', None)
                 candidate_data.pop('original_filename', None)
             
             serializer = CandidateCreateSerializer(data=candidate_data)
@@ -1111,6 +1262,7 @@ def update_candidate_experience(request):
         # Find candidates with null experience_years
         candidates_to_update = Candidate.objects.filter(experience_years__isnull=True)
         
+        parser = EnhancedResumeParser()
         parser = ResumeParser()
         updated_count = 0
         current_year = datetime.datetime.now().year
@@ -1152,6 +1304,7 @@ def update_candidate_experience(request):
         )
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class JobApplicationViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing job applications
@@ -1210,6 +1363,7 @@ class JobApplicationViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class FeedbackTemplateViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing feedback templates
