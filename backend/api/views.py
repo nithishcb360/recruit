@@ -41,6 +41,7 @@ except ImportError as e:
                 return []
         return DummyMatcher()
 import os
+import re
 import tempfile
 import logging
 from django.http import HttpResponse, Http404
@@ -615,13 +616,20 @@ def bulk_create_candidates(request):
                 # Try to extract name from filename as fallback
                 if original_filename:
                     # Extract name from filename (e.g., "John_Doe_Resume.pdf" -> "John Doe")
-                    filename_base = original_filename.replace('.pdf', '').replace('.docx', '').replace('.doc', '')
-                    # Remove common resume-related words
-                    filename_base = filename_base.replace('_Resume', '').replace('_CV', '').replace('_react', '').replace('_React', '')
+                    filename_base = os.path.splitext(original_filename)[0]
+                    # Remove common resume-related words and experience indicators
+                    cleanup_words = ['_Resume', '_CV', '_react', '_React', '_months', '_Months', '_years', '_Years', '_yrs', '_experience', '_exp']
+                    for word in cleanup_words:
+                        filename_base = filename_base.replace(word, '')
+
+                    # Remove numbers followed by time units (e.g., "_7Months", "_24months", "_3Years")
+                    filename_base = re.sub(r'_\d+(?:months?|years?|yrs?|mos?)', '', filename_base, flags=re.IGNORECASE)
                     name_from_file = filename_base.replace('_', ' ').strip()
 
                     if name_from_file:
                         name_parts = name_from_file.split()
+                        # Filter out tech terms that aren't names
+                        name_parts = [part for part in name_parts if part.lower() not in ['react', 'python', 'java', 'js', 'node', 'angular', 'vue']]
                         candidate_data['first_name'] = name_parts[0] if name_parts else 'Unknown'
                         candidate_data['last_name'] = ' '.join(name_parts[1:]) if len(name_parts) > 1 else 'Candidate'
                     else:
@@ -637,41 +645,45 @@ def bulk_create_candidates(request):
 
             if not first_name:
                 candidate_data['first_name'] = 'Unknown'
+                first_name = 'Unknown'
             if not last_name:
                 candidate_data['last_name'] = 'Candidate'
-            if name:
-                name_parts = name.split()
-                candidate_data['first_name'] = name_parts[0] if name_parts else ''
-                candidate_data['last_name'] = ' '.join(name_parts[1:]) if len(name_parts) > 1 else ''
-            else:
-                # Skip candidates without a name as first_name and last_name are required
-                if not candidate_data.get('first_name') or not candidate_data.get('last_name'):
-                    errors.append(f"Candidate {i+1}: Name is required (first_name and last_name cannot be empty)")
-                    continue
+                last_name = 'Candidate'
             
-            # Ensure we have valid first_name and last_name after parsing
-            first_name = candidate_data.get('first_name', '').strip()
-            last_name = candidate_data.get('last_name', '').strip()
-            
-            if not first_name:
-                errors.append(f"Candidate {i+1}: First name is required")
-                continue
-            if not last_name:
-                # If only first name is available, use a default for last name
-                candidate_data['last_name'] = 'Unknown'
-            
-            # Map experience data
+            # Map experience data and ensure integer conversion
             experience_data = candidate_data.get('experience', {})
+            experience_years = candidate_data.get('experience_years')
+            if experience_years is not None:
+                try:
+                    # Convert to integer (round up for partial years)
+                    candidate_data['experience_years'] = max(1, int(round(float(experience_years))))
+                except (ValueError, TypeError):
+                    candidate_data['experience_years'] = None
             if isinstance(experience_data, dict):
                 candidate_data['experience_years'] = experience_data.get('years')
             
-            # Extract current_position and current_company if available
+            # Extract and truncate current_position and current_company to prevent validation errors
             if 'current_position' in candidate_data and candidate_data['current_position']:
-                # Keep the current_position field as is
-                pass
+                current_position = str(candidate_data['current_position']).strip()
+                if len(current_position) > 200:
+                    candidate_data['current_position'] = current_position[:197] + '...'
+                else:
+                    candidate_data['current_position'] = current_position
+
             if 'current_company' in candidate_data and candidate_data['current_company']:
-                # Keep the current_company field as is
-                pass
+                current_company = str(candidate_data['current_company']).strip()
+                if len(current_company) > 200:
+                    candidate_data['current_company'] = current_company[:197] + '...'
+                else:
+                    candidate_data['current_company'] = current_company
+
+            # Also truncate location if present
+            if 'location' in candidate_data and candidate_data['location']:
+                location = str(candidate_data['location']).strip()
+                if len(location) > 200:
+                    candidate_data['location'] = location[:197] + '...'
+                else:
+                    candidate_data['location'] = location
             
             # Clean up data
             candidate_data.pop('name', None)

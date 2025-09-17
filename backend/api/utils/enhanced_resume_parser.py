@@ -216,7 +216,7 @@ class EnhancedResumeParser:
                             experience_data['source'] = 'filename_years'
                         break
                 except (ValueError, IndexError) as e:
-                    print(f"Error parsing filename pattern {pattern}: {e}")
+                    print(f"Error parsing filename pattern: {e}")
                     continue
 
         return experience_data

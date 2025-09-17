@@ -197,6 +197,38 @@ class CandidateCreateSerializer(serializers.ModelSerializer):
             'preferred_location', 'notice_period'
         ]
 
+    def to_internal_value(self, data):
+        """Custom processing before validation"""
+        # Handle experience_years conversion before validation
+        if 'experience_years' in data and data['experience_years'] is not None:
+            try:
+                float_value = float(data['experience_years'])
+                data['experience_years'] = max(1, int(round(float_value))) if float_value > 0 else 0
+            except (ValueError, TypeError):
+                data['experience_years'] = None
+
+        # Truncate fields that have max_length constraints to prevent validation errors
+        field_limits = {
+            'first_name': 100,
+            'last_name': 100,
+            'phone': 20,
+            'location': 200,
+            'current_company': 200,
+            'current_position': 200,
+            'availability': 100,
+            'visa_status': 100,
+            'preferred_location': 200,
+            'notice_period': 100,
+            'source': 100
+        }
+
+        for field, max_length in field_limits.items():
+            if field in data and isinstance(data[field], str) and len(data[field]) > max_length:
+                # Truncate and add ellipsis if truncated
+                data[field] = data[field][:max_length-3] + '...' if len(data[field]) > max_length else data[field]
+
+        return super().to_internal_value(data)
+
     def validate_email(self, value):
         """Handle empty email validation"""
         if value == '' or value is None:

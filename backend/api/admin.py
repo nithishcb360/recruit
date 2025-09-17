@@ -38,7 +38,7 @@ class FeedbackTemplateAdmin(admin.ModelAdmin):
 
 @admin.register(Candidate)
 class CandidateAdmin(admin.ModelAdmin):
-    list_display = ['name', 'email', 'phone', 'current_position', 'status', 'created_at']
+    list_display = ['first_name', 'email', 'phone', 'current_position', 'status', 'created_at']
     list_filter = ['status', 'created_at', 'experience_level']
     search_fields = ['name', 'email', 'phone', 'current_position']
     readonly_fields = ['created_at', 'updated_at']

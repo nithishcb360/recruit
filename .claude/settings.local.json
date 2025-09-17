@@ -75,7 +75,9 @@
       "Bash(\"C:\\Python312\\python.exe\" manage.py makemigrations --empty api)",
       "Bash(\"C:\\Python312\\python.exe\" manage.py migrate --fake api 0008)",
       "Bash(\"C:\\Python312\\python.exe\" manage.py createsuperuser)",
-      "Bash(\"C:\\Python312\\python.exe\" D:recruitbackendcreate_admin.py)"
+      "Bash(\"C:\\Python312\\python.exe\" D:recruitbackendcreate_admin.py)",
+      "Bash(\"C:\\Python312\\python.exe\":*)",
+      "Bash(del backendtest_filename_extraction.py)"
     ],
     "deny": [],
     "ask": []
