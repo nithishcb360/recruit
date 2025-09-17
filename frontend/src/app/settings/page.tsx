@@ -503,16 +503,52 @@ export default function ClientOrganizationSettings() {
     permissions: []
   })
 
+  // Load settings from localStorage on component mount
+  useEffect(() => {
+    try {
+      const savedSettings = localStorage.getItem('organizationSettings');
+      if (savedSettings) {
+        const parsedSettings = JSON.parse(savedSettings);
+        setOrgSettings(prevSettings => ({
+          ...prevSettings,
+          ...parsedSettings
+        }));
+        console.log('Loaded organization settings from localStorage:', parsedSettings);
+      }
+    } catch (error) {
+      console.error('Error loading settings from localStorage:', error);
+    }
+  }, []);
+
   // Handle settings changes with proper typing
   const handleSettingsChange = (section: keyof OrganizationSettings, field: string, value: boolean | string | number | object) => {
-    setOrgSettings(prev => ({
-      ...prev,
+    const newSettings = {
+      ...orgSettings,
       [section]: {
-        ...prev[section],
+        ...orgSettings[section],
         [field]: value
       }
-    }))
-    setHasUnsavedChanges(true)
+    };
+
+    setOrgSettings(newSettings);
+    setHasUnsavedChanges(true);
+
+    // Auto-save AI settings immediately for better UX
+    if (section === 'general' && (field === 'aiProvider' || field === 'aiApiKey')) {
+      try {
+        localStorage.setItem('organizationSettings', JSON.stringify(newSettings));
+        console.log('Auto-saved AI settings to localStorage:', { [field]: value });
+
+        // Trigger storage event for other components
+        window.dispatchEvent(new StorageEvent('storage', {
+          key: 'organizationSettings',
+          newValue: JSON.stringify(newSettings),
+          storageArea: localStorage
+        }));
+      } catch (error) {
+        console.error('Error auto-saving AI settings:', error);
+      }
+    }
   }
 
   // Handle compliance settings changes
@@ -874,8 +910,20 @@ export default function ClientOrganizationSettings() {
   const handleSaveSettings = async () => {
     setIsLoading(true)
     try {
-      // Simulate API call
+      // Save to localStorage
+      localStorage.setItem('organizationSettings', JSON.stringify(orgSettings));
+      console.log('Saved organization settings to localStorage:', orgSettings);
+
+      // Trigger storage event for other tabs/components
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: 'organizationSettings',
+        newValue: JSON.stringify(orgSettings),
+        storageArea: localStorage
+      }));
+
+      // Simulate API call (for future backend integration)
       await new Promise(resolve => setTimeout(resolve, 1500))
+
       setHasUnsavedChanges(false)
       toast({
         title: "Settings Saved",
@@ -883,6 +931,7 @@ export default function ClientOrganizationSettings() {
         variant: "default"
       })
     } catch (error) {
+      console.error('Error saving settings:', error);
       toast({
         title: "Error",
         description: "Failed to save settings. Please try again.",
@@ -1174,6 +1223,9 @@ export default function ClientOrganizationSettings() {
                     </div>
                     <p className="text-xs text-gray-500">
                       Your API key is encrypted and stored securely. It's used for AI-powered job description generation.
+                    </p>
+                    <p className="text-xs text-green-600 font-medium">
+                      ✓ AI settings are automatically saved when changed
                     </p>
                   </div>
                 </div>

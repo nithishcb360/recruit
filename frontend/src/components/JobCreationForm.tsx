@@ -3,7 +3,15 @@
 import { useState, useEffect } from 'react';
 import { createJob, getDepartments, createDepartment, type JobCreateData, type Department, type Job, type DepartmentCreateData } from '@/lib/api/jobs';
 import { searchLocations, type Location } from '@/lib/api/locations';
-import { generateJobDescriptionWithAI } from '@/lib/api/claude';
+import { generateJobDescriptionWithAI, type AIConfig } from '@/lib/api/claude';
+
+// Organization settings interface
+interface OrganizationSettings {
+  general: {
+    aiProvider: string;
+    aiApiKey: string;
+  };
+}
 
 interface FormData {
   jobTitle: string;
@@ -55,6 +63,7 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
   const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
   const [isSearchingLocations, setIsSearchingLocations] = useState(false);
   const [isGeneratingWithAI, setIsGeneratingWithAI] = useState(false);
+  const [orgSettings, setOrgSettings] = useState<OrganizationSettings | null>(null);
 
   const steps = [
     { number: 1, name: 'Job Details', active: activeStep === 1 },
@@ -71,6 +80,38 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
       }
     };
     loadDepartments();
+  }, []);
+
+  // Load organization settings for AI configuration
+  useEffect(() => {
+    const loadOrgSettings = () => {
+      try {
+        // Try to load from localStorage (where settings page saves them)
+        const savedSettings = localStorage.getItem('organizationSettings');
+        if (savedSettings) {
+          const settings = JSON.parse(savedSettings);
+          setOrgSettings(settings);
+        }
+      } catch (error) {
+        console.error('Error loading organization settings:', error);
+      }
+    };
+    loadOrgSettings();
+
+    // Listen for settings changes
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'organizationSettings' && e.newValue) {
+        try {
+          const newSettings = JSON.parse(e.newValue);
+          setOrgSettings(newSettings);
+        } catch (error) {
+          console.error('Error parsing updated settings:', error);
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
   // Populate form when editing a job
@@ -411,6 +452,14 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
     try {
       const department = departments.find(d => d.id.toString() === formData.department)?.name || formData.department;
       
+      // Prepare AI configuration from organization settings
+      const aiConfig: AIConfig | undefined = orgSettings?.general?.aiProvider && orgSettings?.general?.aiApiKey
+        ? {
+            provider: orgSettings.general.aiProvider,
+            apiKey: orgSettings.general.aiApiKey
+          }
+        : undefined;
+
       const generatedContent = await generateJobDescriptionWithAI({
         jobTitle: formData.jobTitle,
         department: department,
@@ -418,7 +467,7 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
         experienceRange: formData.experienceRange,
         workType: formData.workType || undefined,
         location: formData.location || undefined
-      });
+      }, aiConfig);
 
       setFormData(prev => ({
         ...prev,
@@ -1615,9 +1664,33 @@ ${preferredQuals.map(qual => `• ${qual}`).join('\n')}`
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
                     Generate with AI
+                    {orgSettings?.general?.aiProvider && (
+                      <span className="text-xs bg-white/20 px-2 py-1 rounded-full ml-2">
+                        {orgSettings.general.aiProvider.charAt(0).toUpperCase() + orgSettings.general.aiProvider.slice(1)}
+                      </span>
+                    )}
                   </>
                 )}
               </button>
+            </div>
+
+            {/* AI Configuration Status */}
+            <div className="flex items-center justify-center text-sm text-gray-600">
+              {orgSettings?.general?.aiProvider && orgSettings?.general?.aiApiKey ? (
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Using {orgSettings.general.aiProvider.charAt(0).toUpperCase() + orgSettings.general.aiProvider.slice(1)} AI
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-amber-600">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                  Configure AI provider in Organization Settings for AI generation
+                </div>
+              )}
             </div>
 
             {/* Job Description */}
