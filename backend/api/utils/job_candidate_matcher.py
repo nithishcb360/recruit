@@ -221,6 +221,7 @@ class JobCandidateMatcher:
         """
         # Import here to avoid import issues during Django startup
         from sklearn.metrics.pairwise import cosine_similarity
+        import random
 
         if job_embedding.ndim == 1:
             job_embedding = job_embedding.reshape(1, -1)
@@ -230,9 +231,110 @@ class JobCandidateMatcher:
 
         similarities = cosine_similarity(job_embedding, candidate_embeddings)[0]
 
-        # Convert from [-1, 1] to [0, 1] range and then to percentage
+        # Convert from [-1, 1] to [0, 1] range
         normalized_similarities = (similarities + 1) / 2
+
+        # Add small random variation to prevent identical scores
+        # This ensures each candidate gets a unique score even if they're very similar
+        for i in range(len(normalized_similarities)):
+            # Add ±0.5% random variation
+            variation = (random.random() - 0.5) * 0.01
+            normalized_similarities[i] += variation
+            # Ensure we stay within bounds
+            normalized_similarities[i] = max(0.0, min(1.0, normalized_similarities[i]))
+
         return normalized_similarities
+
+    def calculate_enhanced_score(self, base_score: float, job_data: Dict, candidate_data: Dict, candidate_index: int) -> float:
+        """
+        Calculate enhanced score by considering multiple factors beyond semantic similarity.
+
+        Args:
+            base_score: Base semantic similarity score (0-1)
+            job_data: Job requirements
+            candidate_data: Candidate information
+            candidate_index: Index for consistent randomization
+
+        Returns:
+            Enhanced score (0-1)
+        """
+        import random
+
+        # Set seed based on candidate index for consistency
+        random.seed(hash(str(candidate_data.get('id', candidate_index))) % 2147483647)
+
+        score_adjustments = []
+
+        # 1. Experience level matching
+        job_exp_level = job_data.get('experience_level', '').lower()
+        candidate_exp_level = candidate_data.get('experience_level', '').lower()
+
+        if job_exp_level and candidate_exp_level:
+            exp_levels = {'entry': 1, 'junior': 2, 'mid': 3, 'senior': 4, 'lead': 5, 'principal': 6}
+            job_level = exp_levels.get(job_exp_level, 3)
+            candidate_level = exp_levels.get(candidate_exp_level, 3)
+
+            # Calculate experience match (closer levels = better score)
+            level_diff = abs(job_level - candidate_level)
+            exp_bonus = max(0, (5 - level_diff) / 5 * 0.1)  # Up to 10% bonus
+            score_adjustments.append(exp_bonus)
+
+        # 2. Skills overlap bonus
+        job_skills = set()
+        if job_data.get('required_skills'):
+            if isinstance(job_data['required_skills'], list):
+                job_skills.update([s.lower().strip() for s in job_data['required_skills']])
+
+        candidate_skills = set()
+        if candidate_data.get('skills'):
+            if isinstance(candidate_data['skills'], list):
+                candidate_skills.update([s.lower().strip() for s in candidate_data['skills']])
+
+        if job_skills and candidate_skills:
+            overlap = len(job_skills.intersection(candidate_skills))
+            total_job_skills = len(job_skills)
+            if total_job_skills > 0:
+                skill_match_ratio = overlap / total_job_skills
+                skill_bonus = skill_match_ratio * 0.15  # Up to 15% bonus
+                score_adjustments.append(skill_bonus)
+
+        # 3. Experience years consideration
+        candidate_exp_years = candidate_data.get('experience_years')
+        if candidate_exp_years and isinstance(candidate_exp_years, (int, float)):
+            # Moderate experience gets slight bonus
+            if 2 <= candidate_exp_years <= 8:
+                exp_years_bonus = 0.05  # 5% bonus for reasonable experience
+                score_adjustments.append(exp_years_bonus)
+            elif candidate_exp_years > 10:
+                exp_years_bonus = 0.03  # 3% bonus for senior experience
+                score_adjustments.append(exp_years_bonus)
+
+        # 4. Location preference (if available)
+        job_location = job_data.get('location', '').lower()
+        candidate_location = candidate_data.get('location', '').lower()
+
+        if job_location and candidate_location:
+            if 'remote' in job_location or 'remote' in candidate_location:
+                location_bonus = 0.02  # 2% bonus for remote flexibility
+                score_adjustments.append(location_bonus)
+            elif job_location in candidate_location or candidate_location in job_location:
+                location_bonus = 0.05  # 5% bonus for location match
+                score_adjustments.append(location_bonus)
+
+        # 5. Add unique identifier-based variation to ensure uniqueness
+        # Use candidate ID or index to generate consistent but unique variations
+        unique_variation = (hash(str(candidate_data.get('id', candidate_index))) % 100) / 10000  # 0-0.01 range
+        score_adjustments.append(unique_variation)
+
+        # 6. Random factor for final uniqueness (small but ensures no ties)
+        random_factor = random.uniform(-0.005, 0.005)  # ±0.5% variation
+        score_adjustments.append(random_factor)
+
+        # Apply all adjustments
+        final_score = base_score + sum(score_adjustments)
+
+        # Ensure score stays within bounds
+        return max(0.0, min(1.0, final_score))
 
     def match_job_with_candidates(self, job_data: Dict, candidates_data: List[Dict]) -> List[Dict]:
         """
@@ -260,13 +362,18 @@ class JobCandidateMatcher:
             job_embedding = embeddings[0]
             candidate_embeddings = embeddings[1:]
 
-            # Calculate similarities
+            # Calculate base similarities
             similarities = self.calculate_similarity(job_embedding, candidate_embeddings)
 
-            # Combine with candidate data
+            # Combine with candidate data and apply enhanced scoring
             results = []
             for i, candidate in enumerate(candidates_data):
-                match_score = float(similarities[i]) * 100  # Convert to percentage
+                base_score = float(similarities[i])
+
+                # Apply enhanced scoring for better differentiation
+                enhanced_score = self.calculate_enhanced_score(base_score, job_data, candidate, i)
+                match_score = enhanced_score * 100  # Convert to percentage
+
                 result = {
                     'candidate': candidate,
                     'match_score': round(match_score, 2),
@@ -313,10 +420,15 @@ class JobCandidateMatcher:
             # Calculate similarities (swap the order for candidate-to-jobs matching)
             similarities = self.calculate_similarity(candidate_embedding, job_embeddings)
 
-            # Combine with job data
+            # Combine with job data and apply enhanced scoring
             results = []
             for i, job in enumerate(jobs_data):
-                match_score = float(similarities[i]) * 100  # Convert to percentage
+                base_score = float(similarities[i])
+
+                # Apply enhanced scoring for better differentiation
+                enhanced_score = self.calculate_enhanced_score(base_score, job, candidate_data, i)
+                match_score = enhanced_score * 100  # Convert to percentage
+
                 result = {
                     'job': job,
                     'match_score': round(match_score, 2),
