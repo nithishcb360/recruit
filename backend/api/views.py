@@ -21,13 +21,16 @@ from .serializers import (
 )
 from .utils.enhanced_resume_parser import EnhancedResumeParser
 from .utils.resume_parser import ResumeParser
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Safe import for semantic matcher with fallback
 try:
     from .utils.semantic_matcher import get_semantic_matcher
     SEMANTIC_MATCHING_AVAILABLE = True
 except ImportError as e:
-    logger.warning(f"Semantic matching not available: {e}") # pyright: ignore[reportUndefinedVariable]
+    logger.warning(f"Semantic matching not available: {e}")
     SEMANTIC_MATCHING_AVAILABLE = False
     
     # Create a dummy function to prevent errors
