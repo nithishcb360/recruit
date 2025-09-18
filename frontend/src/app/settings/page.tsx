@@ -387,7 +387,192 @@ Make sure the requirements field contains properly formatted text, not JSON stru
   })
 
   // Interview Flows and Rounds
-  const [interviewFlows, setInterviewFlows] = useState<InterviewFlow[]>([
+  const [interviewFlows, setInterviewFlows] = useState<InterviewFlow[]>([]);
+  const [isLoadingFlows, setIsLoadingFlows] = useState(true);
+
+  // API functions for interview flows
+  const fetchInterviewFlows = async () => {
+    try {
+      setIsLoadingFlows(true);
+      const response = await fetch('http://127.0.0.1:8000/api/interview-flows/');
+      if (response.ok) {
+        const data = await response.json();
+        const flows = Array.isArray(data) ? data : data.results || [];
+        // Transform backend data to frontend format
+        const transformedFlows = flows.map((flow: any) => ({
+          id: flow.id.toString(),
+          name: flow.name,
+          description: flow.description || '',
+          isDefault: flow.is_default,
+          jobTypes: flow.job_types || [],
+          rounds: flow.rounds?.map((round: any) => ({
+            id: round.id.toString(),
+            name: round.name,
+            type: round.type,
+            description: round.description || '',
+            duration: round.duration,
+            isRequired: round.is_required,
+            order: round.order,
+            interviewers: round.interviewers || [],
+            skills: round.skills || [],
+            passingCriteria: round.passing_criteria || {},
+            autoAdvance: round.auto_advance,
+            emailTemplate: round.email_template || '',
+            instructions: round.instructions || ''
+          })) || [],
+          totalEstimatedTime: flow.total_estimated_time || 0,
+          createdAt: flow.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
+          lastModified: flow.updated_at?.split('T')[0] || new Date().toISOString().split('T')[0]
+        }));
+        setInterviewFlows(transformedFlows);
+      } else {
+        console.error('Failed to fetch interview flows:', response.status, response.statusText);
+        // Don't use default flows on error, just log it
+        setInterviewFlows([]);
+      }
+    } catch (error) {
+      console.error('Error fetching interview flows:', error);
+      // Don't use default flows on error, just log it
+      setInterviewFlows([]);
+    } finally {
+      setIsLoadingFlows(false);
+    }
+  };
+
+  const createInterviewFlow = async (flowData: any) => {
+    try {
+      const response = await fetch('http://127.0.0.1:8000/api/interview-flows/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: flowData.name,
+          description: flowData.description || '',
+          is_default: flowData.isDefault || false,
+          job_types: flowData.jobTypes || [],
+          total_estimated_time: flowData.totalEstimatedTime || 0
+        })
+      });
+
+      if (response.ok) {
+        const newFlow = await response.json();
+        // Create rounds separately
+        if (flowData.rounds && flowData.rounds.length > 0) {
+          await Promise.all(flowData.rounds.map((round: any) =>
+            fetch('http://127.0.0.1:8000/api/interview-rounds/', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                flow: newFlow.id,
+                name: round.name,
+                type: round.type,
+                description: round.description || '',
+                duration: round.duration,
+                is_required: round.isRequired,
+                order: round.order,
+                interviewers: round.interviewers || [],
+                skills: round.skills || [],
+                passing_criteria: round.passingCriteria || {},
+                auto_advance: round.autoAdvance,
+                email_template: round.emailTemplate || '',
+                instructions: round.instructions || ''
+              })
+            })
+          ));
+        }
+        return newFlow;
+      } else {
+        throw new Error('Failed to create interview flow');
+      }
+    } catch (error) {
+      console.error('Error creating interview flow:', error);
+      throw error;
+    }
+  };
+
+  const updateInterviewFlow = async (flowId: string, flowData: any) => {
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/api/interview-flows/${flowId}/`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: flowData.name,
+          description: flowData.description || '',
+          is_default: flowData.isDefault || false,
+          job_types: flowData.jobTypes || [],
+          total_estimated_time: flowData.totalEstimatedTime || 0
+        })
+      });
+
+      if (response.ok) {
+        // Update rounds
+        if (flowData.rounds) {
+          // Delete existing rounds and create new ones (simple approach)
+          const existingRounds = await fetch(`http://127.0.0.1:8000/api/interview-rounds/?flow=${flowId}`);
+          if (existingRounds.ok) {
+            const rounds = await existingRounds.json();
+            await Promise.all(rounds.map((round: any) =>
+              fetch(`http://127.0.0.1:8000/api/interview-rounds/${round.id}/`, { method: 'DELETE' })
+            ));
+          }
+
+          // Create new rounds sequentially to avoid order conflicts
+          for (const round of flowData.rounds) {
+            await fetch('http://127.0.0.1:8000/api/interview-rounds/', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                flow: flowId,
+                name: round.name,
+                type: round.type,
+                description: round.description || '',
+                duration: round.duration,
+                is_required: round.isRequired,
+                order: round.order,
+                interviewers: round.interviewers || [],
+                skills: round.skills || [],
+                passing_criteria: round.passingCriteria || {},
+                auto_advance: round.autoAdvance,
+                email_template: round.emailTemplate || '',
+                instructions: round.instructions || ''
+              })
+            });
+          }
+        }
+        return await response.json();
+      } else {
+        throw new Error('Failed to update interview flow');
+      }
+    } catch (error) {
+      console.error('Error updating interview flow:', error);
+      throw error;
+    }
+  };
+
+  const deleteInterviewFlow = async (flowId: string) => {
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/api/interview-flows/${flowId}/`, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete interview flow');
+      }
+    } catch (error) {
+      console.error('Error deleting interview flow:', error);
+      throw error;
+    }
+  };
+
+  // Default flows fallback function
+  const getDefaultFlows = (): InterviewFlow[] => [
     {
       id: 'flow_1',
       name: 'Standard Technical Flow',
@@ -551,6 +736,11 @@ Make sure the requirements field contains properly formatted text, not JSON stru
     } catch (error) {
       console.error('Error loading settings from localStorage:', error);
     }
+  }, []);
+
+  // Load interview flows from backend on component mount
+  useEffect(() => {
+    fetchInterviewFlows();
   }, []);
 
   // Handle settings changes with proper typing
@@ -780,7 +970,7 @@ Make sure the requirements field contains properly formatted text, not JSON stru
     })
   }
 
-  const handleCreateFlow = () => {
+  const handleCreateFlow = async () => {
     if (!newFlow.name?.trim()) {
       toast({
         title: "Error",
@@ -790,54 +980,64 @@ Make sure the requirements field contains properly formatted text, not JSON stru
       return
     }
 
-    const flowId = `flow_${Date.now()}`
-    const flow: InterviewFlow = {
-      id: flowId,
-      name: newFlow.name,
-      description: newFlow.description || '',
-      isDefault: newFlow.isDefault || false,
-      jobTypes: newFlow.jobTypes || [],
-      rounds: newFlow.rounds || [],
-      totalEstimatedTime: newFlow.rounds?.reduce((sum, round) => sum + round.duration, 0) || 0,
-      createdAt: new Date().toISOString().split('T')[0],
-      lastModified: new Date().toISOString().split('T')[0]
-    }
+    try {
+      const flowData = {
+        name: newFlow.name,
+        description: newFlow.description || '',
+        isDefault: newFlow.isDefault || false,
+        jobTypes: newFlow.jobTypes || [],
+        rounds: newFlow.rounds || [],
+        totalEstimatedTime: newFlow.rounds?.reduce((sum, round) => sum + round.duration, 0) || 0
+      }
 
-    setInterviewFlows(prev => [...prev, flow])
-    closeFlowModal()
-    setHasUnsavedChanges(true)
-    
-    toast({
-      title: "Success",
-      description: "Interview flow created successfully.",
-      variant: "default"
-    })
+      await createInterviewFlow(flowData)
+      await fetchInterviewFlows() // Refresh the list
+      closeFlowModal()
+      setHasUnsavedChanges(true)
+
+      toast({
+        title: "Success",
+        description: "Interview flow created successfully.",
+        variant: "default"
+      })
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to create interview flow. Please try again.",
+        variant: "destructive"
+      })
+    }
   }
 
-  const handleUpdateFlow = () => {
+  const handleUpdateFlow = async () => {
     if (!selectedFlow) return
 
-    const updatedFlow = {
-      ...selectedFlow,
-      totalEstimatedTime: selectedFlow.rounds.reduce((sum, round) => sum + round.duration, 0),
-      lastModified: new Date().toISOString().split('T')[0]
-    }
+    try {
+      const updatedFlowData = {
+        ...selectedFlow,
+        totalEstimatedTime: selectedFlow.rounds.reduce((sum, round) => sum + round.duration, 0)
+      }
 
-    setInterviewFlows(prev => prev.map(flow => 
-      flow.id === selectedFlow.id ? updatedFlow : flow
-    ))
-    
-    closeFlowModal()
-    setHasUnsavedChanges(true)
-    
-    toast({
-      title: "Success",
-      description: "Interview flow updated successfully.",
-      variant: "default"
-    })
+      await updateInterviewFlow(selectedFlow.id, updatedFlowData)
+      await fetchInterviewFlows() // Refresh the list
+      closeFlowModal()
+      setHasUnsavedChanges(true)
+
+      toast({
+        title: "Success",
+        description: "Interview flow updated successfully.",
+        variant: "default"
+      })
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update interview flow. Please try again.",
+        variant: "destructive"
+      })
+    }
   }
 
-  const handleDeleteFlow = (flowId: string) => {
+  const handleDeleteFlow = async (flowId: string) => {
     const flow = interviewFlows.find(f => f.id === flowId)
     if (flow?.isDefault) {
       toast({
@@ -848,14 +1048,23 @@ Make sure the requirements field contains properly formatted text, not JSON stru
       return
     }
 
-    setInterviewFlows(prev => prev.filter(f => f.id !== flowId))
-    setHasUnsavedChanges(true)
-    
-    toast({
-      title: "Success",
-      description: "Interview flow deleted successfully.",
-      variant: "default"
-    })
+    try {
+      await deleteInterviewFlow(flowId)
+      await fetchInterviewFlows() // Refresh the list
+      setHasUnsavedChanges(true)
+
+      toast({
+        title: "Success",
+        description: "Interview flow deleted successfully.",
+        variant: "default"
+      })
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete interview flow. Please try again.",
+        variant: "destructive"
+      })
+    }
   }
 
   // Round Management Functions
@@ -921,20 +1130,21 @@ Make sure the requirements field contains properly formatted text, not JSON stru
     newRounds[roundIndex] = newRounds[targetIndex]
     newRounds[targetIndex] = temp
     
-    // Update order numbers
-    newRounds.forEach((round, index) => {
-      round.order = index + 1
-    })
+    // Update order numbers with new objects to trigger re-render
+    const updatedRounds = newRounds.map((round, index) => ({
+      ...round,
+      order: index + 1
+    }))
 
     if (isEditingFlow && selectedFlow) {
       setSelectedFlow({
         ...selectedFlow,
-        rounds: newRounds
+        rounds: updatedRounds
       })
     } else {
       setNewFlow(prev => ({
         ...prev,
-        rounds: newRounds
+        rounds: updatedRounds
       }))
     }
   }
@@ -2106,7 +2316,19 @@ Make sure the requirements field contains properly formatted text, not JSON stru
 
             {/* Interview Flows List */}
             <div className="space-y-4">
-              {interviewFlows.map((flow) => (
+              {isLoadingFlows ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                    <p className="text-sm text-black mt-2">Loading interview flows...</p>
+                  </div>
+                </div>
+              ) : interviewFlows.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-black">No interview flows found. Create your first flow!</p>
+                </div>
+              ) : (
+                interviewFlows.map((flow) => (
                 <Card key={flow.id} className="overflow-hidden">
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
@@ -2219,7 +2441,8 @@ Make sure the requirements field contains properly formatted text, not JSON stru
                     </div>
                   </CardContent>
                 </Card>
-              ))}
+                ))
+              )}
             </div>
 
             {/* Round Type Templates */}
@@ -2615,7 +2838,7 @@ Make sure the requirements field contains properly formatted text, not JSON stru
                     
                     return (
                       <div
-                        key={round.id}
+                        key={`${round.id}-${round.order}`}
                         className="group flex items-center justify-between p-5 border-2 border-gray-200 rounded-xl bg-gradient-to-r from-white to-gray-50 hover:from-blue-50 hover:to-indigo-50 hover:border-blue-300 transition-all duration-300 shadow-md hover:shadow-lg"
                         draggable={true}
                         onDragStart={(e) => {
@@ -2643,15 +2866,16 @@ Make sure the requirements field contains properly formatted text, not JSON stru
                               const [draggedRound] = reorderedRounds.splice(draggedIndex, 1)
                               reorderedRounds.splice(targetIndex, 0, draggedRound)
 
-                              // Update order properties
-                              reorderedRounds.forEach((round, index) => {
-                                round.order = index + 1
-                              })
+                              // Update order properties with new objects to trigger re-render
+                              const updatedRounds = reorderedRounds.map((round, index) => ({
+                                ...round,
+                                order: index + 1
+                              }))
 
                               if (isEditingFlow && selectedFlow) {
-                                setSelectedFlow({ ...selectedFlow, rounds: reorderedRounds })
+                                setSelectedFlow({ ...selectedFlow, rounds: updatedRounds })
                               } else {
-                                setNewFlow(prev => ({ ...prev, rounds: reorderedRounds }))
+                                setNewFlow(prev => ({ ...prev, rounds: updatedRounds }))
                               }
                             }
                           }

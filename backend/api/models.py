@@ -338,6 +338,78 @@ class FeedbackTemplate(models.Model):
             models.Index(fields=['is_active']),
             models.Index(fields=['created_at']),
         ]
-    
+
     def __str__(self):
         return self.name
+
+
+class InterviewFlow(models.Model):
+    """Model for storing interview flow configurations"""
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    is_default = models.BooleanField(default=False)
+    job_types = models.JSONField(default=list, blank=True)  # List of job types this flow applies to
+    total_estimated_time = models.IntegerField(default=0)  # Total time in minutes
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+        indexes = [
+            models.Index(fields=['is_default']),
+            models.Index(fields=['created_at']),
+        ]
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        # Ensure only one default flow exists
+        if self.is_default:
+            InterviewFlow.objects.filter(is_default=True).exclude(id=self.id).update(is_default=False)
+        super().save(*args, **kwargs)
+
+
+class InterviewRound(models.Model):
+    """Model for storing individual interview rounds"""
+    ROUND_TYPE_CHOICES = [
+        ('telephonic', 'Telephonic'),
+        ('video', 'Video'),
+        ('technical', 'Technical'),
+        ('hr', 'HR'),
+        ('panel', 'Panel'),
+        ('assignment', 'Assignment'),
+        ('onsite', 'Onsite'),
+        ('cultural', 'Cultural'),
+    ]
+
+    flow = models.ForeignKey(InterviewFlow, on_delete=models.CASCADE, related_name='rounds')
+    name = models.CharField(max_length=200)
+    type = models.CharField(max_length=20, choices=ROUND_TYPE_CHOICES, default='video')
+    description = models.TextField(blank=True)
+    duration = models.IntegerField(default=30)  # Duration in minutes
+    is_required = models.BooleanField(default=True)
+    order = models.IntegerField(default=1)
+
+    # Additional fields for interview round configuration
+    interviewers = models.JSONField(default=list, blank=True)  # List of interviewer names/roles
+    skills = models.JSONField(default=list, blank=True)  # Skills to assess in this round
+    passing_criteria = models.JSONField(default=dict, blank=True)  # Criteria for passing
+    auto_advance = models.BooleanField(default=False)
+    email_template = models.CharField(max_length=100, blank=True)
+    instructions = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['flow', 'order']
+        unique_together = ['flow', 'order']
+        indexes = [
+            models.Index(fields=['flow', 'order']),
+            models.Index(fields=['type']),
+        ]
+
+    def __str__(self):
+        return f"{self.flow.name} - {self.name}"
