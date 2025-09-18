@@ -11,6 +11,9 @@ interface OrganizationSettings {
     aiProvider: string;
     aiApiKey: string;
   };
+  ai: {
+    jobGenerationPrompt: string;
+  };
 }
 
 interface FormData {
@@ -122,7 +125,7 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
         department: editingJob.department.id.toString() || '',
         experienceLevel: (editingJob as any).experience_level || '',
         location: (editingJob as any).location || '',
-        workType: (editingJob as any).work_type || '',
+        workType: ((editingJob as any).job_type || '').replace('_', '-'), // Convert 'full_time' to 'full-time'
         minSalary: (editingJob as any).salary_min || 80000,
         maxSalary: (editingJob as any).salary_max || 120000,
         experienceRange: '',
@@ -456,7 +459,8 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
       const aiConfig: AIConfig | undefined = orgSettings?.general?.aiProvider && orgSettings?.general?.aiApiKey
         ? {
             provider: orgSettings.general.aiProvider,
-            apiKey: orgSettings.general.aiApiKey
+            apiKey: orgSettings.general.aiApiKey,
+            customPrompt: orgSettings?.ai?.jobGenerationPrompt
           }
         : undefined;
 

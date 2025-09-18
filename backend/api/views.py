@@ -728,7 +728,7 @@ def bulk_create_candidates(request):
                         if resume_file_path:
                             candidate.resume_file = resume_file_path
                             candidate.save()
-                        created_candidates.append(candidate)
+                        created_candidates.append(CandidateListSerializer(candidate).data)
                         continue
                     else:
                         errors.append(f"Candidate {i+1}: Error updating existing candidate with email '{email}': {serializer.errors}")
@@ -750,7 +750,7 @@ def bulk_create_candidates(request):
                         if resume_file_path:
                             candidate.resume_file = resume_file_path
                             candidate.save()
-                        created_candidates.append(candidate)
+                        created_candidates.append(CandidateListSerializer(candidate).data)
                         continue
                     else:
                         errors.append(f"Candidate {i+1}: Error updating existing candidate '{first_name} {last_name}': {serializer.errors}")

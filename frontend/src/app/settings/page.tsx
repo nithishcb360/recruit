@@ -73,6 +73,9 @@ interface OrganizationSettings {
     aiProvider: string
     aiApiKey: string
   }
+  ai: {
+    jobGenerationPrompt: string
+  }
   security: {
     mfaRequired: boolean
     ssoEnabled: boolean
@@ -289,6 +292,36 @@ export default function ClientOrganizationSettings() {
       locale: "en-US",
       aiProvider: "anthropic",
       aiApiKey: ""
+    },
+    ai: {
+      jobGenerationPrompt: `You are an expert HR professional and job description writer. Create professional, engaging, and comprehensive job descriptions that attract qualified candidates.
+
+Your task is to generate:
+1. A detailed job description (3-4 paragraphs)
+2. Comprehensive requirements list (both required and preferred qualifications)
+
+Make the content:
+- Professional yet engaging
+- Specific to the role and industry
+- Include relevant technologies and skills for the position
+- Follow modern job posting best practices
+- Be inclusive and welcoming
+
+Format the response as JSON with two fields: "description" and "requirements".
+For the requirements field, format it as a clean, readable text with sections like:
+Required Qualifications:
+• Item 1
+• Item 2
+
+Technical Skills:
+• Skill 1
+• Skill 2
+
+Preferred Qualifications:
+• Item 1
+• Item 2
+
+Make sure the requirements field contains properly formatted text, not JSON structure.`
     },
     security: {
       mfaRequired: true,
@@ -1012,13 +1045,14 @@ export default function ClientOrganizationSettings() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-7">
+        <TabsList className="grid w-full grid-cols-8">
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="security">Security</TabsTrigger>
           <TabsTrigger value="permissions">Permissions</TabsTrigger>
           <TabsTrigger value="features">Features</TabsTrigger>
           <TabsTrigger value="branding">Branding</TabsTrigger>
           <TabsTrigger value="compliance">Compliance</TabsTrigger>
+          <TabsTrigger value="ai-prompt">AI Prompt</TabsTrigger>
           <TabsTrigger value="interview-rounds">Rules Engine</TabsTrigger>
         </TabsList>
 
@@ -1881,6 +1915,133 @@ export default function ClientOrganizationSettings() {
           </div>
         </TabsContent>
 
+        {/* AI Prompt Tab */}
+        <TabsContent value="ai-prompt" className="mt-6">
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Zap className="h-5 w-5" />
+                  Generative AI Prompt
+                </CardTitle>
+                <CardDescription>
+                  Customize the system prompt used when generating job descriptions and requirements with AI. This prompt is sent to the AI provider (https://api.anthropic.com/v1/messages) when you click the "Generate with AI" button on job creation pages.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="ai-prompt">System Prompt</Label>
+                  <Textarea
+                    id="ai-prompt"
+                    rows={15}
+                    className="font-mono text-sm"
+                    placeholder="Enter your custom AI prompt here..."
+                    value={orgSettings.ai.jobGenerationPrompt}
+                    onChange={(e) => {
+                      setOrgSettings(prev => ({
+                        ...prev,
+                        ai: {
+                          ...prev.ai,
+                          jobGenerationPrompt: e.target.value
+                        }
+                      }))
+                      setHasUnsavedChanges(true)
+                    }}
+                  />
+                  <p className="text-sm text-gray-600">
+                    This prompt will be sent to your selected AI provider ({orgSettings.general.aiProvider}) to generate job descriptions.
+                    You can customize it to match your company's tone, requirements format, and specific needs.
+                  </p>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    className="border-blue-500 text-blue-600 hover:bg-blue-50 hover:border-blue-600"
+                    onClick={() => {
+                      setOrgSettings(prev => ({
+                        ...prev,
+                        ai: {
+                          ...prev.ai,
+                          jobGenerationPrompt: `You are an expert HR professional and job description writer. Create professional, engaging, and comprehensive job descriptions that attract qualified candidates.
+
+Your task is to generate:
+1. A detailed job description (3-4 paragraphs)
+2. Comprehensive requirements list (both required and preferred qualifications)
+
+Make the content:
+- Professional yet engaging
+- Specific to the role and industry
+- Include relevant technologies and skills for the position
+- Follow modern job posting best practices
+- Be inclusive and welcoming
+
+Format the response as JSON with two fields: "description" and "requirements".
+For the requirements field, format it as a clean, readable text with sections like:
+Required Qualifications:
+• Item 1
+• Item 2
+
+Technical Skills:
+• Skill 1
+• Skill 2
+
+Preferred Qualifications:
+• Item 1
+• Item 2
+
+Make sure the requirements field contains properly formatted text, not JSON structure.`
+                        }
+                      }))
+                      setHasUnsavedChanges(true)
+                      toast({
+                        title: "Prompt Reset",
+                        description: "AI prompt has been reset to default.",
+                        variant: "default"
+                      })
+                    }}
+                  >
+                    Reset to Default
+                  </Button>
+
+                  <Button
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                    disabled={isLoading}
+                    onClick={() => {
+                      handleSaveSettings()
+                      toast({
+                        title: "AI Prompt Updated",
+                        description: "Your custom prompt will now be used for API calls to https://api.anthropic.com/v1/messages",
+                        variant: "default"
+                      })
+                    }}
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    {isLoading ? 'Saving...' : 'Save & Update API'}
+                  </Button>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="flex items-start gap-2">
+                    <div className="text-blue-600 mt-0.5">
+                      <Activity className="h-4 w-4" />
+                    </div>
+                    <div className="text-sm text-blue-800">
+                      <p className="font-medium mb-1">How it works:</p>
+                      <ul className="space-y-1 text-xs">
+                        <li>• This prompt is sent as the "system" message to your AI provider</li>
+                        <li>• The job details (title, department, experience level) are automatically included</li>
+                        <li>• The AI uses this prompt to understand how to format and structure responses</li>
+                        <li>• Changes take effect immediately for new job generations</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
         {/* Interview Rounds Tab */}
         <TabsContent value="interview-rounds" className="mt-6">
           <div className="space-y-6">
@@ -2453,10 +2614,56 @@ export default function ClientOrganizationSettings() {
                     const rounds = isEditingFlow ? selectedFlow?.rounds || [] : newFlow.rounds || []
                     
                     return (
-                      <div key={round.id} className="group flex items-center justify-between p-5 border-2 border-gray-200 rounded-xl bg-gradient-to-r from-white to-gray-50 hover:from-blue-50 hover:to-indigo-50 hover:border-blue-300 transition-all duration-300 shadow-md hover:shadow-lg">
+                      <div
+                        key={round.id}
+                        className="group flex items-center justify-between p-5 border-2 border-gray-200 rounded-xl bg-gradient-to-r from-white to-gray-50 hover:from-blue-50 hover:to-indigo-50 hover:border-blue-300 transition-all duration-300 shadow-md hover:shadow-lg"
+                        draggable={true}
+                        onDragStart={(e) => {
+                          setDraggedRound(round.id)
+                          e.dataTransfer.effectAllowed = 'move'
+                          e.dataTransfer.setData('text/html', round.id)
+                        }}
+                        onDragEnd={() => setDraggedRound(null)}
+                        onDragOver={(e) => {
+                          e.preventDefault()
+                          e.dataTransfer.dropEffect = 'move'
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault()
+                          const draggedId = draggedRound
+                          const targetId = round.id
+                          if (draggedId && draggedId !== targetId) {
+                            // Reorder the rounds
+                            const rounds = isEditingFlow ? selectedFlow?.rounds || [] : newFlow.rounds || []
+                            const draggedIndex = rounds.findIndex(r => r.id === draggedId)
+                            const targetIndex = rounds.findIndex(r => r.id === targetId)
+
+                            if (draggedIndex !== -1 && targetIndex !== -1) {
+                              const reorderedRounds = [...rounds]
+                              const [draggedRound] = reorderedRounds.splice(draggedIndex, 1)
+                              reorderedRounds.splice(targetIndex, 0, draggedRound)
+
+                              // Update order properties
+                              reorderedRounds.forEach((round, index) => {
+                                round.order = index + 1
+                              })
+
+                              if (isEditingFlow && selectedFlow) {
+                                setSelectedFlow({ ...selectedFlow, rounds: reorderedRounds })
+                              } else {
+                                setNewFlow(prev => ({ ...prev, rounds: reorderedRounds }))
+                              }
+                            }
+                          }
+                        }}
+                        style={{
+                          opacity: draggedRound === round.id ? 0.5 : 1,
+                          cursor: 'grab'
+                        }}
+                      >
                         <div className="flex items-center space-x-4">
                           <div className="flex items-center space-x-2">
-                            <GripVertical className="h-4 w-4 text-gray-400" />
+                            <GripVertical className="h-4 w-4 text-gray-400 cursor-grab active:cursor-grabbing" />
                             <div className="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-lg group-hover:shadow-xl transition-all duration-300">
                               <RoundIcon className="h-5 w-5" />
                             </div>
