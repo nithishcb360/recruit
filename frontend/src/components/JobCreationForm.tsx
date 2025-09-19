@@ -4,6 +4,13 @@ import { useState, useEffect } from 'react';
 import { createJob, updateJob, getDepartments, createDepartment, type JobCreateData, type Department, type Job, type DepartmentCreateData } from '@/lib/api/jobs';
 import { searchLocations, type Location } from '@/lib/api/locations';
 import { generateJobDescriptionWithAI, type AIConfig } from '@/lib/api/claude';
+import { getFeedbackTemplates, type FeedbackTemplate } from '@/lib/api/feedback-templates';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
 
 // Organization settings interface
 interface OrganizationSettings {
@@ -28,6 +35,22 @@ interface FormData {
   jobDescription: string;
   requirements: string;
   responsibilities: string;
+  interviewStages: InterviewStage[];
+}
+
+interface InterviewStage {
+  id: string;
+  name: string;
+  interviewerType: 'human' | 'ai' | 'hybrid';
+  feedbackFormId: string;
+  feedbackFormName?: string;
+}
+
+interface FeedbackForm {
+  id: string;
+  name: string;
+  questions: number;
+  questionsList: string[];
 }
 
 interface JobPostingFormProps {
@@ -50,7 +73,8 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
     experienceRange: '',
     jobDescription: '',
     requirements: '',
-    responsibilities: ''
+    responsibilities: '',
+    interviewStages: []
   });
 
   const [validationErrors, setValidationErrors] = useState<Record<string, boolean>>({});
@@ -67,6 +91,17 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
   const [isSearchingLocations, setIsSearchingLocations] = useState(false);
   const [isGeneratingWithAI, setIsGeneratingWithAI] = useState(false);
   const [orgSettings, setOrgSettings] = useState<OrganizationSettings | null>(null);
+  const [interviewStages, setInterviewStages] = useState<InterviewStage[]>([
+    {
+      id: '1',
+      name: '',
+      interviewerType: 'human',
+      feedbackFormId: '',
+    }
+  ]);
+  const [showFormPreview, setShowFormPreview] = useState<string | null>(null);
+
+  const [feedbackForms, setFeedbackForms] = useState<FeedbackForm[]>([]);
 
   const steps = [
     { number: 1, name: 'Job Details', active: activeStep === 1 },
@@ -83,6 +118,64 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
       }
     };
     loadDepartments();
+  }, []);
+
+  // Load feedback forms from both API and localStorage (same as Feedback Form Builder)
+  useEffect(() => {
+    const loadFormsFromLocalStorage = (): FeedbackTemplate[] => {
+      try {
+        const stored = localStorage.getItem('feedback-forms');
+        return stored ? JSON.parse(stored) : [];
+      } catch (error) {
+        console.warn('Failed to load forms from localStorage:', error);
+        return [];
+      }
+    };
+
+    const loadFeedbackForms = async () => {
+      try {
+        // Try to load from backend first
+        let backendForms: FeedbackTemplate[] = [];
+        try {
+          const response = await getFeedbackTemplates();
+          backendForms = response.results;
+        } catch (error) {
+          console.warn('Backend not available, using local storage:', error);
+        }
+
+        // Load locally created forms
+        const localForms = loadFormsFromLocalStorage();
+
+        // Combine backend and local forms, remove duplicates
+        const allForms = [...backendForms, ...localForms];
+        const uniqueForms = allForms.filter((form, index, array) =>
+          array.findIndex(f => f.id === form.id) === index
+        );
+
+        // Convert to the format expected by JobCreationForm
+        const convertedForms: FeedbackForm[] = uniqueForms.map(form => ({
+          id: form.id.toString(),
+          name: form.name,
+          questions: form.questions?.length || 0,
+          questionsList: form.questions?.map(q => q.text) || []
+        }));
+
+        setFeedbackForms(convertedForms);
+      } catch (error) {
+        console.error('Error loading feedback templates:', error);
+        // Fallback to local storage only
+        const localForms = loadFormsFromLocalStorage();
+        const convertedForms: FeedbackForm[] = localForms.map(form => ({
+          id: form.id.toString(),
+          name: form.name,
+          questions: form.questions?.length || 0,
+          questionsList: form.questions?.map(q => q.text) || []
+        }));
+        setFeedbackForms(convertedForms);
+      }
+    };
+
+    loadFeedbackForms();
   }, []);
 
   // Load organization settings for AI configuration
@@ -131,8 +224,14 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
         experienceRange: '',
         jobDescription: editingJob.description || '',
         requirements: editingJob.requirements || '',
-        responsibilities: editingJob.responsibilities || ''
+        responsibilities: editingJob.responsibilities || '',
+        interviewStages: (editingJob as any).interview_stages || []
       });
+
+      // Also update the interview stages state
+      if ((editingJob as any).interview_stages) {
+        setInterviewStages((editingJob as any).interview_stages);
+      }
     }
   }, [editingJob]);
 
@@ -321,6 +420,7 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
         publish_internal: true,
         publish_external: false,
         publish_company_website: true,
+        interview_stages: formData.interviewStages,
       };
 
       if (editingJob) {
@@ -1053,6 +1153,48 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
     return cultures[variationIndex % cultures.length];
   };
 
+  // Interview stages management functions
+  const addInterviewStage = () => {
+    const newStage: InterviewStage = {
+      id: Date.now().toString(),
+      name: '',
+      interviewerType: 'human',
+      feedbackFormId: '',
+    };
+    const updatedStages = [...interviewStages, newStage];
+    setInterviewStages(updatedStages);
+    setFormData(prev => ({ ...prev, interviewStages: updatedStages }));
+  };
+
+  const removeInterviewStage = (stageId: string) => {
+    if (interviewStages.length > 1) {
+      const updatedStages = interviewStages.filter(stage => stage.id !== stageId);
+      setInterviewStages(updatedStages);
+      setFormData(prev => ({ ...prev, interviewStages: updatedStages }));
+    }
+  };
+
+  const updateInterviewStage = (stageId: string, field: keyof InterviewStage, value: string) => {
+    const updatedStages = interviewStages.map(stage =>
+      stage.id === stageId
+        ? {
+            ...stage,
+            [field]: value,
+            // Update feedbackFormName when feedbackFormId changes
+            ...(field === 'feedbackFormId' ? {
+              feedbackFormName: feedbackForms.find(form => form.id === value)?.name
+            } : {})
+          }
+        : stage
+    );
+    setInterviewStages(updatedStages);
+    setFormData(prev => ({ ...prev, interviewStages: updatedStages }));
+  };
+
+  const getFilteredFeedbackForms = () => {
+    return feedbackForms;
+  };
+
   const generateRoleSpecificContent = (jobTitle: string, department: string, experienceLevel: string, workType: string, location: string, experienceRange: string) => {
     const title = jobTitle.toLowerCase();
     const dept = department.toLowerCase();
@@ -1628,147 +1770,380 @@ ${preferredQuals.map(qual => `• ${qual}`).join('\n')}`
           )}
 
           {activeStep === 2 && (
-          <div className="space-y-8">
-            {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row gap-4 mb-6">
-              <label htmlFor="jd-upload" className="flex-1">
-                <input
-                  id="jd-upload"
-                  type="file"
-                  accept=".txt,.pdf,.doc,.docx"
-                  onChange={handleJDUpload}
-                  className="hidden"
-                />
+          <div className="space-y-10">
+            {/* Header Section with Gradient */}
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-6">
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Job Content & Interview Process</h3>
+              <p className="text-gray-600">Create comprehensive job details and configure your interview pipeline</p>
+            </div>
+
+            {/* Action Buttons Section */}
+            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+              <h4 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <label htmlFor="jd-upload" className="block">
+                  <input
+                    id="jd-upload"
+                    type="file"
+                    accept=".txt,.pdf,.doc,.docx"
+                    onChange={handleJDUpload}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => document.getElementById('jd-upload')?.click()}
+                    className="w-full bg-white hover:bg-gray-50 border-2 border-dashed border-gray-300 hover:border-blue-400 text-gray-700 hover:text-blue-600 font-semibold px-6 py-4 rounded-xl transition-all duration-200 flex items-center justify-center gap-3 group"
+                  >
+                    <div className="p-2 bg-gray-100 group-hover:bg-blue-100 rounded-lg transition-colors">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                      </svg>
+                    </div>
+                    <div className="text-left">
+                      <div className="font-semibold">Upload Job Description</div>
+                      <div className="text-sm text-gray-500">PDF, DOC, TXT files</div>
+                    </div>
+                  </button>
+                </label>
+
                 <button
                   type="button"
-                  onClick={() => document.getElementById('jd-upload')?.click()}
-                  className="w-full bg-white hover:bg-gray-50 border-2 border-gray-300 hover:border-gray-400 text-gray-700 font-semibold px-6 py-3 rounded-lg transition-all duration-200 flex items-center justify-center gap-2"
+                  onClick={handleGenerateWithAI}
+                  disabled={isGeneratingWithAI}
+                  className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 disabled:from-purple-400 disabled:to-blue-400 disabled:cursor-not-allowed text-white font-semibold px-6 py-4 rounded-xl transition-all duration-200 flex items-center justify-center gap-3 shadow-lg hover:shadow-xl"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                  </svg>
-                  Upload JD
-                </button>
-              </label>
-              
-              <button
-                type="button"
-                onClick={handleGenerateWithAI}
-                disabled={isGeneratingWithAI}
-                className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 disabled:from-purple-400 disabled:to-blue-400 disabled:cursor-not-allowed text-white font-semibold px-6 py-3 rounded-lg transition-all duration-200 flex items-center justify-center gap-2"
-              >
-                {isGeneratingWithAI ? (
-                  <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                    Generate with AI
-                    {orgSettings?.general?.aiProvider && (
-                      <span className="text-xs bg-white/20 px-2 py-1 rounded-full ml-2">
-                        {orgSettings.general.aiProvider.charAt(0).toUpperCase() + orgSettings.general.aiProvider.slice(1)}
-                      </span>
+                  <div className="p-2 bg-white/20 rounded-lg">
+                    {isGeneratingWithAI ? (
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    ) : (
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
                     )}
-                  </>
+                  </div>
+                  <div className="text-left">
+                    <div className="font-semibold">
+                      {isGeneratingWithAI ? 'Generating...' : 'Generate with AI'}
+                    </div>
+                    <div className="text-sm text-white/80">
+                      {orgSettings?.general?.aiProvider ?
+                        `Using ${orgSettings.general.aiProvider.charAt(0).toUpperCase() + orgSettings.general.aiProvider.slice(1)}` :
+                        'Auto-create content'
+                      }
+                    </div>
+                  </div>
+                </button>
+              </div>
+
+              {/* AI Configuration Status */}
+              <div className="mt-4 flex items-center justify-center">
+                {orgSettings?.general?.aiProvider && orgSettings?.general?.aiApiKey ? (
+                  <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 px-3 py-2 rounded-lg border border-green-200">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    AI Ready - {orgSettings.general.aiProvider.charAt(0).toUpperCase() + orgSettings.general.aiProvider.slice(1)} configured
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-sm text-amber-700 bg-amber-50 px-3 py-2 rounded-lg border border-amber-200">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                    </svg>
+                    Configure AI in Organization Settings for auto-generation
+                  </div>
                 )}
-              </button>
-            </div>
-
-            {/* AI Configuration Status */}
-            <div className="flex items-center justify-center text-sm text-gray-600">
-              {orgSettings?.general?.aiProvider && orgSettings?.general?.aiApiKey ? (
-                <div className="flex items-center gap-2">
-                  <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Using {orgSettings.general.aiProvider.charAt(0).toUpperCase() + orgSettings.general.aiProvider.slice(1)} AI
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 text-amber-600">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                  </svg>
-                  Configure AI provider in Organization Settings for AI generation
-                </div>
-              )}
-            </div>
-
-            {/* Job Description */}
-            <div className="grid grid-cols-1">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Job Description
-                </label>
-                <textarea
-                  value={formData.jobDescription}
-                  onChange={(e) => handleInputChange('jobDescription', e.target.value)}
-                  onFocus={() => handleFieldFocus('jobDescription')}
-                  onBlur={() => handleFieldBlur('jobDescription')}
-                  className={getInputClasses('jobDescription')}
-                  rows={8}
-                  placeholder="Describe the role, responsibilities, and what the candidate will be doing..."
-                />
               </div>
             </div>
 
-            {/* Requirements */}
-            <div className="grid grid-cols-1">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Requirements
-                </label>
-                <textarea
-                  value={formData.requirements}
-                  onChange={(e) => handleInputChange('requirements', e.target.value)}
-                  onFocus={() => handleFieldFocus('requirements')}
-                  onBlur={() => handleFieldBlur('requirements')}
-                  className={getInputClasses('requirements')}
-                  rows={6}
-                  placeholder="List the required skills, qualifications, and experience..."
-                />
+            {/* Job Description Section */}
+            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <div>
+                  <h4 className="text-lg font-semibold text-gray-900">Job Description</h4>
+                  <p className="text-sm text-gray-600">Describe the role, responsibilities, and what the candidate will be doing</p>
+                </div>
+              </div>
+              <textarea
+                value={formData.jobDescription}
+                onChange={(e) => handleInputChange('jobDescription', e.target.value)}
+                onFocus={() => handleFieldFocus('jobDescription')}
+                onBlur={() => handleFieldBlur('jobDescription')}
+                className={`${getInputClasses('jobDescription')} min-h-[200px] resize-none`}
+                rows={8}
+                placeholder="• Company overview and role context&#10;• Key responsibilities and daily tasks&#10;• Team structure and collaboration&#10;• Growth opportunities and impact..."
+              />
+            </div>
+
+            {/* Requirements Section */}
+            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-green-100 rounded-lg">
+                  <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <h4 className="text-lg font-semibold text-gray-900">Requirements</h4>
+                  <p className="text-sm text-gray-600">List the required skills, qualifications, and experience</p>
+                </div>
+              </div>
+              <textarea
+                value={formData.requirements}
+                onChange={(e) => handleInputChange('requirements', e.target.value)}
+                onFocus={() => handleFieldFocus('requirements')}
+                onBlur={() => handleFieldBlur('requirements')}
+                className={`${getInputClasses('requirements')} min-h-[150px] resize-none`}
+                rows={6}
+                placeholder="• Required education level and certifications&#10;• Technical skills and proficiency levels&#10;• Years of experience in relevant areas&#10;• Language requirements and soft skills..."
+              />
+            </div>
+
+            {/* Interview Process Configuration */}
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+              <div className="bg-gradient-to-r from-purple-50 to-blue-50 border-b border-gray-200 px-6 py-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-purple-100 rounded-lg">
+                    <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h4 className="text-lg font-semibold text-gray-900">Interview Process Configuration</h4>
+                    <p className="text-sm text-gray-600">Set up interview stages with feedback forms that will guide interviewers and enable AI-assisted evaluation</p>
+                  </div>
+                </div>
+              </div>
+              <div className="p-6 space-y-6">
+                {interviewStages.map((stage, index) => (
+                  <div key={stage.id} className="bg-gradient-to-r from-gray-50 to-blue-50 border border-gray-200 rounded-xl p-5 space-y-4 hover:shadow-md transition-shadow">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-sm font-semibold">
+                          {index + 1}
+                        </div>
+                        <h5 className="text-lg font-semibold text-gray-900">Interview Stage {index + 1}</h5>
+                      </div>
+                      {interviewStages.length > 1 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeInterviewStage(stage.id)}
+                          className="hover:bg-red-100 hover:text-red-600 transition-colors"
+                        >
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </Button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="space-y-3">
+                        <Label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                          <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                          </svg>
+                          Stage Name *
+                        </Label>
+                        <Input
+                          value={stage.name}
+                          onChange={(e) => updateInterviewStage(stage.id, "name", e.target.value)}
+                          placeholder="e.g., Technical Interview"
+                          className="bg-white border-gray-300 focus:border-blue-500 focus:ring-blue-200"
+                        />
+                      </div>
+
+                      <div className="space-y-3">
+                        <Label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                          <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
+                          </svg>
+                          Interviewer Type
+                        </Label>
+                        <Select
+                          value={stage.interviewerType}
+                          onValueChange={(val) =>
+                            updateInterviewStage(stage.id, "interviewerType", val as "human" | "ai" | "hybrid")
+                          }
+                        >
+                          <SelectTrigger className="bg-white text-black border-gray-300 focus:border-blue-500">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white text-black border border-gray-300 shadow-lg">
+                            <SelectItem value="human" className="text-black hover:bg-blue-50">
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                </svg>
+                                Human Only
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="ai" className="text-black hover:bg-purple-50">
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                </svg>
+                                AI Assisted
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="hybrid" className="text-black hover:bg-green-50">
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                                </svg>
+                                Hybrid (AI + Human)
+                              </div>
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-3">
+                        <Label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                          <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          Feedback Form *
+                        </Label>
+                        <div className="flex gap-2">
+                          <Select
+                            value={stage.feedbackFormId}
+                            onValueChange={(val) => updateInterviewStage(stage.id, "feedbackFormId", val)}
+                          >
+                            <SelectTrigger className="flex-1 bg-white text-black border-gray-300 focus:border-blue-500">
+                              <SelectValue placeholder="Select form" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white text-black border border-gray-300 shadow-lg">
+                              {getFilteredFeedbackForms().map((form) => (
+                                <SelectItem key={form.id} value={form.id} className="text-black hover:bg-gray-50">
+                                  <div className="flex items-center justify-between w-full">
+                                    <span className="font-medium">{form.name}</span>
+                                    <Badge variant="outline" className="ml-2 bg-blue-50 text-blue-700 border-blue-200">
+                                      {form.questions}Q
+                                    </Badge>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {stage.feedbackFormId && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setShowFormPreview(stage.feedbackFormId)}
+                              className="border-blue-500 text-blue-600 hover:bg-blue-50 hover:border-blue-600 transition-all"
+                            >
+                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {stage.feedbackFormName && (
+                      <div className="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 p-4 rounded-lg">
+                        <div className="flex items-start gap-3">
+                          <div className="p-1 bg-green-100 rounded-full">
+                            <svg className="h-4 w-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-gray-900">
+                              Selected Form: <span className="text-green-700">{stage.feedbackFormName}</span>
+                            </p>
+                            <p className="text-xs text-gray-600 mt-1">
+                              This form will guide the interview process and enable AI-assisted feedback collection during the evaluation.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                <div className="pt-4 border-t border-gray-200">
+                  <Button
+                    variant="outline"
+                    onClick={addInterviewStage}
+                    className="w-full bg-gradient-to-r from-blue-50 to-purple-50 hover:from-blue-100 hover:to-purple-100 border-2 border-dashed border-blue-300 hover:border-blue-400 text-blue-700 hover:text-blue-800 font-semibold py-4 transition-all duration-200"
+                  >
+                    <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    </svg>
+                    Add Interview Stage
+                  </Button>
+                </div>
               </div>
             </div>
 
             {/* Responsibilities */}
-            <div className="grid grid-cols-1">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Responsibilities
-                </label>
-                <textarea
-                  value={formData.responsibilities}
-                  onChange={(e) => handleInputChange('responsibilities', e.target.value)}
-                  onFocus={() => handleFieldFocus('responsibilities')}
-                  onBlur={() => handleFieldBlur('responsibilities')}
-                  className={getInputClasses('responsibilities')}
-                  rows={6}
-                  placeholder="Describe the key responsibilities and duties for this role..."
-                />
+            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-orange-100 rounded-lg">
+                  <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                  </svg>
+                </div>
+                <div>
+                  <h4 className="text-lg font-semibold text-gray-900">Key Responsibilities</h4>
+                  <p className="text-sm text-gray-600">Describe the key responsibilities and duties for this role</p>
+                </div>
               </div>
+              <textarea
+                value={formData.responsibilities}
+                onChange={(e) => handleInputChange('responsibilities', e.target.value)}
+                onFocus={() => handleFieldFocus('responsibilities')}
+                onBlur={() => handleFieldBlur('responsibilities')}
+                className={`${getInputClasses('responsibilities')} min-h-[150px] resize-none`}
+                rows={6}
+                placeholder="• Daily tasks and core responsibilities&#10;• Project management and delivery expectations&#10;• Team collaboration and communication duties&#10;• Performance metrics and success criteria..."
+              />
             </div>
 
             {/* Navigation Buttons */}
-            <div className="flex justify-between pt-4">
-              <button
-                onClick={handlePreviousStep}
-                className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold px-8 py-3.5 rounded-lg transition-all duration-200 transform hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus:ring-4 focus:ring-gray-300"
-              >
-                Previous: Job Details
-              </button>
-              <button
-                onClick={handleNextStep}
-                disabled={isSubmitting}
-                className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold px-8 py-3.5 rounded-lg transition-all duration-200 transform hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus:ring-4 focus:ring-blue-300 disabled:cursor-not-allowed disabled:transform-none"
-              >
-                {isSubmitting 
-                  ? (editingJob ? 'Updating Job...' : 'Creating Job...') 
-                  : (editingJob ? 'Update Job' : 'Create Job')
-                }
-              </button>
+            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+              <div className="flex justify-between items-center">
+                <button
+                  onClick={handlePreviousStep}
+                  className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold px-6 py-3 rounded-xl transition-all duration-200 hover:shadow-md"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                  Previous: Job Details
+                </button>
+                <button
+                  onClick={handleNextStep}
+                  disabled={isSubmitting}
+                  className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-blue-400 disabled:to-blue-500 text-white font-semibold px-8 py-3 rounded-xl transition-all duration-200 hover:shadow-lg disabled:cursor-not-allowed disabled:shadow-none"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      {editingJob ? 'Updating Job...' : 'Creating Job...'}
+                    </>
+                  ) : (
+                    <>
+                      {editingJob ? 'Update Job' : 'Create Job'}
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
           )}
@@ -1827,6 +2202,88 @@ ${preferredQuals.map(qual => `• ${qual}`).join('\n')}`
                   >
                     {isCreatingDepartment ? 'Creating...' : 'Create Department'}
                   </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Feedback Form Preview Modal */}
+        {showFormPreview && (
+          <div className="fixed inset-0 z-50">
+            <div className="fixed inset-0 bg-background/80 backdrop-blur-sm" onClick={() => setShowFormPreview(null)} />
+            <div className="fixed inset-0 flex items-center justify-center p-4">
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden">
+                <div className="p-6 border-b border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xl font-bold text-gray-900">
+                        {feedbackForms.find(form => form.id === showFormPreview)?.name}
+                      </h3>
+                      <p className="text-sm text-gray-600 mt-1">
+                        Preview of feedback form questions
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setShowFormPreview(null)}
+                      className="text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-6 overflow-y-auto max-h-[60vh]">
+                  <div className="space-y-4">
+                    {feedbackForms
+                      .find(form => form.id === showFormPreview)
+                      ?.questionsList.map((question, index) => (
+                        <div key={index} className="p-4 border border-gray-200 rounded-lg bg-gray-50">
+                          <div className="flex items-start gap-3">
+                            <div className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-medium">
+                              {index + 1}
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-gray-900 font-medium">
+                                {question}
+                              </p>
+                              <div className="mt-2 text-sm text-gray-500">
+                                <div className="flex items-center gap-2">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                  Response field will be displayed here during interview
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+
+                  <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-start gap-3">
+                      <svg className="w-5 h-5 text-blue-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <div>
+                        <h4 className="text-sm font-medium text-blue-900">How it works</h4>
+                        <p className="text-sm text-blue-700 mt-1">
+                          During the interview, interviewers will be guided through these questions and can provide
+                          ratings, comments, or detailed feedback. AI assistance can help analyze responses and
+                          provide evaluation insights.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-6 border-t border-gray-200 flex justify-end">
+                  <Button onClick={() => setShowFormPreview(null)} className="bg-blue-600 hover:bg-blue-700 text-white">
+                    Close Preview
+                  </Button>
                 </div>
               </div>
             </div>

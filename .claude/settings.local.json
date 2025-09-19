@@ -4,7 +4,8 @@
       "Bash(curl:*)",
       "Bash(python manage.py:*)",
       "Bash(pip install:*)",
-      "Bash(npm run dev:*)"
+      "Bash(npm run dev:*)",
+      "Bash(python test_interview_stages.py)"
     ]
   }
 }

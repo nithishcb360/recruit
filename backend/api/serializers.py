@@ -56,7 +56,7 @@ class JobSerializer(serializers.ModelSerializer):
     created_by = UserSerializer(read_only=True)
     salary_range_display = serializers.ReadOnlyField()
     is_active = serializers.ReadOnlyField()
-    
+
     class Meta:
         model = Job
         fields = [
@@ -66,14 +66,14 @@ class JobSerializer(serializers.ModelSerializer):
             'required_skills', 'preferred_skills',
             'status', 'urgency', 'openings', 'sla_days',
             'publish_internal', 'publish_external', 'publish_company_website',
-            'screening_questions', 'created_by', 'is_active',
+            'screening_questions', 'interview_stages', 'created_by', 'is_active',
             'created_at', 'updated_at', 'published_at', 'closed_at'
         ]
 
 
 class JobCreateSerializer(serializers.ModelSerializer):
     department = serializers.PrimaryKeyRelatedField(queryset=Department.objects.all())
-    
+
     class Meta:
         model = Job
         fields = [
@@ -83,7 +83,7 @@ class JobCreateSerializer(serializers.ModelSerializer):
             'required_skills', 'preferred_skills',
             'status', 'urgency', 'openings', 'sla_days',
             'publish_internal', 'publish_external', 'publish_company_website',
-            'screening_questions'
+            'screening_questions', 'interview_stages'
         ]
     
     def validate(self, data):
@@ -100,7 +100,7 @@ class JobCreateSerializer(serializers.ModelSerializer):
 
 class JobUpdateSerializer(serializers.ModelSerializer):
     department = serializers.PrimaryKeyRelatedField(queryset=Department.objects.all(), required=False)
-    
+
     class Meta:
         model = Job
         fields = [
@@ -110,7 +110,7 @@ class JobUpdateSerializer(serializers.ModelSerializer):
             'required_skills', 'preferred_skills',
             'status', 'urgency', 'openings', 'sla_days',
             'publish_internal', 'publish_external', 'publish_company_website',
-            'screening_questions'
+            'screening_questions', 'interview_stages'
         ]
     
     def validate(self, data):
@@ -136,13 +136,13 @@ class JobListSerializer(serializers.ModelSerializer):
     department = DepartmentSerializer(read_only=True)
     salary_range_display = serializers.ReadOnlyField()
     is_active = serializers.ReadOnlyField()
-    
+
     class Meta:
         model = Job
         fields = [
-            'id', 'title', 'department', 'job_type', 'experience_level', 
-            'location', 'work_type', 'salary_range_display', 'status', 
-            'urgency', 'openings', 'is_active', 'created_at', 'updated_at'
+            'id', 'title', 'department', 'job_type', 'experience_level',
+            'location', 'work_type', 'salary_range_display', 'status',
+            'urgency', 'openings', 'interview_stages', 'is_active', 'created_at', 'updated_at'
         ]
 
 

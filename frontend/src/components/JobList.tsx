@@ -442,7 +442,70 @@ export default function JobList({ refreshTrigger = 0 }: JobListProps) {
                   )}
                 </div>
               </div>
-              
+
+              {/* Interview Process Configuration */}
+              {(job as any).interview_stages && (job as any).interview_stages.length > 0 && (
+                <div className="mt-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <h4 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                      <svg className="h-4 w-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                      </svg>
+                      Interview Process:
+                    </h4>
+                    <span className="text-xs text-gray-500">
+                      {(job as any).interview_stages.length} stage{(job as any).interview_stages.length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-3">
+                    <div className="flex flex-wrap gap-2">
+                      {(job as any).interview_stages.map((stage: any, index: number) => (
+                        <div key={stage.id} className="bg-white rounded-lg px-3 py-2 border border-purple-200 shadow-sm">
+                          <div className="flex items-center gap-2">
+                            <div className="w-5 h-5 bg-purple-100 text-purple-700 rounded-full flex items-center justify-center text-xs font-semibold">
+                              {index + 1}
+                            </div>
+                            <div className="text-sm">
+                              <div className="font-medium text-gray-900">{stage.name || `Stage ${index + 1}`}</div>
+                              <div className="flex items-center gap-3 text-xs text-gray-600">
+                                <span className="flex items-center gap-1">
+                                  {stage.interviewerType === 'human' && (
+                                    <>
+                                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                      Human
+                                    </>
+                                  )}
+                                  {stage.interviewerType === 'ai' && (
+                                    <>
+                                      <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                                      AI Assisted
+                                    </>
+                                  )}
+                                  {stage.interviewerType === 'hybrid' && (
+                                    <>
+                                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                      Hybrid
+                                    </>
+                                  )}
+                                </span>
+                                {stage.feedbackFormName && (
+                                  <span className="flex items-center gap-1">
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    {stage.feedbackFormName}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Publish Buttons */}
               <div className="mt-4 pt-4 border-t border-gray-200">
                 <div className="flex flex-wrap gap-2">
@@ -511,12 +574,24 @@ export default function JobList({ refreshTrigger = 0 }: JobListProps) {
           <div className="fixed inset-0 flex items-center justify-center p-4">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
               <div className="p-6 border-b border-gray-200">
-                <h2 className="text-2xl font-bold text-gray-900">Edit Job</h2>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-2xl font-bold text-gray-900">Edit Job</h2>
+                  <button
+                    onClick={closeEditModal}
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
               </div>
               <div className="p-6">
-                <JobCreationForm 
+                <JobCreationForm
                   onSuccess={handleEditSuccess}
+                  onClose={closeEditModal}
                   editingJob={jobToEdit}
+                  isModal={true}
                 />
               </div>
             </div>

@@ -165,7 +165,10 @@ class Job(models.Model):
     
     # Screening questions
     screening_questions = models.JSONField(default=list, blank=True)
-    
+
+    # Interview stages configuration
+    interview_stages = models.JSONField(default=list, blank=True, help_text='Interview process configuration with stages')
+
     # Metadata
     created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_jobs', null=True, blank=True)
     created_at = models.DateTimeField(default=timezone.now)

@@ -40,6 +40,13 @@ export interface JobCreateData {
   publish_internal: boolean
   publish_external: boolean
   publish_company_website: boolean
+  interview_stages?: Array<{
+    id: string
+    name: string
+    interviewerType: 'human' | 'ai' | 'hybrid'
+    feedbackFormId: string
+    feedbackFormName?: string
+  }>
 }
 
 export interface Job {
@@ -59,6 +66,13 @@ export interface Job {
   naukri_job_url?: string
   linkedin_job_id?: string
   naukri_job_id?: string
+  interview_stages?: Array<{
+    id: string
+    name: string
+    interviewerType: 'human' | 'ai' | 'hybrid'
+    feedbackFormId: string
+    feedbackFormName?: string
+  }>
 }
 
 export interface JobListItem {
