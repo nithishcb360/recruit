@@ -1577,3 +1577,7 @@ function getStageProgress(stage: string): number {
   return stageMap[stage] || 10
 }
 
+function fetchWithTimeout(arg0: string, arg1: { method: string; headers: { 'Content-Type': string }; body: string }, arg2: number) {
+  throw new Error("Function not implemented.")
+}
+

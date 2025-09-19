@@ -15,6 +15,16 @@ import { Badge } from '@/components/ui/badge';
 // Organization settings interface
 interface OrganizationSettings {
   general: {
+    name?: string;
+    domain?: string;
+    industry?: string;
+    size?: string;
+    website?: string;
+    address?: string;
+    contactEmail?: string;
+    phone?: string;
+    timezone?: string;
+    locale?: string;
     aiProvider: string;
     aiApiKey: string;
   };
@@ -478,7 +488,8 @@ Make the description inclusive and avoid any language that might discourage dive
         experienceRange: '',
         jobDescription: '',
         requirements: '',
-        responsibilities: ''
+        responsibilities: '',
+        interviewStages: []
       });
       setActiveStep(1);
       
