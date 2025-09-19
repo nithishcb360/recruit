@@ -28,14 +28,14 @@ export default function JobsPage() {
     <ProtectedRoute requiredRoles={['hr', 'admin']}>
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
         {/* Header Section */}
-        <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-6">
-              <div className="space-y-2">
-                <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
+        <div className="bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+              <div className="space-y-1">
+                <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
                   Jobs Management
                 </h1>
-                <p className="text-slate-600 text-lg">
+                <p className="text-slate-600 text-base">
                   Manage your job postings and create new opportunities for candidates.
                 </p>
               </div>
@@ -43,10 +43,10 @@ export default function JobsPage() {
                 <div className="flex-shrink-0">
                   <button
                     onClick={openModal}
-                    className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-0.5 focus:outline-none focus:ring-4 focus:ring-blue-300 flex items-center gap-3 w-full sm:w-auto"
+                    className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold px-5 py-2.5 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-0.5 focus:outline-none focus:ring-4 focus:ring-blue-300 flex items-center gap-2 w-full sm:w-auto"
                   >
                     <div className="p-1 bg-white/20 rounded-lg">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                       </svg>
                     </div>

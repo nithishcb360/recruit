@@ -280,7 +280,7 @@ export default function JobList({ refreshTrigger = 0 }: JobListProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between ">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">Job Listings</h2>
           <p className="text-slate-600 mt-1">
