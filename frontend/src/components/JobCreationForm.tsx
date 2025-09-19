@@ -90,7 +90,36 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
   const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
   const [isSearchingLocations, setIsSearchingLocations] = useState(false);
   const [isGeneratingWithAI, setIsGeneratingWithAI] = useState(false);
-  const [orgSettings, setOrgSettings] = useState<OrganizationSettings | null>(null);
+  const [orgSettings, setOrgSettings] = useState<OrganizationSettings>({
+    general: {
+      name: "Acme Corporation",
+      domain: "acmecorp.com",
+      industry: "Technology",
+      size: "201-500",
+      website: "https://www.acmecorp.com",
+      address: "123 Innovation Drive, San Francisco, CA 94105",
+      contactEmail: "hr@acmecorp.com",
+      phone: "+1 (555) 123-4567",
+      timezone: "America/Los_Angeles",
+      locale: "en-US",
+      aiProvider: "anthropic",
+      aiApiKey: ""
+    },
+    ai: {
+      jobGenerationPrompt: `You are an expert HR professional and job description writer. Create a comprehensive, engaging, and professional job description based on the provided job details.
+
+Please structure your response with clear sections and use professional language that attracts qualified candidates while accurately representing the role requirements.
+
+Include the following elements:
+- A compelling job summary that highlights the role's impact and growth opportunities
+- Detailed list of key responsibilities using action-oriented language
+- Comprehensive requirements including both hard and soft skills
+- Information about company culture and values
+- Any relevant benefits or perks that make this role attractive
+
+Make the description inclusive and avoid any language that might discourage diverse candidates from applying.`
+    }
+  });
   const [interviewStages, setInterviewStages] = useState<InterviewStage[]>([
     {
       id: '1',
@@ -186,7 +215,11 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
         const savedSettings = localStorage.getItem('organizationSettings');
         if (savedSettings) {
           const settings = JSON.parse(savedSettings);
+          console.log('Loaded organization settings from localStorage:', settings);
+          console.log('AI prompt from settings:', settings.ai?.jobGenerationPrompt);
           setOrgSettings(settings);
+        } else {
+          console.log('No saved settings found in localStorage, using defaults');
         }
       } catch (error) {
         console.error('Error loading organization settings:', error);
@@ -556,13 +589,16 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
       const department = departments.find(d => d.id.toString() === formData.department)?.name || formData.department;
       
       // Prepare AI configuration from organization settings
-      const aiConfig: AIConfig | undefined = orgSettings?.general?.aiProvider && orgSettings?.general?.aiApiKey
+      const aiConfig: AIConfig | undefined = orgSettings.general.aiProvider && orgSettings.general.aiApiKey
         ? {
             provider: orgSettings.general.aiProvider,
             apiKey: orgSettings.general.aiApiKey,
-            customPrompt: orgSettings?.ai?.jobGenerationPrompt
+            customPrompt: orgSettings.ai.jobGenerationPrompt
           }
         : undefined;
+
+      console.log('AI Configuration for job generation:', aiConfig);
+      console.log('Custom prompt being used:', orgSettings.ai.jobGenerationPrompt);
 
       const generatedContent = await generateJobDescriptionWithAI({
         jobTitle: formData.jobTitle,
