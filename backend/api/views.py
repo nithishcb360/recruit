@@ -9,15 +9,16 @@ from datetime import timedelta
 from django_filters.rest_framework import DjangoFilterBackend
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
-from .models import DashboardStats, Task, ActivityLog, Department, Job, Candidate, JobApplication, FeedbackTemplate
+from .models import DashboardStats, Task, ActivityLog, Department, Job, Candidate, JobApplication, FeedbackTemplate, InterviewFlow, InterviewRound
 from .serializers import (
     DashboardStatsSerializer, TaskSerializer, TaskCreateSerializer,
     ActivityLogSerializer, DashboardOverviewSerializer,
-    DepartmentSerializer, JobSerializer, JobCreateSerializer, 
+    DepartmentSerializer, JobSerializer, JobCreateSerializer,
     JobUpdateSerializer, JobListSerializer, CandidateSerializer,
     CandidateCreateSerializer, CandidateListSerializer, ResumeParseSerializer,
     JobApplicationSerializer, JobApplicationCreateSerializer,
-    FeedbackTemplateSerializer, FeedbackTemplateCreateSerializer, FeedbackTemplateUpdateSerializer
+    FeedbackTemplateSerializer, FeedbackTemplateCreateSerializer, FeedbackTemplateUpdateSerializer,
+    InterviewFlowSerializer, InterviewFlowCreateSerializer, InterviewFlowUpdateSerializer, InterviewRoundSerializer
 )
 from .utils.enhanced_resume_parser import EnhancedResumeParser
 from .utils.resume_parser import ResumeParser
@@ -728,7 +729,7 @@ def bulk_create_candidates(request):
                         if resume_file_path:
                             candidate.resume_file = resume_file_path
                             candidate.save()
-                        created_candidates.append(candidate)
+                        created_candidates.append(CandidateListSerializer(candidate).data)
                         continue
                     else:
                         errors.append(f"Candidate {i+1}: Error updating existing candidate with email '{email}': {serializer.errors}")
@@ -750,7 +751,7 @@ def bulk_create_candidates(request):
                         if resume_file_path:
                             candidate.resume_file = resume_file_path
                             candidate.save()
-                        created_candidates.append(candidate)
+                        created_candidates.append(CandidateListSerializer(candidate).data)
                         continue
                     else:
                         errors.append(f"Candidate {i+1}: Error updating existing candidate '{first_name} {last_name}': {serializer.errors}")
@@ -1733,6 +1734,42 @@ def find_matching_candidates(request, job_id):
     except Exception as e:
         logger.error(f"Error finding matching candidates: {e}")
         return Response(
-            {'error': f'Failed to find matching candidates: {str(e)}'}, 
+            {'error': f'Failed to find matching candidates: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+class InterviewFlowViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing interview flows
+    """
+    queryset = InterviewFlow.objects.all()
+    serializer_class = InterviewFlowSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['is_default', 'created_by']
+    search_fields = ['name', 'description']
+    ordering_fields = ['name', 'created_at', 'updated_at']
+    ordering = ['-updated_at']
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return InterviewFlowCreateSerializer
+        elif self.action in ['update', 'partial_update']:
+            return InterviewFlowUpdateSerializer
+        return InterviewFlowSerializer
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user if self.request.user.is_authenticated else None)
+
+
+class InterviewRoundViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing interview rounds
+    """
+    queryset = InterviewRound.objects.all()
+    serializer_class = InterviewRoundSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['flow', 'type', 'is_required']
+    search_fields = ['name', 'description']
+    ordering_fields = ['order', 'name', 'created_at']
+    ordering = ['flow', 'order']

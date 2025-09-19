@@ -17,11 +17,12 @@ export interface GeneratedJobContent {
 export interface AIConfig {
   provider: string;
   apiKey: string;
+  customPrompt?: string;
 }
 
 // AI Provider interfaces
 interface AIProvider {
-  generateJobDescription(prompt: JobGenerationPrompt): Promise<GeneratedJobContent>;
+  generateJobDescription(prompt: JobGenerationPrompt, customSystemPrompt?: string): Promise<GeneratedJobContent>;
 }
 
 class AnthropicProvider implements AIProvider {
@@ -34,10 +35,10 @@ class AnthropicProvider implements AIProvider {
     });
   }
 
-  async generateJobDescription(prompt: JobGenerationPrompt): Promise<GeneratedJobContent> {
+  async generateJobDescription(prompt: JobGenerationPrompt, customSystemPrompt?: string): Promise<GeneratedJobContent> {
     const { jobTitle, department, experienceLevel, experienceRange, workType, location } = prompt;
 
-    const systemPrompt = `You are an expert HR professional and job description writer. Create professional, engaging, and comprehensive job descriptions that attract qualified candidates.
+    const defaultSystemPrompt = `You are an expert HR professional and job description writer. Create professional, engaging, and comprehensive job descriptions that attract qualified candidates.
 
 Your task is to generate:
 1. A detailed job description (3-4 paragraphs)
@@ -65,6 +66,8 @@ Preferred Qualifications:
 • Item 2
 
 Make sure the requirements field contains properly formatted text, not JSON structure.`;
+
+    const systemPrompt = customSystemPrompt || defaultSystemPrompt;
 
     const userPrompt = `Generate a job description and requirements for the following position:
 
@@ -201,10 +204,12 @@ class OpenAIProvider implements AIProvider {
     this.apiKey = apiKey;
   }
 
-  async generateJobDescription(prompt: JobGenerationPrompt): Promise<GeneratedJobContent> {
+  async generateJobDescription(prompt: JobGenerationPrompt, customSystemPrompt?: string): Promise<GeneratedJobContent> {
     const { jobTitle, department, experienceLevel, experienceRange, workType, location } = prompt;
 
-    const systemPrompt = `You are an expert HR professional and job description writer. Create professional, engaging, and comprehensive job descriptions that attract qualified candidates. Respond with valid JSON containing "description" and "requirements" fields.`;
+    const defaultSystemPrompt = `You are an expert HR professional and job description writer. Create professional, engaging, and comprehensive job descriptions that attract qualified candidates. Respond with valid JSON containing "description" and "requirements" fields.`;
+
+    const systemPrompt = customSystemPrompt || defaultSystemPrompt;
 
     const userPrompt = `Generate a job description and requirements for: ${jobTitle} in ${department}, ${experienceLevel} level, ${experienceRange} years experience${workType ? `, ${workType}` : ''}${location ? `, located in ${location}` : ''}.
 
@@ -256,7 +261,7 @@ class GoogleProvider implements AIProvider {
     this.apiKey = apiKey;
   }
 
-  async generateJobDescription(prompt: JobGenerationPrompt): Promise<GeneratedJobContent> {
+  async generateJobDescription(prompt: JobGenerationPrompt, customSystemPrompt?: string): Promise<GeneratedJobContent> {
     // Placeholder for Google Gemini API implementation
     throw new Error('Google Gemini integration coming soon. Please use Anthropic (Claude) or OpenAI for now.');
   }
@@ -301,7 +306,7 @@ export async function generateJobDescriptionWithAI(
     // If AI config is provided, use it (from organization settings)
     if (aiConfig && aiConfig.provider && aiConfig.apiKey) {
       const provider = createAIProvider(aiConfig);
-      return await provider.generateJobDescription(prompt);
+      return await provider.generateJobDescription(prompt, aiConfig.customPrompt);
     }
 
     // Fallback to environment variable (for backwards compatibility)

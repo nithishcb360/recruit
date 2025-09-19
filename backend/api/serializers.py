@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import DashboardStats, Task, ActivityLog, Department, Job, Candidate, JobApplication, FeedbackTemplate
+from .models import DashboardStats, Task, ActivityLog, Department, Job, Candidate, JobApplication, FeedbackTemplate, InterviewFlow, InterviewRound
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -56,7 +56,7 @@ class JobSerializer(serializers.ModelSerializer):
     created_by = UserSerializer(read_only=True)
     salary_range_display = serializers.ReadOnlyField()
     is_active = serializers.ReadOnlyField()
-    
+
     class Meta:
         model = Job
         fields = [
@@ -66,14 +66,14 @@ class JobSerializer(serializers.ModelSerializer):
             'required_skills', 'preferred_skills',
             'status', 'urgency', 'openings', 'sla_days',
             'publish_internal', 'publish_external', 'publish_company_website',
-            'screening_questions', 'created_by', 'is_active',
+            'screening_questions', 'interview_stages', 'created_by', 'is_active',
             'created_at', 'updated_at', 'published_at', 'closed_at'
         ]
 
 
 class JobCreateSerializer(serializers.ModelSerializer):
     department = serializers.PrimaryKeyRelatedField(queryset=Department.objects.all())
-    
+
     class Meta:
         model = Job
         fields = [
@@ -83,7 +83,7 @@ class JobCreateSerializer(serializers.ModelSerializer):
             'required_skills', 'preferred_skills',
             'status', 'urgency', 'openings', 'sla_days',
             'publish_internal', 'publish_external', 'publish_company_website',
-            'screening_questions'
+            'screening_questions', 'interview_stages'
         ]
     
     def validate(self, data):
@@ -100,7 +100,7 @@ class JobCreateSerializer(serializers.ModelSerializer):
 
 class JobUpdateSerializer(serializers.ModelSerializer):
     department = serializers.PrimaryKeyRelatedField(queryset=Department.objects.all(), required=False)
-    
+
     class Meta:
         model = Job
         fields = [
@@ -110,7 +110,7 @@ class JobUpdateSerializer(serializers.ModelSerializer):
             'required_skills', 'preferred_skills',
             'status', 'urgency', 'openings', 'sla_days',
             'publish_internal', 'publish_external', 'publish_company_website',
-            'screening_questions'
+            'screening_questions', 'interview_stages'
         ]
     
     def validate(self, data):
@@ -136,13 +136,13 @@ class JobListSerializer(serializers.ModelSerializer):
     department = DepartmentSerializer(read_only=True)
     salary_range_display = serializers.ReadOnlyField()
     is_active = serializers.ReadOnlyField()
-    
+
     class Meta:
         model = Job
         fields = [
-            'id', 'title', 'department', 'job_type', 'experience_level', 
-            'location', 'work_type', 'salary_range_display', 'status', 
-            'urgency', 'openings', 'is_active', 'created_at', 'updated_at'
+            'id', 'title', 'department', 'job_type', 'experience_level',
+            'location', 'work_type', 'salary_range_display', 'status',
+            'urgency', 'openings', 'interview_stages', 'is_active', 'created_at', 'updated_at'
         ]
 
 
@@ -383,3 +383,83 @@ class FeedbackTemplateUpdateSerializer(serializers.ModelSerializer):
             'name', 'description', 'questions', 'sections', 'rating_criteria',
             'status', 'is_active', 'is_default'
         ]
+
+
+class InterviewRoundSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InterviewRound
+        fields = [
+            'id', 'flow', 'name', 'type', 'description', 'duration', 'is_required', 'order',
+            'interviewers', 'skills', 'passing_criteria', 'auto_advance',
+            'email_template', 'instructions', 'created_at', 'updated_at'
+        ]
+
+
+class InterviewFlowSerializer(serializers.ModelSerializer):
+    rounds = InterviewRoundSerializer(many=True, read_only=True)
+    created_by = UserSerializer(read_only=True)
+
+    class Meta:
+        model = InterviewFlow
+        fields = [
+            'id', 'name', 'description', 'is_default', 'job_types',
+            'total_estimated_time', 'rounds', 'created_by',
+            'created_at', 'updated_at'
+        ]
+
+
+class InterviewFlowCreateSerializer(serializers.ModelSerializer):
+    rounds = serializers.ListField(child=serializers.DictField(), write_only=True, required=False)
+
+    class Meta:
+        model = InterviewFlow
+        fields = [
+            'name', 'description', 'is_default', 'job_types', 'rounds'
+        ]
+
+    def create(self, validated_data):
+        rounds_data = validated_data.pop('rounds', [])
+
+        # Calculate total estimated time
+        total_time = sum(round_data.get('duration', 0) for round_data in rounds_data)
+        validated_data['total_estimated_time'] = total_time
+
+        flow = InterviewFlow.objects.create(**validated_data)
+
+        # Create rounds
+        for round_data in rounds_data:
+            InterviewRound.objects.create(flow=flow, **round_data)
+
+        return flow
+
+
+class InterviewFlowUpdateSerializer(serializers.ModelSerializer):
+    rounds = serializers.ListField(child=serializers.DictField(), write_only=True, required=False)
+
+    class Meta:
+        model = InterviewFlow
+        fields = [
+            'name', 'description', 'is_default', 'job_types', 'rounds'
+        ]
+
+    def update(self, instance, validated_data):
+        rounds_data = validated_data.pop('rounds', None)
+
+        # Update flow fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        # Update rounds if provided
+        if rounds_data is not None:
+            # Delete existing rounds
+            instance.rounds.all().delete()
+
+            # Create new rounds
+            for round_data in rounds_data:
+                InterviewRound.objects.create(flow=instance, **round_data)
+
+            # Update total estimated time
+            instance.total_estimated_time = sum(round_data.get('duration', 0) for round_data in rounds_data)
+
+        instance.save()
+        return instance
