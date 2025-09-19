@@ -1224,117 +1224,202 @@ Make sure the requirements field contains properly formatted text, not JSON stru
   }, {} as Record<string, Permission[]>)
 
   return (
-    <div className="p-6 space-y-6 min-h-screen">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Organization Settings</h1>
-          <p className="text-black">Configure your organization&apos;s settings, security, and permissions</p>
-        </div>
-        <div className="flex items-center space-x-2">
-          {hasUnsavedChanges && (
-            <Badge variant="outline" className="bg-yellow-50 text-yellow-700">
-              <Clock className="h-3 w-3 mr-1" />
-              Unsaved Changes
-            </Badge>
-          )}
-          <Button onClick={handleSaveSettings} disabled={isLoading || !hasUnsavedChanges}>
-            {isLoading ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Save className="h-4 w-4 mr-2" />
-                Save Changes
-              </>
-            )}
-          </Button>
+      <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="space-y-1">
+              <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
+                Organization Settings
+              </h1>
+              <p className="text-slate-600 text-sm sm:text-base">
+                Configure your organization&apos;s settings, security, and permissions
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              {hasUnsavedChanges && (
+                <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 px-3 py-1">
+                  <Clock className="h-3 w-3 mr-2" />
+                  Unsaved Changes
+                </Badge>
+              )}
+              <Button
+                onClick={handleSaveSettings}
+                disabled={isLoading || !hasUnsavedChanges}
+                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-lg hover:shadow-xl transition-all duration-200"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4 mr-2" />
+                    Save Changes
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-8">
-          <TabsTrigger value="general">General</TabsTrigger>
-          <TabsTrigger value="security">Security</TabsTrigger>
-          <TabsTrigger value="permissions">Permissions</TabsTrigger>
-          <TabsTrigger value="features">Features</TabsTrigger>
-          <TabsTrigger value="branding">Branding</TabsTrigger>
-          <TabsTrigger value="compliance">Compliance</TabsTrigger>
-          <TabsTrigger value="ai-prompt">AI Prompt</TabsTrigger>
-          <TabsTrigger value="interview-rounds">Rules Engine</TabsTrigger>
-        </TabsList>
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
 
-        {/* General Settings */}
-        <TabsContent value="general" className="mt-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Building2 className="h-5 w-5 mr-2" />
-                  Organization Details
-                </CardTitle>
-                <CardDescription>Basic information about your organization</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="org-name">Organization Name</Label>
-                  <Input
-                    id="org-name"
-                    value={orgSettings.general.name}
-                    onChange={(e) => handleSettingsChange('general', 'name', e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="domain">Domain</Label>
-                  <Input
-                    id="domain"
-                    value={orgSettings.general.domain}
-                    onChange={(e) => handleSettingsChange('general', 'domain', e.target.value)}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Industry</Label>
-                    <Select
-                      value={orgSettings.general.industry}
-                      onValueChange={(value) => handleSettingsChange('general', 'industry', value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select industry" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border border-gray-200 shadow-lg z-50">
-                        <SelectItem value="Technology" className="text-black hover:bg-gray-100">Technology</SelectItem>
-                        <SelectItem value="Healthcare" className="text-black hover:bg-gray-100">Healthcare</SelectItem>
-                        <SelectItem value="Finance" className="text-black hover:bg-gray-100">Finance</SelectItem>
-                        <SelectItem value="Education" className="text-black hover:bg-gray-100">Education</SelectItem>
-                        <SelectItem value="Retail" className="text-black hover:bg-gray-100">Retail</SelectItem>
-                        <SelectItem value="Manufacturing" className="text-black hover:bg-gray-100">Manufacturing</SelectItem>
-                        <SelectItem value="Other" className="text-black hover:bg-gray-100">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <div className="bg-white/70 backdrop-blur-sm rounded-2xl p-2 shadow-lg border border-slate-200">
+            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-1 bg-transparent p-0">
+              <TabsTrigger
+                value="general"
+                className="flex items-center gap-2 px-3 py-2.5 text-xs sm:text-sm font-medium rounded-xl data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-indigo-500 data-[state=active]:text-white data-[state=active]:shadow-lg hover:bg-slate-100 transition-all duration-200"
+              >
+                <Building2 className="h-4 w-4" />
+                <span className="hidden sm:inline">General</span>
+                <span className="sm:hidden">Gen</span>
+              </TabsTrigger>
+              <TabsTrigger
+                value="security"
+                className="flex items-center gap-2 px-3 py-2.5 text-xs sm:text-sm font-medium rounded-xl data-[state=active]:bg-gradient-to-r data-[state=active]:from-emerald-500 data-[state=active]:to-green-500 data-[state=active]:text-white data-[state=active]:shadow-lg hover:bg-slate-100 transition-all duration-200"
+              >
+                <Shield className="h-4 w-4" />
+                <span className="hidden sm:inline">Security</span>
+                <span className="sm:hidden">Sec</span>
+              </TabsTrigger>
+              <TabsTrigger
+                value="permissions"
+                className="flex items-center gap-2 px-3 py-2.5 text-xs sm:text-sm font-medium rounded-xl data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-500 data-[state=active]:to-violet-500 data-[state=active]:text-white data-[state=active]:shadow-lg hover:bg-slate-100 transition-all duration-200"
+              >
+                <Users className="h-4 w-4" />
+                <span className="hidden sm:inline">Permissions</span>
+                <span className="sm:hidden">Perm</span>
+              </TabsTrigger>
+              <TabsTrigger
+                value="features"
+                className="flex items-center gap-2 px-3 py-2.5 text-xs sm:text-sm font-medium rounded-xl data-[state=active]:bg-gradient-to-r data-[state=active]:from-amber-500 data-[state=active]:to-orange-500 data-[state=active]:text-white data-[state=active]:shadow-lg hover:bg-slate-100 transition-all duration-200"
+              >
+                <Zap className="h-4 w-4" />
+                <span className="hidden sm:inline">Features</span>
+                <span className="sm:hidden">Feat</span>
+              </TabsTrigger>
+              <TabsTrigger
+                value="branding"
+                className="flex items-center gap-2 px-3 py-2.5 text-xs sm:text-sm font-medium rounded-xl data-[state=active]:bg-gradient-to-r data-[state=active]:from-pink-500 data-[state=active]:to-rose-500 data-[state=active]:text-white data-[state=active]:shadow-lg hover:bg-slate-100 transition-all duration-200"
+              >
+                <Palette className="h-4 w-4" />
+                <span className="hidden sm:inline">Branding</span>
+                <span className="sm:hidden">Brand</span>
+              </TabsTrigger>
+              <TabsTrigger
+                value="compliance"
+                className="flex items-center gap-2 px-3 py-2.5 text-xs sm:text-sm font-medium rounded-xl data-[state=active]:bg-gradient-to-r data-[state=active]:from-indigo-500 data-[state=active]:to-blue-600 data-[state=active]:text-white data-[state=active]:shadow-lg hover:bg-slate-100 transition-all duration-200"
+              >
+                <FileText className="h-4 w-4" />
+                <span className="hidden sm:inline">Compliance</span>
+                <span className="sm:hidden">Comp</span>
+              </TabsTrigger>
+              <TabsTrigger
+                value="ai-prompt"
+                className="flex items-center gap-2 px-3 py-2.5 text-xs sm:text-sm font-medium rounded-xl data-[state=active]:bg-gradient-to-r data-[state=active]:from-orange-500 data-[state=active]:to-red-500 data-[state=active]:text-white data-[state=active]:shadow-lg hover:bg-slate-100 transition-all duration-200"
+              >
+                <Star className="h-4 w-4" />
+                <span className="hidden sm:inline">AI Prompt</span>
+                <span className="sm:hidden">AI</span>
+              </TabsTrigger>
+              <TabsTrigger
+                value="interview-rounds"
+                className="flex items-center gap-2 px-3 py-2.5 text-xs sm:text-sm font-medium rounded-xl data-[state=active]:bg-gradient-to-r data-[state=active]:from-teal-500 data-[state=active]:to-cyan-500 data-[state=active]:text-white data-[state=active]:shadow-lg hover:bg-slate-100 transition-all duration-200"
+              >
+                <Settings className="h-4 w-4" />
+                <span className="hidden sm:inline">Rules Engine</span>
+                <span className="sm:hidden">Rules</span>
+              </TabsTrigger>
+            </TabsList>
+          </div>
+
+          {/* General Settings */}
+          <TabsContent value="general" className="mt-8 space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card className="bg-white/80 backdrop-blur-sm border-slate-200 shadow-lg hover:shadow-xl transition-all duration-300">
+                <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-t-lg border-b border-slate-200">
+                  <CardTitle className="flex items-center text-lg font-semibold text-slate-800">
+                    <div className="p-2 bg-blue-100 rounded-lg mr-3">
+                      <Building2 className="h-5 w-5 text-blue-600" />
+                    </div>
+                    Organization Details
+                  </CardTitle>
+                  <CardDescription className="text-slate-600 mt-2">
+                    Basic information about your organization
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6 p-6">
+                  <div className="space-y-3">
+                    <Label htmlFor="org-name" className="text-sm font-medium text-slate-700">
+                      Organization Name
+                    </Label>
+                    <Input
+                      id="org-name"
+                      value={orgSettings.general.name}
+                      onChange={(e) => handleSettingsChange('general', 'name', e.target.value)}
+                      className="border-slate-300 focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200"
+                      placeholder="Enter organization name"
+                    />
                   </div>
-                  <div className="space-y-2">
-                    <Label>Company Size</Label>
-                    <Select
-                      value={orgSettings.general.size}
-                      onValueChange={(value) => handleSettingsChange('general', 'size', value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select size" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border border-gray-200 shadow-lg z-50">
-                        <SelectItem value="1-10" className="text-black hover:bg-gray-100">1-10 employees</SelectItem>
-                        <SelectItem value="11-50" className="text-black hover:bg-gray-100">11-50 employees</SelectItem>
-                        <SelectItem value="51-200" className="text-black hover:bg-gray-100">51-200 employees</SelectItem>
-                        <SelectItem value="201-500" className="text-black hover:bg-gray-100">201-500 employees</SelectItem>
-                        <SelectItem value="501-1000" className="text-black hover:bg-gray-100">501-1000 employees</SelectItem>
-                        <SelectItem value="1000+" className="text-black hover:bg-gray-100">1000+ employees</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  <div className="space-y-3">
+                    <Label htmlFor="domain" className="text-sm font-medium text-slate-700">
+                      Domain
+                    </Label>
+                    <Input
+                      id="domain"
+                      value={orgSettings.general.domain}
+                      onChange={(e) => handleSettingsChange('general', 'domain', e.target.value)}
+                      className="border-slate-300 focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200"
+                      placeholder="example.com"
+                    />
                   </div>
-                </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-3">
+                      <Label className="text-sm font-medium text-slate-700">Industry</Label>
+                      <Select
+                        value={orgSettings.general.industry}
+                        onValueChange={(value) => handleSettingsChange('general', 'industry', value)}
+                      >
+                        <SelectTrigger className="border-slate-300 focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200">
+                          <SelectValue placeholder="Select industry" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white border-slate-200 shadow-lg z-50">
+                          <SelectItem value="Technology" className="text-slate-700 hover:bg-blue-50 focus:bg-blue-50">Technology</SelectItem>
+                          <SelectItem value="Healthcare" className="text-slate-700 hover:bg-blue-50 focus:bg-blue-50">Healthcare</SelectItem>
+                          <SelectItem value="Finance" className="text-slate-700 hover:bg-blue-50 focus:bg-blue-50">Finance</SelectItem>
+                          <SelectItem value="Education" className="text-slate-700 hover:bg-blue-50 focus:bg-blue-50">Education</SelectItem>
+                          <SelectItem value="Retail" className="text-slate-700 hover:bg-blue-50 focus:bg-blue-50">Retail</SelectItem>
+                          <SelectItem value="Manufacturing" className="text-slate-700 hover:bg-blue-50 focus:bg-blue-50">Manufacturing</SelectItem>
+                          <SelectItem value="Other" className="text-slate-700 hover:bg-blue-50 focus:bg-blue-50">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-3">
+                      <Label className="text-sm font-medium text-slate-700">Company Size</Label>
+                      <Select
+                        value={orgSettings.general.size}
+                        onValueChange={(value) => handleSettingsChange('general', 'size', value)}
+                      >
+                        <SelectTrigger className="border-slate-300 focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200">
+                          <SelectValue placeholder="Select size" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white border-slate-200 shadow-lg z-50">
+                          <SelectItem value="1-10" className="text-slate-700 hover:bg-blue-50 focus:bg-blue-50">1-10 employees</SelectItem>
+                          <SelectItem value="11-50" className="text-slate-700 hover:bg-blue-50 focus:bg-blue-50">11-50 employees</SelectItem>
+                          <SelectItem value="51-200" className="text-slate-700 hover:bg-blue-50 focus:bg-blue-50">51-200 employees</SelectItem>
+                          <SelectItem value="201-500" className="text-slate-700 hover:bg-blue-50 focus:bg-blue-50">201-500 employees</SelectItem>
+                          <SelectItem value="501-1000" className="text-slate-700 hover:bg-blue-50 focus:bg-blue-50">501-1000 employees</SelectItem>
+                          <SelectItem value="1000+" className="text-slate-700 hover:bg-blue-50 focus:bg-blue-50">1000+ employees</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
                 <div className="space-y-2">
                   <Label htmlFor="website">Website</Label>
                   <Input
@@ -1346,41 +1431,57 @@ Make sure the requirements field contains properly formatted text, not JSON stru
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Phone className="h-5 w-5 mr-2" />
-                  Contact Information
-                </CardTitle>
-                <CardDescription>Contact details and regional settings</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="address">Address</Label>
-                  <Textarea
-                    id="address"
-                    value={orgSettings.general.address}
-                    onChange={(e) => handleSettingsChange('general', 'address', e.target.value)}
-                    rows={3}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="contact-email">Contact Email</Label>
-                  <Input
-                    id="contact-email"
-                    type="email"
-                    value={orgSettings.general.contactEmail}
-                    onChange={(e) => handleSettingsChange('general', 'contactEmail', e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone</Label>
-                  <Input
-                    id="phone"
-                    value={orgSettings.general.phone}
-                    onChange={(e) => handleSettingsChange('general', 'phone', e.target.value)}
-                  />
-                </div>
+              <Card className="bg-white/80 backdrop-blur-sm border-slate-200 shadow-lg hover:shadow-xl transition-all duration-300">
+                <CardHeader className="bg-gradient-to-r from-emerald-50 to-green-50 rounded-t-lg border-b border-slate-200">
+                  <CardTitle className="flex items-center text-lg font-semibold text-slate-800">
+                    <div className="p-2 bg-emerald-100 rounded-lg mr-3">
+                      <Phone className="h-5 w-5 text-emerald-600" />
+                    </div>
+                    Contact Information
+                  </CardTitle>
+                  <CardDescription className="text-slate-600 mt-2">
+                    Contact details and regional settings
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6 p-6">
+                  <div className="space-y-3">
+                    <Label htmlFor="address" className="text-sm font-medium text-slate-700">
+                      Address
+                    </Label>
+                    <Textarea
+                      id="address"
+                      value={orgSettings.general.address}
+                      onChange={(e) => handleSettingsChange('general', 'address', e.target.value)}
+                      rows={3}
+                      className="border-slate-300 focus:border-emerald-500 focus:ring-emerald-500 transition-colors duration-200"
+                      placeholder="Enter organization address"
+                    />
+                  </div>
+                  <div className="space-y-3">
+                    <Label htmlFor="contact-email" className="text-sm font-medium text-slate-700">
+                      Contact Email
+                    </Label>
+                    <Input
+                      id="contact-email"
+                      type="email"
+                      value={orgSettings.general.contactEmail}
+                      onChange={(e) => handleSettingsChange('general', 'contactEmail', e.target.value)}
+                      className="border-slate-300 focus:border-emerald-500 focus:ring-emerald-500 transition-colors duration-200"
+                      placeholder="contact@example.com"
+                    />
+                  </div>
+                  <div className="space-y-3">
+                    <Label htmlFor="phone" className="text-sm font-medium text-slate-700">
+                      Phone
+                    </Label>
+                    <Input
+                      id="phone"
+                      value={orgSettings.general.phone}
+                      onChange={(e) => handleSettingsChange('general', 'phone', e.target.value)}
+                      className="border-slate-300 focus:border-emerald-500 focus:ring-emerald-500 transition-colors duration-200"
+                      placeholder="+1 (555) 123-4567"
+                    />
+                  </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Timezone</Label>
@@ -3063,6 +3164,8 @@ Make sure the requirements field contains properly formatted text, not JSON stru
           </div>
         </DialogContent>
       </Dialog>
+
+      </div>
     </div>
   )
 }

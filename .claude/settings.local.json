@@ -5,7 +5,9 @@
       "Bash(python manage.py:*)",
       "Bash(pip install:*)",
       "Bash(npm run dev:*)",
-      "Bash(python test_interview_stages.py)"
+      "Bash(python test_interview_stages.py)",
+      "Bash(grep:*)",
+      "Bash(npm run build:*)"
     ]
   }
 }
