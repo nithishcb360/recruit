@@ -156,7 +156,11 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
       aiApiKey: ""
     },
     ai: {
-      jobGenerationPrompt: `You are an expert HR professional and job description writer. Create a comprehensive, engaging, and professional job description based on the provided job details.
+      selectedImplementation: 'default',
+      implementations: {
+        default: {
+          name: 'Default Job Generation',
+          prompt: `You are an expert HR professional and job description writer. Create a comprehensive, engaging, and professional job description based on the provided job details.
 
 Please structure your response with clear sections and use professional language that attracts qualified candidates while accurately representing the role requirements.
 
@@ -168,6 +172,8 @@ Include the following elements:
 - Any relevant benefits or perks that make this role attractive
 
 Make the description inclusive and avoid any language that might discourage diverse candidates from applying.`
+        }
+      }
     }
   });
   const [interviewStages, setInterviewStages] = useState<InterviewStage[]>([
@@ -378,7 +384,7 @@ Make the description inclusive and avoid any language that might discourage dive
             lastModified: flow.updated_at?.split('T')[0] || new Date().toISOString().split('T')[0]
           }));
           setInterviewFlows(transformedFlows);
-          console.log('Loaded interview flows for dropdown:', transformedFlows.map(f => ({ id: f.id, name: f.name })));
+          console.log('Loaded interview flows for dropdown:', transformedFlows.map((f: any) => ({ id: f.id, name: f.name })));
         } else {
           console.error('Failed to fetch interview flows:', response.status, response.statusText);
           setInterviewFlows([]);

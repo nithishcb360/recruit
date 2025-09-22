@@ -18,13 +18,14 @@ export interface ScreeningCandidateData {
   retell_interest_level: any
   retell_is_qualified: any
   retell_call_duration_ms: any
-  retell_technical_skills: boolean
-  retell_questions_asked: boolean
+  retell_technical_skills: any
+  retell_questions_asked: any
   retell_user_sentiment: any
   retell_recording_url: any
   retell_public_log_url: any
   retell_availability_preference: any
   retell_additional_notes: any
+  retell_rejection_reason?: string
   assessment_responses: any
   id: number
   name: string

@@ -93,6 +93,8 @@ export default function FeedbackFormBuilder() {
   const [aiConfig, setAiConfig] = useState<{provider: string; apiKey: string; customPrompt?: string} | null>(null)
   const [customPrompt, setCustomPrompt] = useState("")
   const [isEditingPrompt, setIsEditingPrompt] = useState(false)
+  const [showApiKeyConfig, setShowApiKeyConfig] = useState(false)
+  const [apiKeyInput, setApiKeyInput] = useState("")
 
   // Helper functions for local storage
   const saveFormsToLocalStorage = (forms: FeedbackTemplate[]) => {

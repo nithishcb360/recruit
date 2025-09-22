@@ -28,7 +28,9 @@
       "Bash(git reset:*)",
       "Bash(git checkout:*)",
       "Bash(python manage.py:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(d:/recruit/venv/Scripts/python.exe:*)",
+      "Bash(d:/recruit/venv/Scripts/pip.exe list)"
     ],
     "deny": [],
     "ask": []

@@ -1932,9 +1932,9 @@ def update_candidate_experience(request):
     try:
         # Find candidates with null experience_years
         candidates_to_update = Candidate.objects.filter(experience_years__isnull=True)
-        
-        parser = EnhancedResumeParser()
-        parser = ResumeParser()
+
+        # parser = EnhancedResumeParser()  # Not used - commented out
+        # parser = ResumeParser()  # Not used - commented out
         updated_count = 0
         current_year = datetime.datetime.now().year
         

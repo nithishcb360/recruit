@@ -517,7 +517,7 @@ If candidate is not interested or has accepted another offer, thank them gracefu
 
           // Debug logging for newly created flows with rounds
           if (rounds.length > 0) {
-            console.log(`Flow "${flow.name}" has ${rounds.length} rounds:`, rounds.map(r => r.name));
+            console.log(`Flow "${flow.name}" has ${rounds.length} rounds:`, rounds.map((r: any) => r.name));
           }
 
           return transformedFlow;
@@ -2169,7 +2169,6 @@ If candidate is not interested or has accepted another offer, thank them gracefu
                           title: "❌ Validation Error",
                           description: "Email address is required",
                           variant: "destructive",
-                          duration: 5000,
                         });
                         setIsLoading(false);
                         return;
@@ -2180,7 +2179,6 @@ If candidate is not interested or has accepted another offer, thank them gracefu
                           title: "❌ Validation Error",
                           description: "Email password is required. Please enter your password to save changes.",
                           variant: "destructive",
-                          duration: 5000,
                         });
                         setIsLoading(false);
                         return;
@@ -2193,7 +2191,6 @@ If candidate is not interested or has accepted another offer, thank them gracefu
                           title: "❌ Validation Error",
                           description: "Please enter a valid email address",
                           variant: "destructive",
-                          duration: 5000,
                         });
                         setIsLoading(false);
                         return;
@@ -2226,7 +2223,6 @@ If candidate is not interested or has accepted another offer, thank them gracefu
                           title: "✅ Success",
                           description: "Email settings saved successfully! The system is now ready to send emails.",
                           variant: "default",
-                          duration: 5000,
                         });
 
                       } catch (error) {
@@ -2235,7 +2231,6 @@ If candidate is not interested or has accepted another offer, thank them gracefu
                           title: "❌ Error",
                           description: error instanceof Error ? error.message : "Failed to save email settings. Please check your internet connection and try again.",
                           variant: "destructive",
-                          duration: 7000,
                         });
                       } finally {
                         setIsLoading(false);

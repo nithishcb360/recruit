@@ -37,7 +37,7 @@ interface Candidate {
   location: string
   totalExperience: number
   relevantExperience: number
-  skillExperience: { skill: string; years: number }[]
+  skillExperience: { skill: string; years: number; description?: string }[]
   expectedSalary: string
   noticePeriod: string
   resumeLink: string
@@ -71,6 +71,12 @@ interface Candidate {
   experience_years?: number
   experience_level?: string
   current_position?: string
+  education?: Array<{
+    degree: string
+    institution: string
+    field_of_study: string
+  }>
+  certifications?: string[]
   // Selected job match for filtering
   selectedJobMatch?: {
     jobId: number
@@ -82,6 +88,7 @@ interface Candidate {
       experienceScore: number
       locationScore: number
     }
+    matchInsights?: string
   }
 }
 
@@ -122,6 +129,56 @@ const EXPERIENCE_YEARS_MAP = {
 
 interface CandidatePipelineProps {
   selectedJobId?: number | null
+}
+
+// Helper function for fetch with timeout and complete error suppression
+const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs: number = 5000): Promise<Response> => {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  // Store original console methods to restore later
+  const originalError = console.error
+  const originalWarn = console.warn
+  const originalLog = console.log
+
+  try {
+    // Completely suppress all console output during fetch
+    console.error = () => {}
+    console.warn = () => {}
+    console.log = () => {}
+
+    // Also suppress any window.onerror during this operation
+    const originalOnError = window.onerror
+    window.onerror = () => true
+
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    })
+
+    clearTimeout(timeoutId)
+
+    // Restore all console methods and error handling
+    console.error = originalError
+    console.warn = originalWarn
+    console.log = originalLog
+    window.onerror = originalOnError
+
+    return response
+  } catch (error) {
+    clearTimeout(timeoutId)
+
+    // Restore all console methods and error handling
+    console.error = originalError
+    console.warn = originalWarn
+    console.log = originalLog
+
+    // Create a clean error without exposing connection details
+    if (error instanceof Error && (error.name === 'AbortError' || error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED'))) {
+      throw new Error('Backend unavailable')
+    }
+    throw error
+  }
 }
 
 // Enhanced job matching using backend semantic matching API
@@ -263,57 +320,6 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
   const [candidateToDelete, setCandidateToDelete] = useState<Candidate | null>(null)
   const [isCompareModalOpen, setIsCompareModalOpen] = useState(false)
   const [candidateForComparison, setCandidateForComparison] = useState<Candidate | null>(null)
-
-  // Helper function for fetch with timeout and complete error suppression
-  const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs: number = 5000): Promise<Response> => {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
-    
-    // Store original console methods to restore later
-    const originalError = console.error
-    const originalWarn = console.warn
-    const originalLog = console.log
-    
-    try {
-      // Completely suppress all console output during fetch
-      console.error = () => {}
-      console.warn = () => {}
-      console.log = () => {}
-      
-      // Also suppress any window.onerror during this operation
-      const originalOnError = window.onerror
-      window.onerror = () => true
-      
-      const response = await fetch(url, {
-        ...options,
-        signal: controller.signal
-      })
-      
-      clearTimeout(timeoutId)
-      
-      // Restore all console methods and error handling
-      console.error = originalError
-      console.warn = originalWarn
-      console.log = originalLog
-      window.onerror = originalOnError
-      
-      return response
-    } catch (error) {
-      clearTimeout(timeoutId)
-      
-      // Restore all console methods and error handling
-      console.error = originalError
-      console.warn = originalWarn
-      console.log = originalLog
-      window.onerror = window.onerror
-      
-      // Create a clean error without exposing connection details
-      if (error instanceof Error && (error.name === 'AbortError' || error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED'))) {
-        throw new Error('Backend unavailable')
-      }
-      throw error
-    }
-  }
 
   // Load real candidates from API
   const fetchCandidates = async () => {
@@ -1063,6 +1069,7 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
         experience_years: (candidate as any).experience_years || candidate.totalExperience,
         experience_level: (candidate as any).experience_level,
         current_position: (candidate as any).current_position,
+        current_company: (candidate as any).current_company,
         skills: (candidate as any).skills || [],
         education: (candidate as any).education || [],
         certifications: (candidate as any).certifications || [],
@@ -1073,6 +1080,33 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
         assessment_score: (candidate as any).assessment_score,
         assessment_tab_switches: (candidate as any).assessment_tab_switches,
         assessment_disqualified: (candidate as any).assessment_disqualified,
+        assessment_time_taken: (candidate as any).assessment_time_taken,
+        assessment_responses: (candidate as any).assessment_responses,
+        assessment_recording_url: (candidate as any).assessment_recording_url,
+        assessment_video_recording: (candidate as any).assessment_video_recording,
+        assessment_screen_recording: (candidate as any).assessment_screen_recording,
+        assigned_to: (candidate as any).assigned_to,
+        retell_call_id: (candidate as any).retell_call_id,
+        retell_interview_scheduled: (candidate as any).retell_interview_scheduled,
+        retell_call_status: (candidate as any).retell_call_status,
+        retell_call_summary: (candidate as any).retell_call_summary,
+        retell_scheduled_date: (candidate as any).retell_scheduled_date,
+        retell_scheduled_time: (candidate as any).retell_scheduled_time,
+        retell_scheduled_timezone: (candidate as any).retell_scheduled_timezone,
+        retell_scheduled_datetime_iso: (candidate as any).retell_scheduled_datetime_iso,
+        retell_call_outcome: (candidate as any).retell_call_outcome,
+        retell_interest_level: (candidate as any).retell_interest_level,
+        retell_is_qualified: (candidate as any).retell_is_qualified,
+        retell_call_duration_ms: (candidate as any).retell_call_duration_ms,
+        retell_technical_skills: (candidate as any).retell_technical_skills,
+        retell_questions_asked: (candidate as any).retell_questions_asked,
+        retell_user_sentiment: (candidate as any).retell_user_sentiment,
+        retell_recording_url: (candidate as any).retell_recording_url,
+        retell_public_log_url: (candidate as any).retell_public_log_url,
+        retell_availability_preference: (candidate as any).retell_availability_preference,
+        retell_additional_notes: (candidate as any).retell_additional_notes,
+        webdesk_feedback_form_id: (candidate as any).webdesk_feedback_form_id,
+        status: (candidate as any).status,
         jobId: jobId,
         jobTitle: jobMatch.jobTitle
       }
@@ -2109,8 +2143,3 @@ function getStageProgress(stage: string): number {
   }
   return stageMap[stage] || 10
 }
-
-function fetchWithTimeout(arg0: string, arg1: { method: string; headers: { 'Content-Type': string }; body: string }, arg2: number) {
-  throw new Error("Function not implemented.")
-}
-

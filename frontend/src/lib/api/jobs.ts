@@ -89,6 +89,15 @@ export interface JobListItem {
   department: Department
   status: string
   created_at: string
+  description?: string
+  requirements?: string
+  responsibilities?: string
+  job_type?: string
+  experience_level?: string
+  required_skills?: string[]
+  preferred_skills?: string[]
+  location?: string
+  employment_type?: string
 }
 
 export interface ParsedJD {

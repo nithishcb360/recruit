@@ -3,7 +3,7 @@
 export interface Question {
   id: number
   text: string
-  type: "text" | "textarea" | "audio" | "video" | "multiple_choice" | "code"
+  type: "text" | "textarea" | "audio" | "video" | "multiple_choice" | "code" | "radio" | "program"
   options?: string[]
   required: boolean
   answer?: string // Optional answer field for question-with-answer forms
