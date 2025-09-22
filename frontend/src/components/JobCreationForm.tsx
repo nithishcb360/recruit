@@ -464,6 +464,14 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
           }
         : undefined;
 
+      // Debug log for custom prompt usage
+      if (aiConfig?.customPrompt) {
+        console.log('Using custom AI prompt from organization settings');
+        console.log('Prompt length:', aiConfig.customPrompt.length, 'characters');
+      } else {
+        console.log('Using default AI prompt - no custom prompt configured');
+      }
+
       const generatedContent = await generateJobDescriptionWithAI({
         jobTitle: formData.jobTitle,
         department: department,

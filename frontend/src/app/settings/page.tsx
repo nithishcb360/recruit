@@ -567,10 +567,11 @@ Make sure the requirements field contains properly formatted text, not JSON stru
     setHasUnsavedChanges(true);
 
     // Auto-save AI settings immediately for better UX
-    if (section === 'general' && (field === 'aiProvider' || field === 'aiApiKey')) {
+    if ((section === 'general' && (field === 'aiProvider' || field === 'aiApiKey')) ||
+        (section === 'ai' && field === 'jobGenerationPrompt')) {
       try {
         localStorage.setItem('organizationSettings', JSON.stringify(newSettings));
-        console.log('Auto-saved AI settings to localStorage:', { [field]: value });
+        console.log('Auto-saved AI settings to localStorage:', { section, field, value: typeof value === 'string' && value.length > 50 ? value.substring(0, 50) + '...' : value });
 
         // Trigger storage event for other components
         window.dispatchEvent(new StorageEvent('storage', {
@@ -1937,20 +1938,14 @@ Make sure the requirements field contains properly formatted text, not JSON stru
                     className="font-mono text-sm"
                     placeholder="Enter your custom AI prompt here..."
                     value={orgSettings.ai.jobGenerationPrompt}
-                    onChange={(e) => {
-                      setOrgSettings(prev => ({
-                        ...prev,
-                        ai: {
-                          ...prev.ai,
-                          jobGenerationPrompt: e.target.value
-                        }
-                      }))
-                      setHasUnsavedChanges(true)
-                    }}
+                    onChange={(e) => handleSettingsChange('ai', 'jobGenerationPrompt', e.target.value)}
                   />
                   <p className="text-sm text-gray-600">
                     This prompt will be sent to your selected AI provider ({orgSettings.general.aiProvider}) to generate job descriptions.
                     You can customize it to match your company's tone, requirements format, and specific needs.
+                  </p>
+                  <p className="text-xs text-green-600 font-medium">
+                    ✓ AI prompt is automatically saved when changed
                   </p>
                 </div>
 
@@ -1959,11 +1954,7 @@ Make sure the requirements field contains properly formatted text, not JSON stru
                     variant="outline"
                     className="border-blue-500 text-blue-600 hover:bg-blue-50 hover:border-blue-600"
                     onClick={() => {
-                      setOrgSettings(prev => ({
-                        ...prev,
-                        ai: {
-                          ...prev.ai,
-                          jobGenerationPrompt: `You are an expert HR professional and job description writer. Create professional, engaging, and comprehensive job descriptions that attract qualified candidates.
+                      const defaultPrompt = `You are an expert HR professional and job description writer. Create professional, engaging, and comprehensive job descriptions that attract qualified candidates.
 
 Your task is to generate:
 1. A detailed job description (3-4 paragraphs)
@@ -1990,10 +1981,9 @@ Preferred Qualifications:
 • Item 1
 • Item 2
 
-Make sure the requirements field contains properly formatted text, not JSON structure.`
-                        }
-                      }))
-                      setHasUnsavedChanges(true)
+Make sure the requirements field contains properly formatted text, not JSON structure.`;
+
+                      handleSettingsChange('ai', 'jobGenerationPrompt', defaultPrompt);
                       toast({
                         title: "Prompt Reset",
                         description: "AI prompt has been reset to default.",
