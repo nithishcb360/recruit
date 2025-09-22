@@ -1230,10 +1230,10 @@ Make sure the requirements field contains properly formatted text, not JSON stru
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="space-y-1">
-              <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
+              <h1 className="text-lg sm:text-xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
                 Organization Settings
               </h1>
-              <p className="text-slate-600 text-sm sm:text-base">
+              <p className="text-slate-600 text-xs sm:text-sm">
                 Configure your organization&apos;s settings, security, and permissions
               </p>
             </div>
@@ -1344,7 +1344,7 @@ Make sure the requirements field contains properly formatted text, not JSON stru
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card className="bg-white/80 backdrop-blur-sm border-slate-200 shadow-lg hover:shadow-xl transition-all duration-300">
                 <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-t-lg border-b border-slate-200">
-                  <CardTitle className="flex items-center text-lg font-semibold text-slate-800">
+                  <CardTitle className="flex items-center text-base font-semibold text-slate-800">
                     <div className="p-2 bg-blue-100 rounded-lg mr-3">
                       <Building2 className="h-5 w-5 text-blue-600" />
                     </div>
@@ -1433,7 +1433,7 @@ Make sure the requirements field contains properly formatted text, not JSON stru
 
               <Card className="bg-white/80 backdrop-blur-sm border-slate-200 shadow-lg hover:shadow-xl transition-all duration-300">
                 <CardHeader className="bg-gradient-to-r from-emerald-50 to-green-50 rounded-t-lg border-b border-slate-200">
-                  <CardTitle className="flex items-center text-lg font-semibold text-slate-800">
+                  <CardTitle className="flex items-center text-base font-semibold text-slate-800">
                     <div className="p-2 bg-emerald-100 rounded-lg mr-3">
                       <Phone className="h-5 w-5 text-emerald-600" />
                     </div>
@@ -1608,26 +1608,48 @@ Make sure the requirements field contains properly formatted text, not JSON stru
                 <CardDescription>Configure authentication and access controls</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Multi-Factor Authentication</Label>
-                    <p className="text-sm text-black">Require MFA for all users</p>
+                <div className="flex items-center justify-between p-4 bg-white/70 backdrop-blur-sm rounded-xl border border-blue-200 hover:bg-white/90 transition-all duration-200">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg">
+                      <Shield className="h-4 w-4 text-blue-600" />
+                    </div>
+                    <div>
+                      <Label className="text-slate-800 font-semibold">Multi-Factor Authentication</Label>
+                      <p className="text-sm text-slate-600">Require MFA for all users</p>
+                    </div>
                   </div>
-                  <Switch
-                    checked={orgSettings.security.mfaRequired}
-                    onCheckedChange={(checked: boolean) => handleSettingsChange('security', 'mfaRequired', checked)}
-                  />
+                  <div className="relative">
+                    <Switch
+                      checked={orgSettings.security.mfaRequired}
+                      onCheckedChange={(checked: boolean) => handleSettingsChange('security', 'mfaRequired', checked)}
+                      className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-blue-500 data-[state=checked]:to-indigo-500 data-[state=unchecked]:bg-gray-300 scale-110 shadow-lg"
+                    />
+                    {orgSettings.security.mfaRequired && (
+                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+                    )}
+                  </div>
                 </div>
-                
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Single Sign-On (SSO)</Label>
-                    <p className="text-sm text-black">Enable SSO authentication</p>
+
+                <div className="flex items-center justify-between p-4 bg-white/70 backdrop-blur-sm rounded-xl border border-green-200 hover:bg-white/90 transition-all duration-200">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-gradient-to-br from-green-100 to-emerald-100 rounded-lg">
+                      <Key className="h-4 w-4 text-green-600" />
+                    </div>
+                    <div>
+                      <Label className="text-slate-800 font-semibold">Single Sign-On (SSO)</Label>
+                      <p className="text-sm text-slate-600">Enable SSO authentication</p>
+                    </div>
                   </div>
-                  <Switch
-                    checked={orgSettings.security.ssoEnabled}
-                    onCheckedChange={(checked: boolean) => handleSettingsChange('security', 'ssoEnabled', checked)}
-                  />
+                  <div className="relative">
+                    <Switch
+                      checked={orgSettings.security.ssoEnabled}
+                      onCheckedChange={(checked: boolean) => handleSettingsChange('security', 'ssoEnabled', checked)}
+                      className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-blue-500 data-[state=checked]:to-blue-600 data-[state=unchecked]:bg-gray-300 scale-110 shadow-lg"
+                    />
+                    {orgSettings.security.ssoEnabled && (
+                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+                    )}
+                  </div>
                 </div>
 
                 {orgSettings.security.ssoEnabled && (
@@ -1661,15 +1683,26 @@ Make sure the requirements field contains properly formatted text, not JSON stru
                   />
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Audit Logging</Label>
-                    <p className="text-sm text-black">Track all user actions</p>
+                <div className="flex items-center justify-between p-4 bg-white/70 backdrop-blur-sm rounded-xl border border-purple-200 hover:bg-white/90 transition-all duration-200">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-gradient-to-br from-purple-100 to-violet-100 rounded-lg">
+                      <Activity className="h-4 w-4 text-purple-600" />
+                    </div>
+                    <div>
+                      <Label className="text-slate-800 font-semibold">Audit Logging</Label>
+                      <p className="text-sm text-slate-600">Track all user actions</p>
+                    </div>
                   </div>
-                  <Switch
-                    checked={orgSettings.security.auditLogging}
-                    onCheckedChange={(checked: boolean) => handleSettingsChange('security', 'auditLogging', checked)}
-                  />
+                  <div className="relative">
+                    <Switch
+                      checked={orgSettings.security.auditLogging}
+                      onCheckedChange={(checked: boolean) => handleSettingsChange('security', 'auditLogging', checked)}
+                      className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-blue-500 data-[state=checked]:to-blue-600 data-[state=unchecked]:bg-gray-300 scale-110 shadow-lg"
+                    />
+                    {orgSettings.security.auditLogging && (
+                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -1698,37 +1731,70 @@ Make sure the requirements field contains properly formatted text, not JSON stru
                 </div>
 
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <Label>Require Uppercase Letters</Label>
-                    <Switch
-                      checked={orgSettings.security.passwordPolicy.requireUppercase}
-                      onCheckedChange={(checked: boolean) => handleSettingsChange('security', 'passwordPolicy', {
-                        ...orgSettings.security.passwordPolicy,
-                        requireUppercase: checked
-                      })}
-                    />
+                  <div className="flex items-center justify-between p-3 bg-white/70 backdrop-blur-sm rounded-lg border border-amber-200 hover:bg-white/90 transition-all duration-200">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-gradient-to-br from-amber-100 to-yellow-100 rounded">
+                        <span className="text-amber-600 font-bold text-xs">Aa</span>
+                      </div>
+                      <Label className="text-slate-800 font-medium">Require Uppercase Letters</Label>
+                    </div>
+                    <div className="relative">
+                      <Switch
+                        checked={orgSettings.security.passwordPolicy.requireUppercase}
+                        onCheckedChange={(checked: boolean) => handleSettingsChange('security', 'passwordPolicy', {
+                          ...orgSettings.security.passwordPolicy,
+                          requireUppercase: checked
+                        })}
+                        className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-blue-500 data-[state=checked]:to-blue-600 data-[state=unchecked]:bg-gray-300 scale-105 shadow-md"
+                      />
+                      {orgSettings.security.passwordPolicy.requireUppercase && (
+                        <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="flex items-center justify-between">
-                    <Label>Require Numbers</Label>
-                    <Switch
-                      checked={orgSettings.security.passwordPolicy.requireNumbers}
-                      onCheckedChange={(checked: boolean) => handleSettingsChange('security', 'passwordPolicy', {
-                        ...orgSettings.security.passwordPolicy,
-                        requireNumbers: checked
-                      })}
-                    />
+                  <div className="flex items-center justify-between p-3 bg-white/70 backdrop-blur-sm rounded-lg border border-blue-200 hover:bg-white/90 transition-all duration-200">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-gradient-to-br from-blue-100 to-indigo-100 rounded">
+                        <span className="text-blue-600 font-bold text-xs">123</span>
+                      </div>
+                      <Label className="text-slate-800 font-medium">Require Numbers</Label>
+                    </div>
+                    <div className="relative">
+                      <Switch
+                        checked={orgSettings.security.passwordPolicy.requireNumbers}
+                        onCheckedChange={(checked: boolean) => handleSettingsChange('security', 'passwordPolicy', {
+                          ...orgSettings.security.passwordPolicy,
+                          requireNumbers: checked
+                        })}
+                        className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-blue-500 data-[state=checked]:to-indigo-500 data-[state=unchecked]:bg-gray-300 scale-105 shadow-md"
+                      />
+                      {orgSettings.security.passwordPolicy.requireNumbers && (
+                        <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="flex items-center justify-between">
-                    <Label>Require Special Characters</Label>
-                    <Switch
-                      checked={orgSettings.security.passwordPolicy.requireSymbols}
-                      onCheckedChange={(checked: boolean) => handleSettingsChange('security', 'passwordPolicy', {
-                        ...orgSettings.security.passwordPolicy,
-                        requireSymbols: checked
-                      })}
-                    />
+                  <div className="flex items-center justify-between p-3 bg-white/70 backdrop-blur-sm rounded-lg border border-purple-200 hover:bg-white/90 transition-all duration-200">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-gradient-to-br from-purple-100 to-violet-100 rounded">
+                        <span className="text-purple-600 font-bold text-xs">@#</span>
+                      </div>
+                      <Label className="text-slate-800 font-medium">Require Special Characters</Label>
+                    </div>
+                    <div className="relative">
+                      <Switch
+                        checked={orgSettings.security.passwordPolicy.requireSymbols}
+                        onCheckedChange={(checked: boolean) => handleSettingsChange('security', 'passwordPolicy', {
+                          ...orgSettings.security.passwordPolicy,
+                          requireSymbols: checked
+                        })}
+                        className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-blue-500 data-[state=checked]:to-blue-600 data-[state=unchecked]:bg-gray-300 scale-105 shadow-md"
+                      />
+                      {orgSettings.security.passwordPolicy.requireSymbols && (
+                        <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -1755,7 +1821,7 @@ Make sure the requirements field contains properly formatted text, not JSON stru
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-semibold">Role Management</h3>
+                <h3 className="text-base font-semibold">Role Management</h3>
                 <p className="text-sm text-black">Configure roles and permissions for your organization</p>
               </div>
               <Button onClick={openCreateRoleModal}>
@@ -1800,7 +1866,7 @@ Make sure the requirements field contains properly formatted text, not JSON stru
                         )}
                       </div>
                     </div>
-                    <CardTitle className="text-base">{role.name}</CardTitle>
+                    <CardTitle className="text-sm">{role.name}</CardTitle>
                     <CardDescription className="text-sm">{role.description}</CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -1840,68 +1906,125 @@ Make sure the requirements field contains properly formatted text, not JSON stru
         {/* Features Tab */}
         <TabsContent value="features" className="mt-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Zap className="h-5 w-5 mr-2" />
+            <Card className="bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-200 hover:shadow-xl transition-all duration-300">
+              <CardHeader className="bg-gradient-to-r from-amber-100 to-orange-100 border-b border-amber-200">
+                <CardTitle className="flex items-center gap-3">
+                  <div className="p-2 bg-gradient-to-br from-amber-500 to-orange-500 rounded-lg">
+                    <Zap className="h-5 w-5 text-white" />
+                  </div>
                   Platform Features
                 </CardTitle>
-                <CardDescription>Enable or disable advanced features for your organization</CardDescription>
+                <CardDescription className="text-amber-800">Enable or disable advanced features for your organization</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>AI-Powered Candidate Matching</Label>
-                    <p className="text-sm text-black">Intelligent candidate recommendations</p>
+              <CardContent className="space-y-6 pt-6">
+                <div className="flex items-center justify-between p-4 bg-white/70 backdrop-blur-sm rounded-xl border border-amber-200 hover:bg-white/90 transition-all duration-200">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg">
+                      <User2 className="h-4 w-4 text-blue-600" />
+                    </div>
+                    <div>
+                      <Label className="text-slate-800 font-semibold">AI-Powered Candidate Matching</Label>
+                      <p className="text-sm text-slate-600">Intelligent candidate recommendations</p>
+                    </div>
                   </div>
-                  <Switch
-                    checked={orgSettings.features.aiMatching}
-                    onCheckedChange={(checked: boolean) => handleSettingsChange('features', 'aiMatching', checked)}
-                  />
+                  <div className="relative">
+                    <Switch
+                      checked={orgSettings.features.aiMatching}
+                      onCheckedChange={(checked: boolean) => handleSettingsChange('features', 'aiMatching', checked)}
+                      className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-blue-500 data-[state=checked]:to-blue-600 data-[state=unchecked]:bg-gray-300 scale-110 shadow-lg"
+                    />
+                    {orgSettings.features.aiMatching && (
+                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+                    )}
+                  </div>
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Video Interview Platform</Label>
-                    <p className="text-sm text-black">Built-in video conferencing</p>
+                <div className="flex items-center justify-between p-4 bg-white/70 backdrop-blur-sm rounded-xl border border-amber-200 hover:bg-white/90 transition-all duration-200">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-gradient-to-br from-purple-100 to-pink-100 rounded-lg">
+                      <Video className="h-4 w-4 text-purple-600" />
+                    </div>
+                    <div>
+                      <Label className="text-slate-800 font-semibold">Video Interview Platform</Label>
+                      <p className="text-sm text-slate-600">Built-in video conferencing</p>
+                    </div>
                   </div>
-                  <Switch
-                    checked={orgSettings.features.videoInterviews}
-                    onCheckedChange={(checked: boolean) => handleSettingsChange('features', 'videoInterviews', checked)}
-                  />
+                  <div className="relative">
+                    <Switch
+                      checked={orgSettings.features.videoInterviews}
+                      onCheckedChange={(checked: boolean) => handleSettingsChange('features', 'videoInterviews', checked)}
+                      className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-blue-500 data-[state=checked]:to-blue-600 data-[state=unchecked]:bg-gray-300 scale-110 shadow-lg"
+                    />
+                    {orgSettings.features.videoInterviews && (
+                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+                    )}
+                  </div>
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>API Access</Label>
-                    <p className="text-sm text-black">REST API for integrations</p>
+                <div className="flex items-center justify-between p-4 bg-white/70 backdrop-blur-sm rounded-xl border border-amber-200 hover:bg-white/90 transition-all duration-200">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-gradient-to-br from-cyan-100 to-blue-100 rounded-lg">
+                      <Database className="h-4 w-4 text-cyan-600" />
+                    </div>
+                    <div>
+                      <Label className="text-slate-800 font-semibold">API Access</Label>
+                      <p className="text-sm text-slate-600">REST API for integrations</p>
+                    </div>
                   </div>
-                  <Switch
-                    checked={orgSettings.features.apiAccess}
-                    onCheckedChange={(checked: boolean) => handleSettingsChange('features', 'apiAccess', checked)}
-                  />
+                  <div className="relative">
+                    <Switch
+                      checked={orgSettings.features.apiAccess}
+                      onCheckedChange={(checked: boolean) => handleSettingsChange('features', 'apiAccess', checked)}
+                      className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-blue-500 data-[state=checked]:to-blue-600 data-[state=unchecked]:bg-gray-300 scale-110 shadow-lg"
+                    />
+                    {orgSettings.features.apiAccess && (
+                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+                    )}
+                  </div>
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Advanced Reporting</Label>
-                    <p className="text-sm text-black">Custom reports and analytics</p>
+                <div className="flex items-center justify-between p-4 bg-white/70 backdrop-blur-sm rounded-xl border border-amber-200 hover:bg-white/90 transition-all duration-200">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-gradient-to-br from-emerald-100 to-green-100 rounded-lg">
+                      <BarChart3 className="h-4 w-4 text-emerald-600" />
+                    </div>
+                    <div>
+                      <Label className="text-slate-800 font-semibold">Advanced Reporting</Label>
+                      <p className="text-sm text-slate-600">Custom reports and analytics</p>
+                    </div>
                   </div>
-                  <Switch
-                    checked={orgSettings.features.advancedReporting}
-                    onCheckedChange={(checked: boolean) => handleSettingsChange('features', 'advancedReporting', checked)}
-                  />
+                  <div className="relative">
+                    <Switch
+                      checked={orgSettings.features.advancedReporting}
+                      onCheckedChange={(checked: boolean) => handleSettingsChange('features', 'advancedReporting', checked)}
+                      className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-blue-500 data-[state=checked]:to-blue-600 data-[state=unchecked]:bg-gray-300 scale-110 shadow-lg"
+                    />
+                    {orgSettings.features.advancedReporting && (
+                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+                    )}
+                  </div>
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Webhooks</Label>
-                    <p className="text-sm text-black">Real-time event notifications</p>
+                <div className="flex items-center justify-between p-4 bg-white/70 backdrop-blur-sm rounded-xl border border-amber-200 hover:bg-white/90 transition-all duration-200">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-gradient-to-br from-orange-100 to-red-100 rounded-lg">
+                      <Activity className="h-4 w-4 text-orange-600" />
+                    </div>
+                    <div>
+                      <Label className="text-slate-800 font-semibold">Webhooks</Label>
+                      <p className="text-sm text-slate-600">Real-time event notifications</p>
+                    </div>
                   </div>
-                  <Switch
-                    checked={orgSettings.features.webhooks}
-                    onCheckedChange={(checked: boolean) => handleSettingsChange('features', 'webhooks', checked)}
-                  />
+                  <div className="relative">
+                    <Switch
+                      checked={orgSettings.features.webhooks}
+                      onCheckedChange={(checked: boolean) => handleSettingsChange('features', 'webhooks', checked)}
+                      className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-blue-500 data-[state=checked]:to-blue-600 data-[state=unchecked]:bg-gray-300 scale-110 shadow-lg"
+                    />
+                    {orgSettings.features.webhooks && (
+                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -1914,49 +2037,93 @@ Make sure the requirements field contains properly formatted text, not JSON stru
                 </CardTitle>
                 <CardDescription>Connect with external services and platforms</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Slack Integration</Label>
-                    <p className="text-sm text-black">Notifications and updates</p>
+              <CardContent className="space-y-6">
+                <div className="flex items-center justify-between p-4 bg-white/70 backdrop-blur-sm rounded-xl border border-purple-200 hover:bg-white/90 transition-all duration-200">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-gradient-to-br from-purple-100 to-violet-100 rounded-lg">
+                      <MessageSquare className="h-4 w-4 text-purple-600" />
+                    </div>
+                    <div>
+                      <Label className="text-slate-800 font-semibold">Slack Integration</Label>
+                      <p className="text-sm text-slate-600">Notifications and updates</p>
+                    </div>
                   </div>
-                  <Switch
-                    checked={orgSettings.integrations.slack}
-                    onCheckedChange={(checked: boolean) => handleSettingsChange('integrations', 'slack', checked)}
-                  />
+                  <div className="relative">
+                    <Switch
+                      checked={orgSettings.integrations.slack}
+                      onCheckedChange={(checked: boolean) => handleSettingsChange('integrations', 'slack', checked)}
+                      className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-blue-500 data-[state=checked]:to-blue-600 data-[state=unchecked]:bg-gray-300 scale-110 shadow-lg"
+                    />
+                    {orgSettings.integrations.slack && (
+                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+                    )}
+                  </div>
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Google Workspace</Label>
-                    <p className="text-sm text-black">Calendar and email integration</p>
+                <div className="flex items-center justify-between p-4 bg-white/70 backdrop-blur-sm rounded-xl border border-blue-200 hover:bg-white/90 transition-all duration-200">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg">
+                      <Mail className="h-4 w-4 text-blue-600" />
+                    </div>
+                    <div>
+                      <Label className="text-slate-800 font-semibold">Google Workspace</Label>
+                      <p className="text-sm text-slate-600">Calendar and email integration</p>
+                    </div>
                   </div>
-                  <Switch
-                    checked={orgSettings.integrations.gsuite}
-                    onCheckedChange={(checked: boolean) => handleSettingsChange('integrations', 'gsuite', checked)}
-                  />
+                  <div className="relative">
+                    <Switch
+                      checked={orgSettings.integrations.gsuite}
+                      onCheckedChange={(checked: boolean) => handleSettingsChange('integrations', 'gsuite', checked)}
+                      className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-blue-500 data-[state=checked]:to-indigo-500 data-[state=unchecked]:bg-gray-300 scale-110 shadow-lg"
+                    />
+                    {orgSettings.integrations.gsuite && (
+                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+                    )}
+                  </div>
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Microsoft 365</Label>
-                    <p className="text-sm text-black">Office suite integration</p>
+                <div className="flex items-center justify-between p-4 bg-white/70 backdrop-blur-sm rounded-xl border border-orange-200 hover:bg-white/90 transition-all duration-200">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-gradient-to-br from-orange-100 to-amber-100 rounded-lg">
+                      <FileText className="h-4 w-4 text-orange-600" />
+                    </div>
+                    <div>
+                      <Label className="text-slate-800 font-semibold">Microsoft 365</Label>
+                      <p className="text-sm text-slate-600">Office suite integration</p>
+                    </div>
                   </div>
-                  <Switch
-                    checked={orgSettings.integrations.office365}
-                    onCheckedChange={(checked: boolean) => handleSettingsChange('integrations', 'office365', checked)}
-                  />
+                  <div className="relative">
+                    <Switch
+                      checked={orgSettings.integrations.office365}
+                      onCheckedChange={(checked: boolean) => handleSettingsChange('integrations', 'office365', checked)}
+                      className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-blue-500 data-[state=checked]:to-blue-600 data-[state=unchecked]:bg-gray-300 scale-110 shadow-lg"
+                    />
+                    {orgSettings.integrations.office365 && (
+                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+                    )}
+                  </div>
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Background Check Services</Label>
-                    <p className="text-sm text-black">Automated screening</p>
+                <div className="flex items-center justify-between p-4 bg-white/70 backdrop-blur-sm rounded-xl border border-emerald-200 hover:bg-white/90 transition-all duration-200">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-gradient-to-br from-emerald-100 to-green-100 rounded-lg">
+                      <CheckCircle className="h-4 w-4 text-emerald-600" />
+                    </div>
+                    <div>
+                      <Label className="text-slate-800 font-semibold">Background Check Services</Label>
+                      <p className="text-sm text-slate-600">Automated screening</p>
+                    </div>
                   </div>
-                  <Switch
-                    checked={orgSettings.integrations.background_check}
-                    onCheckedChange={(checked: boolean) => handleSettingsChange('integrations', 'background_check', checked)}
-                  />
+                  <div className="relative">
+                    <Switch
+                      checked={orgSettings.integrations.background_check}
+                      onCheckedChange={(checked: boolean) => handleSettingsChange('integrations', 'background_check', checked)}
+                      className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-blue-500 data-[state=checked]:to-blue-600 data-[state=unchecked]:bg-gray-300 scale-110 shadow-lg"
+                    />
+                    {orgSettings.integrations.background_check && (
+                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -1984,7 +2151,7 @@ Make sure the requirements field contains properly formatted text, not JSON stru
                         alt="Company Logo"
                         className="w-16 h-16 rounded border"
                       />
-                      <Button variant="outline">
+                      <Button className="bg-blue-600 hover:bg-blue-700 text-white border-blue-600 hover:border-blue-700 transition-all duration-200 shadow-lg hover:shadow-xl">
                         <Upload className="h-4 w-4 mr-2" />
                         Upload Logo
                       </Button>
@@ -2064,12 +2231,9 @@ Make sure the requirements field contains properly formatted text, not JSON stru
                           </p>
                         </div>
                       </div>
-                      <Button 
-                        size="sm" 
-                        style={{ 
-                          backgroundColor: orgSettings.branding.accentColor,
-                          borderColor: orgSettings.branding.accentColor
-                        }}
+                      <Button
+                        size="sm"
+                        className="bg-blue-600 hover:bg-blue-700 text-white border-blue-600 hover:border-blue-700 transition-all duration-200 shadow-lg hover:shadow-xl"
                       >
                         Sample Button
                       </Button>
@@ -2104,35 +2268,57 @@ Make sure the requirements field contains properly formatted text, not JSON stru
                 </CardTitle>
                 <CardDescription>Configure data protection and privacy settings</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>GDPR Compliance</Label>
-                    <p className="text-sm text-black">European data protection compliance</p>
+              <CardContent className="space-y-6">
+                <div className="flex items-center justify-between p-4 bg-white/70 backdrop-blur-sm rounded-xl border border-emerald-200 hover:bg-white/90 transition-all duration-200">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-gradient-to-br from-emerald-100 to-green-100 rounded-lg">
+                      <Globe className="h-4 w-4 text-emerald-600" />
+                    </div>
+                    <div>
+                      <Label className="text-slate-800 font-semibold">GDPR Compliance</Label>
+                      <p className="text-sm text-slate-600">European data protection compliance</p>
+                    </div>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <Switch
-                      checked={complianceSettings.gdprCompliant}
-                      onCheckedChange={(checked: boolean) => handleComplianceChange('gdprCompliant', checked)}
-                    />
+                    <div className="relative">
+                      <Switch
+                        checked={complianceSettings.gdprCompliant}
+                        onCheckedChange={(checked: boolean) => handleComplianceChange('gdprCompliant', checked)}
+                        className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-blue-500 data-[state=checked]:to-blue-600 data-[state=unchecked]:bg-gray-300 scale-110 shadow-lg"
+                      />
+                      {complianceSettings.gdprCompliant && (
+                        <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+                      )}
+                    </div>
                     {complianceSettings.gdprCompliant && (
-                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <CheckCircle className="h-5 w-5 text-emerald-600" />
                     )}
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>CCPA Compliance</Label>
-                    <p className="text-sm text-black">California privacy rights compliance</p>
+                <div className="flex items-center justify-between p-4 bg-white/70 backdrop-blur-sm rounded-xl border border-blue-200 hover:bg-white/90 transition-all duration-200">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg">
+                      <Shield className="h-4 w-4 text-blue-600" />
+                    </div>
+                    <div>
+                      <Label className="text-slate-800 font-semibold">CCPA Compliance</Label>
+                      <p className="text-sm text-slate-600">California privacy rights compliance</p>
+                    </div>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <Switch
-                      checked={complianceSettings.ccpaCompliant}
-                      onCheckedChange={(checked: boolean) => handleComplianceChange('ccpaCompliant', checked)}
-                    />
+                    <div className="relative">
+                      <Switch
+                        checked={complianceSettings.ccpaCompliant}
+                        onCheckedChange={(checked: boolean) => handleComplianceChange('ccpaCompliant', checked)}
+                        className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-blue-500 data-[state=checked]:to-indigo-500 data-[state=unchecked]:bg-gray-300 scale-110 shadow-lg"
+                      />
+                      {complianceSettings.ccpaCompliant && (
+                        <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+                      )}
+                    </div>
                     {complianceSettings.ccpaCompliant && (
-                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <CheckCircle className="h-5 w-5 text-blue-600" />
                     )}
                   </div>
                 </div>
@@ -2151,15 +2337,26 @@ Make sure the requirements field contains properly formatted text, not JSON stru
                   </p>
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Cookie Consent</Label>
-                    <p className="text-sm text-black">Show cookie consent banner</p>
+                <div className="flex items-center justify-between p-4 bg-white/70 backdrop-blur-sm rounded-xl border border-orange-200 hover:bg-white/90 transition-all duration-200">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-gradient-to-br from-orange-100 to-amber-100 rounded-lg">
+                      <Globe className="h-4 w-4 text-orange-600" />
+                    </div>
+                    <div>
+                      <Label className="text-slate-800 font-semibold">Cookie Consent</Label>
+                      <p className="text-sm text-slate-600">Show cookie consent banner</p>
+                    </div>
                   </div>
-                  <Switch
-                    checked={complianceSettings.cookieConsent}
-                    onCheckedChange={(checked: boolean) => handleComplianceChange('cookieConsent', checked)}
-                  />
+                  <div className="relative">
+                    <Switch
+                      checked={complianceSettings.cookieConsent}
+                      onCheckedChange={(checked: boolean) => handleComplianceChange('cookieConsent', checked)}
+                      className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-blue-500 data-[state=checked]:to-blue-600 data-[state=unchecked]:bg-gray-300 scale-110 shadow-lg"
+                    />
+                    {complianceSettings.cookieConsent && (
+                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -2191,18 +2388,29 @@ Make sure the requirements field contains properly formatted text, not JSON stru
                   />
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Data Processing Agreement</Label>
-                    <p className="text-sm text-black">DPA signed and in place</p>
+                <div className="flex items-center justify-between p-4 bg-white/70 backdrop-blur-sm rounded-xl border border-purple-200 hover:bg-white/90 transition-all duration-200">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-gradient-to-br from-purple-100 to-violet-100 rounded-lg">
+                      <FileText className="h-4 w-4 text-purple-600" />
+                    </div>
+                    <div>
+                      <Label className="text-slate-800 font-semibold">Data Processing Agreement</Label>
+                      <p className="text-sm text-slate-600">DPA signed and in place</p>
+                    </div>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <Switch
-                      checked={complianceSettings.dataProcessingAgreement}
-                      onCheckedChange={(checked: boolean) => handleComplianceChange('dataProcessingAgreement', checked)}
-                    />
+                    <div className="relative">
+                      <Switch
+                        checked={complianceSettings.dataProcessingAgreement}
+                        onCheckedChange={(checked: boolean) => handleComplianceChange('dataProcessingAgreement', checked)}
+                        className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-blue-500 data-[state=checked]:to-blue-600 data-[state=unchecked]:bg-gray-300 scale-110 shadow-lg"
+                      />
+                      {complianceSettings.dataProcessingAgreement && (
+                        <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+                      )}
+                    </div>
                     {complianceSettings.dataProcessingAgreement && (
-                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <CheckCircle className="h-5 w-5 text-purple-600" />
                     )}
                   </div>
                 </div>
@@ -2358,7 +2566,7 @@ Make sure the requirements field contains properly formatted text, not JSON stru
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-semibold">Interview Rounds & Flows</h3>
+                <h3 className="text-base font-semibold">Interview Rounds & Flows</h3>
                 <p className="text-sm text-black">Customize interview processes and round configurations for different roles</p>
               </div>
               <Button onClick={openCreateFlowModal}>
@@ -2375,7 +2583,7 @@ Make sure the requirements field contains properly formatted text, not JSON stru
                     <Calendar className="h-5 w-5 text-blue-600" />
                     <div>
                       <p className="text-sm font-medium">Total Flows</p>
-                      <p className="text-2xl font-bold">{interviewFlows.length}</p>
+                      <p className="text-lg font-bold">{interviewFlows.length}</p>
                     </div>
                   </div>
                 </CardContent>
@@ -2386,7 +2594,7 @@ Make sure the requirements field contains properly formatted text, not JSON stru
                     <CheckCircle className="h-5 w-5 text-green-600" />
                     <div>
                       <p className="text-sm font-medium">Active Flows</p>
-                      <p className="text-2xl font-bold">{interviewFlows.filter(f => f.isDefault || f.jobTypes.length > 0).length}</p>
+                      <p className="text-lg font-bold">{interviewFlows.filter(f => f.isDefault || f.jobTypes.length > 0).length}</p>
                     </div>
                   </div>
                 </CardContent>
@@ -2397,7 +2605,7 @@ Make sure the requirements field contains properly formatted text, not JSON stru
                     <Clock className="h-5 w-5 text-purple-600" />
                     <div>
                       <p className="text-sm font-medium">Total Rounds</p>
-                      <p className="text-2xl font-bold">{interviewFlows.reduce((sum, flow) => sum + flow.rounds.length, 0)}</p>
+                      <p className="text-lg font-bold">{interviewFlows.reduce((sum, flow) => sum + flow.rounds.length, 0)}</p>
                     </div>
                   </div>
                 </CardContent>
@@ -2818,7 +3026,16 @@ Make sure the requirements field contains properly formatted text, not JSON stru
                 <div className="space-y-3">
                   <Label className="text-sm font-semibold text-black uppercase tracking-wide">Default Flow</Label>
                   <div className="flex items-center space-x-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
-                    <div className="relative">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg">
+                        <Star className="h-4 w-4 text-blue-600" />
+                      </div>
+                      <div>
+                        <Label className="text-slate-800 font-semibold">Set as Default Flow</Label>
+                        <p className="text-sm text-slate-600">This flow will be used for new jobs</p>
+                      </div>
+                    </div>
+                    <div className="relative ml-auto">
                       <Switch
                         checked={isEditingFlow ? selectedFlow?.isDefault || false : newFlow.isDefault || false}
                         onCheckedChange={(checked) => {
@@ -2828,7 +3045,11 @@ Make sure the requirements field contains properly formatted text, not JSON stru
                             setNewFlow(prev => ({ ...prev, isDefault: checked }))
                           }
                         }}
+                        className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-blue-500 data-[state=checked]:to-indigo-500 data-[state=unchecked]:bg-gray-300 scale-110 shadow-lg"
                       />
+                      {(isEditingFlow ? selectedFlow?.isDefault : newFlow.isDefault) && (
+                        <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+                      )}
                     </div>
                     <div className="flex-1">
                       <span className="text-sm font-medium text-black">Use as default for new jobs</span>

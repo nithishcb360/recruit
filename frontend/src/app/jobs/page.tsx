@@ -32,10 +32,10 @@ export default function JobsPage() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
               <div className="space-y-1">
-                <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
+                <h1 className="text-lg sm:text-xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
                   Jobs Management
                 </h1>
-                <p className="text-slate-600 text-base">
+                <p className="text-slate-600 text-sm">
                   Manage your job postings and create new opportunities for candidates.
                 </p>
               </div>
@@ -71,7 +71,7 @@ export default function JobsPage() {
                   </svg>
                 </div>
                 <div>
-                  <h2 className="text-xl font-semibold text-slate-800">Active Job Postings</h2>
+                  <h2 className="text-lg font-semibold text-slate-800">Active Job Postings</h2>
                   <p className="text-slate-600 mt-1">Manage and monitor your current job listings</p>
                 </div>
               </div>

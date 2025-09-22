@@ -58,7 +58,7 @@ export default function Sidebar({ isOpen = false, onToggle }: SidebarProps) {
         md:flex
       `}>
         <div className="px-6 py-6 flex items-center justify-between">
-          <h1 className="text-xl font-semibold leading-6 text-black">
+          <h1 className="text-lg font-semibold leading-6 text-black">
             Recruitment
             <br />
             Management

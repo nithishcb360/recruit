@@ -1065,10 +1065,10 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
         <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
             <div className="space-y-2">
-              <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
+              <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
                 Candidate Pipeline
               </h1>
-              <p className="text-slate-600 text-lg">
+              <p className="text-slate-600 text-sm">
                 {selectedJob ? (
                   <>
                     Showing match percentages for: <span className="font-semibold text-purple-600 bg-purple-50 px-2 py-1 rounded-lg">{selectedJob.title}</span> (candidates sorted by best match)
@@ -1086,7 +1086,7 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
 
           <Card className="bg-white/80 backdrop-blur-sm border-slate-200 shadow-lg hover:shadow-xl transition-all duration-300">
             <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-t-lg border-b border-slate-200">
-              <CardTitle className="flex items-center text-lg font-semibold text-slate-800">
+              <CardTitle className="flex items-center text-base font-semibold text-slate-800">
                 <div className="p-2 bg-blue-100 rounded-lg mr-3">
                   <Filter className="h-5 w-5 text-blue-600" />
                 </div>
@@ -1270,7 +1270,7 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
               ) : filteredAndSortedCandidates.length === 0 ? (
                 <div className="text-center py-16">
                   <div className="bg-gradient-to-br from-gray-50 to-slate-100 rounded-2xl p-8 mx-8">
-                    <h3 className="text-lg font-semibold text-slate-800 mb-2">No candidates found</h3>
+                    <h3 className="text-base font-semibold text-slate-800 mb-2">No candidates found</h3>
                     <p className="text-slate-600">No candidates match your current criteria.</p>
                   </div>
                 </div>
@@ -1302,7 +1302,7 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
                                 </div>
                               </div>
                               <div className="flex flex-col">
-                                <span className="font-semibold text-slate-900 text-lg">{candidate.name}</span>
+                                <span className="font-semibold text-slate-900 text-base">{candidate.name}</span>
                                 <span className="text-sm text-slate-600">{candidate.email}</span>
                                 <span className="text-xs text-slate-500">{candidate.jobTitle}</span>
                               </div>
@@ -1315,7 +1315,7 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
                                   <>
                                     <div className="flex items-center gap-3">
                                       <div className="relative">
-                                        <span className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+                                        <span className="text-xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
                                           {candidate.selectedJobMatch.matchPercentage}%
                                         </span>
                                         <div className={`absolute -top-1 -right-1 w-3 h-3 rounded-full ${

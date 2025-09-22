@@ -60,7 +60,7 @@ export default function Modal({
       />
       
       {/* Modal */}
-      <div className="fixed inset-0 flex items-center justify-center p-4">
+      <div className="fixed inset-0 flex  justify-center p-4">
         <div 
           className={`relative w-full ${maxWidthClasses[maxWidth]} max-h-[90vh] transform rounded-lg bg-white shadow-xl transition-all flex flex-col`}
           onClick={(e) => e.stopPropagation()}

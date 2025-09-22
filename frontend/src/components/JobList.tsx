@@ -265,7 +265,7 @@ export default function JobList({ refreshTrigger = 0 }: JobListProps) {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
-          <div className="text-red-600 text-lg font-semibold mb-2">Error Loading Jobs</div>
+          <div className="text-red-600 text-base font-semibold mb-2">Error Loading Jobs</div>
           <p className="text-slate-600 mb-6">{error}</p>
           <button
             onClick={loadJobs}
@@ -282,7 +282,7 @@ export default function JobList({ refreshTrigger = 0 }: JobListProps) {
     <div className="space-y-6">
       <div className="flex justify-between ">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">Job Listings</h2>
+          <h2 className="text-lg font-bold text-slate-800">Job Listings</h2>
           <p className="text-slate-600 mt-1">
             {jobs.length} job{jobs.length !== 1 ? 's' : ''} available
           </p>
@@ -305,7 +305,7 @@ export default function JobList({ refreshTrigger = 0 }: JobListProps) {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0V6a2 2 0 012 2v6a2 2 0 01-2 2H8a2 2 0 01-2-2V8a2 2 0 012-2h8zM16 10h.01M12 14h.01M8 14h.01M8 10h.01" />
             </svg>
           </div>
-          <h3 className="text-xl font-semibold text-slate-800 mb-2">No Jobs Yet</h3>
+          <h3 className="text-lg font-semibold text-slate-800 mb-2">No Jobs Yet</h3>
           <p className="text-slate-600">Create your first job posting to get started with recruitment.</p>
         </div>
       ) : (
@@ -317,7 +317,7 @@ export default function JobList({ refreshTrigger = 0 }: JobListProps) {
             >
               <div className="flex justify-between items-start mb-6">
                 <div className="flex-1">
-                  <h3 className="text-2xl font-bold text-slate-900 mb-3 hover:text-blue-600 transition-colors duration-200">
+                  <h3 className="text-lg font-bold text-slate-900 mb-3 hover:text-blue-600 transition-colors duration-200">
                     {job.title}
                   </h3>
                   <div className="flex items-center gap-3 text-sm mb-3">
@@ -620,11 +620,11 @@ export default function JobList({ refreshTrigger = 0 }: JobListProps) {
       {isEditModalOpen && jobToEdit && (
         <div className="fixed inset-0 z-50">
           <div className="fixed inset-0 bg-background/80 backdrop-blur-sm" onClick={closeEditModal} />
-          <div className="fixed inset-0 flex items-center justify-center p-4">
+          <div className="fixed inset-0 flex  justify-center p-4">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
               <div className="p-6 border-b border-gray-200">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-2xl font-bold text-gray-900">Edit Job</h2>
+                  <h2 className="text-lg font-bold text-gray-900">Edit Job</h2>
                   <button
                     onClick={closeEditModal}
                     className="text-gray-400 hover:text-gray-600 transition-colors"

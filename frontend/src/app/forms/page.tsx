@@ -760,109 +760,161 @@ export default function FeedbackFormBuilder() {
   }
  
   return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Feedback Form Builder</h1>
-        <p className="text-muted-foreground">Create and manage custom feedback forms for interviews and assessments.</p>
-      </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+      <div className="container mx-auto p-6 space-y-8">
+        {/* Enhanced Header */}
+        <div className="bg-white/95 backdrop-blur-md border border-slate-200 shadow-lg hover:shadow-xl transition-all duration-300 rounded-2xl p-6">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl">
+              <MessageSquareText className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
+                Feedback Form Builder
+              </h1>
+              <p className="text-slate-600 text-xs mt-1">Create and manage custom feedback forms for interviews and assessments.</p>
+            </div>
+          </div>
+        </div>
  
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="forms">Your Forms</TabsTrigger>
-          <TabsTrigger value="builder" disabled={!editingForm}>
-            Form Builder
-          </TabsTrigger>
-        </TabsList>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-2 bg-white border border-slate-300 rounded-lg p-1">
+            <TabsTrigger
+              value="forms"
+              className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-gray-600 rounded-md font-medium transition-all duration-200 py-2 px-4"
+            >
+              Your Forms
+            </TabsTrigger>
+            <TabsTrigger
+              value="builder"
+              disabled={!editingForm}
+              className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-gray-600 rounded-md font-medium transition-all duration-200 disabled:opacity-50 py-2 px-4"
+            >
+              Form Builder
+            </TabsTrigger>
+          </TabsList>
  
-        <TabsContent value="forms" className="mt-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle>Existing Feedback Forms</CardTitle>
-              <Button onClick={handleCreateNewForm} className="bg-blue-600 hover:bg-blue-700 text-white">
-                <Plus className="h-4 w-4 mr-2" /> Create New Form
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <div className="flex justify-center items-center py-8">
-                  <Loader2 className="h-8 w-8 animate-spin" />
-                  <span className="ml-2">Loading feedback forms...</span>
+          <TabsContent value="forms" className="mt-6">
+            <Card className="bg-white/95 backdrop-blur-md border border-slate-200 shadow-xl hover:shadow-2xl transition-all duration-300 rounded-2xl overflow-hidden">
+              <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-slate-200 flex flex-row items-center justify-between space-y-0 pb-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg">
+                    <ListChecks className="h-6 w-6 text-white" />
+                  </div>
+                  <CardTitle className="text-lg font-bold text-slate-900">Existing Feedback Forms</CardTitle>
                 </div>
-              ) : forms.length === 0 ? (
-                <div className="text-center text-muted-foreground py-8">No feedback forms created yet.</div>
-              ) : (
-                <div className="space-y-4">
-                  {forms.map((form, formIndex) => (
-                    <div key={`form-${form.id}-${formIndex}`} className="border rounded-lg p-4 flex items-center justify-between">
-                      <div>
-                        <h3 className="font-semibold text-lg">{form.name}</h3>
-                        <p className="text-sm text-muted-foreground">{form.description}</p>
-                        <div className="flex items-center gap-2 mt-2">
-                          <Badge variant={form.status === "published" ? "default" : "secondary"}>
-                            {form.status}
-                          </Badge>
-                          <span className="text-xs text-muted-foreground">
-                            {form.questions.length} questions
-                          </span>
+                <Button
+                  onClick={handleCreateNewForm}
+                  className="bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white font-semibold px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-0.5"
+                >
+                  <Plus className="h-5 w-5 mr-2" />
+                  Create New Form
+                </Button>
+              </CardHeader>
+              <CardContent className="p-8">
+                {isLoading ? (
+                  <div className="flex flex-col justify-center items-center py-12">
+                    <div className="relative">
+                      <Loader2 className="h-12 w-12 animate-spin text-blue-500" />
+                      <div className="absolute inset-0 h-12 w-12 animate-pulse bg-blue-400 rounded-full opacity-20"></div>
+                    </div>
+                    <span className="mt-4 text-sm text-slate-600 font-medium">Loading feedback forms...</span>
+                  </div>
+                ) : forms.length === 0 ? (
+                  <div className="text-center py-16">
+                    <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full flex items-center justify-center mx-auto mb-6">
+                      <MessageSquareText className="w-10 h-10 text-gray-400" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-slate-800 mb-2">No Forms Yet</h3>
+                    <p className="text-sm text-slate-600">Create your first feedback form to get started.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {forms.map((form, formIndex) => (
+                      <div key={`form-${form.id}-${formIndex}`} className="bg-white/80 backdrop-blur-sm border border-slate-200 rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 hover:border-blue-300 flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className="p-2 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-lg">
+                            {getQuestionIcon("text")}
+                          </div>
+                          <div className="flex-1">
+                            <h3 className="font-bold text-lg text-slate-900 mb-1">{form.name}</h3>
+                            <p className="text-sm text-slate-600 mb-3">{form.description}</p>
+                            <div className="flex items-center gap-3">
+                              <Badge
+                                className={
+                                  form.status === "published"
+                                    ? "bg-gradient-to-r from-green-500 to-emerald-600 text-white border-0 shadow-sm"
+                                    : "bg-gradient-to-r from-gray-400 to-gray-500 text-white border-0 shadow-sm"
+                                }
+                              >
+                                {form.status}
+                              </Badge>
+                              <div className="flex items-center gap-1 text-slate-500">
+                                <MessageSquareText className="h-4 w-4" />
+                                <span className="text-xs font-medium">
+                                  {form.questions.length} question{form.questions.length !== 1 ? 's' : ''}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          onClick={() => handleEditForm(form)}
-                          className="bg-blue-600 hover:bg-blue-700 text-white"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        {form.status === "draft" ? (
+                        <div className="flex gap-3 ml-4">
                           <Button
                             size="sm"
-                            onClick={() => handlePublishForm(form.id)}
-                            disabled={isSubmitting}
-                            className="bg-blue-600 hover:bg-blue-700 text-white disabled:bg-blue-400 disabled:text-white"
+                            onClick={() => handleEditForm(form)}
+                            className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 px-4 py-2"
                           >
-                            <Send className="h-4 w-4" />
+                            <Edit className="h-4 w-4" />
                           </Button>
-                        ) : (
+                          {form.status === "draft" ? (
+                            <Button
+                              size="sm"
+                              onClick={() => handlePublishForm(form.id)}
+                              disabled={isSubmitting}
+                              className="bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white shadow-md hover:shadow-lg transition-all duration-200 disabled:opacity-50 px-4 py-2"
+                            >
+                              <Send className="h-4 w-4" />
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              onClick={() => handleUnpublishForm(form.id)}
+                              disabled={isSubmitting}
+                              className="bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white shadow-md hover:shadow-lg transition-all duration-200 disabled:opacity-50 px-4 py-2"
+                            >
+                              <XCircle className="h-4 w-4" />
+                            </Button>
+                          )}
                           <Button
                             size="sm"
-                            onClick={() => handleUnpublishForm(form.id)}
-                            disabled={isSubmitting}
-                            className="bg-blue-600 hover:bg-blue-700 text-white disabled:bg-blue-400 disabled:text-white"
+                            onClick={() => handleOpenForm(form)}
+                            className="bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white shadow-md hover:shadow-lg transition-all duration-200 px-4 py-2"
                           >
-                            <XCircle className="h-4 w-4" />
+                            <Eye className="h-4 w-4" />
                           </Button>
-                        )}
-                        <Button
-                          size="sm"
-                          onClick={() => handleOpenForm(form)}
-                          className="bg-blue-600 hover:bg-blue-700 text-white"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => handleDeleteForm(form.id)}
-                          disabled={isSubmitting}
-                          className="bg-blue-600 hover:bg-blue-700 text-white disabled:bg-blue-400 disabled:text-white"
-                        >
-                          <Trash className="h-4 w-4" />
-                        </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => handleDeleteForm(form.id)}
+                            disabled={isSubmitting}
+                            className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-md hover:shadow-lg transition-all duration-200 disabled:opacity-50 px-4 py-2"
+                          >
+                            <Trash className="h-4 w-4" />
+                          </Button>
                       </div>
                     </div>
                   ))}
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
  
         <TabsContent value="builder" className="mt-4">
           {editingForm && (
             <div className="space-y-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Form Details</CardTitle>
+                  <CardTitle className="text-lg">Form Details</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
@@ -886,8 +938,8 @@ export default function FeedbackFormBuilder() {
  
               <Card>
                 <CardHeader>
-                  <CardTitle>Questions</CardTitle>
-                  <CardDescription>Add and manage questions for this feedback form.</CardDescription>
+                  <CardTitle className="text-lg">Questions</CardTitle>
+                  <CardDescription className="text-sm">Add and manage questions for this feedback form.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-4">
@@ -897,7 +949,7 @@ export default function FeedbackFormBuilder() {
                         <div className="flex items-start justify-between mb-3">
                           <div className="flex items-center gap-2">
                             {getQuestionIcon(question.type)}
-                            <span className="font-medium">Question {question.id}</span>
+                            <span className="text-sm font-medium">Question {question.id}</span>
                             <Badge variant="secondary">{question.type}</Badge>
                             {question.required && <Badge variant="outline">Required</Badge>}
                           </div>
@@ -957,7 +1009,7 @@ export default function FeedbackFormBuilder() {
                           </div>
                           {/* {question.type === "text" && (
                             <div className="mt-2">
-                              <label className="text-sm text-gray-600">Text Input Preview:</label>
+                              <label className="text-xs text-gray-600">Text Input Preview:</label>
                               <Input
                                 placeholder="User can type text here..."
                                 className="bg-white border border-gray-300 mt-1"
@@ -966,7 +1018,7 @@ export default function FeedbackFormBuilder() {
                           )}
                           {question.type === "textarea" && (
                             <div className="mt-2">
-                              <label className="text-sm text-gray-600">Textarea Preview:</label>
+                              <label className="text-xs text-gray-600">Textarea Preview:</label>
                               <Textarea
                                 placeholder="User can type long text here..."
                                 rows={3}
@@ -976,21 +1028,21 @@ export default function FeedbackFormBuilder() {
                           )}
                           {question.type === "audio" && (
                             <div className="mt-2">
-                              <label className="text-sm text-gray-600">Audio Upload Preview:</label>
+                              <label className="text-xs text-gray-600">Audio Upload Preview:</label>
                               <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center bg-white mt-1">
                                 <Radio className="h-8 w-8 mx-auto text-gray-400 mb-2" />
-                                <p className="text-sm text-gray-600 mb-2">User can upload audio files here</p>
-                                <input type="file" accept="audio/*" className="text-sm text-gray-600" />
+                                <p className="text-xs text-gray-600 mb-2">User can upload audio files here</p>
+                                <input type="file" accept="audio/*" className="text-xs text-gray-600" />
                               </div>
                             </div>
                           )}
                           {question.type === "video" && (
                             <div className="mt-2">
-                              <label className="text-sm text-gray-600">Video Upload Preview:</label>
+                              <label className="text-xs text-gray-600">Video Upload Preview:</label>
                               <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center bg-white mt-1">
                                 <Video className="h-8 w-8 mx-auto text-gray-400 mb-2" />
-                                <p className="text-sm text-gray-600 mb-2">User can upload video files here</p>
-                                <input type="file" accept="video/*" className="text-sm text-gray-600" />
+                                <p className="text-xs text-gray-600 mb-2">User can upload video files here</p>
+                                <input type="file" accept="video/*" className="text-xs text-gray-600" />
                               </div>
                             </div>
                           )} */}
@@ -998,7 +1050,7 @@ export default function FeedbackFormBuilder() {
                           {/* Add Response Section for each question in builder */}
                           <div className="mt-4 pt-4 border-t border-gray-200">
                             <div className="flex items-center justify-between mb-3">
-                              <h5 className="font-medium text-gray-900">Test This Question</h5>
+                              <h5 className="text-sm font-medium text-gray-900">Test This Question</h5>
                               <Button
                                 size="sm"
                                 onClick={() => setIsFillingInBuilder(!isFillingInBuilder)}
@@ -1012,7 +1064,7 @@ export default function FeedbackFormBuilder() {
                               <div className="space-y-3">
                                 {question.type === "text" && (
                                   <div>
-                                    <label className="text-sm font-medium text-gray-700">Your Response:</label>
+                                    <label className="text-xs font-medium text-gray-700">Your Response:</label>
                                     <Input
                                       value={builderResponses[question.id] || ''}
                                       onChange={(e) => handleBuilderResponseChange(question.id, e.target.value)}
@@ -1024,7 +1076,7 @@ export default function FeedbackFormBuilder() {
                                 
                                 {question.type === "textarea" && (
                                   <div>
-                                    <label className="text-sm font-medium text-gray-700">Your Response:</label>
+                                    <label className="text-xs font-medium text-gray-700">Your Response:</label>
                                     <Textarea
                                       value={builderResponses[question.id] || ''}
                                       onChange={(e) => handleBuilderResponseChange(question.id, e.target.value)}
@@ -1037,7 +1089,7 @@ export default function FeedbackFormBuilder() {
                                 
                                 {question.type === "audio" && (
                                   <div>
-                                    <label className="text-sm font-medium text-gray-700">Upload Audio:</label>
+                                    <label className="text-xs font-medium text-gray-700">Upload Audio:</label>
                                     <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center mt-1">
                                       <Radio className="h-6 w-6 mx-auto text-gray-400 mb-2" />
                                       <input
@@ -1049,12 +1101,12 @@ export default function FeedbackFormBuilder() {
                                             handleBuilderFileUpload(question.id, file, 'audio');
                                           }
                                         }}
-                                        className="text-sm"
+                                        className="text-xs"
                                       />
                                     </div>
                                     {builderResponses[question.id] && (
                                       <div className="bg-blue-50 p-2 rounded mt-2">
-                                        <p className="text-sm text-blue-700">{builderResponses[question.id].name}</p>
+                                        <p className="text-xs text-blue-700">{builderResponses[question.id].name}</p>
                                         <audio controls className="mt-1 w-full">
                                           <source src={builderResponses[question.id].data} type={builderResponses[question.id].type} />
                                         </audio>
@@ -1065,7 +1117,7 @@ export default function FeedbackFormBuilder() {
                                 
                                 {question.type === "video" && (
                                   <div>
-                                    <label className="text-sm font-medium text-gray-700">Upload Video:</label>
+                                    <label className="text-xs font-medium text-gray-700">Upload Video:</label>
                                     <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center mt-1">
                                       <Video className="h-6 w-6 mx-auto text-gray-400 mb-2" />
                                       <input
@@ -1077,12 +1129,12 @@ export default function FeedbackFormBuilder() {
                                             handleBuilderFileUpload(question.id, file, 'video');
                                           }
                                         }}
-                                        className="text-sm"
+                                        className="text-xs"
                                       />
                                     </div>
                                     {builderResponses[question.id] && (
                                       <div className="bg-purple-50 p-2 rounded mt-2">
-                                        <p className="text-sm text-purple-700">{builderResponses[question.id].name}</p>
+                                        <p className="text-xs text-purple-700">{builderResponses[question.id].name}</p>
                                         <video controls className="mt-1 w-full max-w-xs">
                                           <source src={builderResponses[question.id].data} type={builderResponses[question.id].type} />
                                         </video>
@@ -1113,14 +1165,14 @@ export default function FeedbackFormBuilder() {
                       </div>
                     ))
                     ) : (
-                      <div className="text-center text-gray-500 py-4">
+                      <div className="text-center text-sm text-gray-500 py-4">
                         No questions added yet. Use the form below to add questions.
                       </div>
                     )}
                   </div>
  
                   <div className="border-2 border-dashed rounded-lg p-6">
-                    <h4 className="font-medium mb-4">Add New Question</h4>
+                    <h4 className="text-sm font-medium mb-4">Add New Question</h4>
                     <div className="space-y-4">
                       <Input
                         value={newQuestionText}
@@ -1153,7 +1205,7 @@ export default function FeedbackFormBuilder() {
                       </div>
                       {newQuestionType === "text" && (
                         <div className="mt-2">
-                          <label className="text-sm text-gray-600">Text Input Preview:</label>
+                          <label className="text-xs text-gray-600">Text Input Preview:</label>
                           <Input
                             placeholder="User can type text here..."
                             className="bg-white border border-gray-300 mt-1"
@@ -1162,7 +1214,7 @@ export default function FeedbackFormBuilder() {
                       )}
                       {newQuestionType === "textarea" && (
                         <div className="mt-2">
-                          <label className="text-sm text-gray-600">Textarea Preview:</label>
+                          <label className="text-xs text-gray-600">Textarea Preview:</label>
                           <Textarea
                             placeholder="User can type long text here..."
                             rows={3}
@@ -1172,21 +1224,21 @@ export default function FeedbackFormBuilder() {
                       )}
                       {newQuestionType === "audio" && (
                         <div className="mt-2">
-                          <label className="text-sm text-gray-600">Audio Upload Preview:</label>
+                          <label className="text-xs text-gray-600">Audio Upload Preview:</label>
                           <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center bg-white mt-1">
                             <Radio className="h-8 w-8 mx-auto text-gray-400 mb-2" />
-                            <p className="text-sm text-gray-600 mb-2">User can upload audio files here</p>
-                            <input type="file" accept="audio/*" className="text-sm text-gray-600" />
+                            <p className="text-xs text-gray-600 mb-2">User can upload audio files here</p>
+                            <input type="file" accept="audio/*" className="text-xs text-gray-600" />
                           </div>
                         </div>
                       )}
                       {newQuestionType === "video" && (
                         <div className="mt-2">
-                          <label className="text-sm text-gray-600">Video Upload Preview:</label>
+                          <label className="text-xs text-gray-600">Video Upload Preview:</label>
                           <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center bg-white mt-1">
                             <Video className="h-8 w-8 mx-auto text-gray-400 mb-2" />
-                            <p className="text-sm text-gray-600 mb-2">User can upload video files here</p>
-                            <input type="file" accept="video/*" className="text-sm text-gray-600" />
+                            <p className="text-xs text-gray-600 mb-2">User can upload video files here</p>
+                            <input type="file" accept="video/*" className="text-xs text-gray-600" />
                           </div>
                         </div>
                       )}
@@ -1227,7 +1279,7 @@ export default function FeedbackFormBuilder() {
         <DialogContent className="max-w-[95vw] max-h-[95vh] w-full h-full bg-white text-black p-0 flex flex-col">
           <DialogHeader className="px-6 py-4 border-b bg-white flex-shrink-0">
             <div className="flex justify-between items-center">
-              <DialogTitle className="text-xl font-bold text-black">{previewForm?.name}</DialogTitle>
+              <DialogTitle className="text-lg font-bold text-black">{previewForm?.name}</DialogTitle>
               {!isFillingForm ? (
                 <Button
                   onClick={handleStartFilling}
@@ -1281,18 +1333,18 @@ export default function FeedbackFormBuilder() {
                   {previewForm.is_default && <Badge variant="outline">Default</Badge>}
                 </div>
                 {previewForm.description && (
-                  <p className="text-gray-700">{previewForm.description}</p>
+                  <p className="text-sm text-gray-700">{previewForm.description}</p>
                 )}
               </div>
 
               {/* Questions Section */}
               <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-black">
+                <h3 className="text-base font-semibold text-black">
                   {isFillingForm ? 'Fill Out Form' : `Questions (${previewForm.questions.length})`}
                 </h3>
                 
                 {previewForm.questions.length === 0 ? (
-                  <p className="text-gray-600 italic">No questions added yet.</p>
+                  <p className="text-sm text-gray-600 italic">No questions added yet.</p>
                 ) : (
                   <div className="space-y-6">
                     {previewForm.questions.map((question, index) => (
@@ -1300,12 +1352,12 @@ export default function FeedbackFormBuilder() {
                         <div className="mb-4">
                           <div className="flex items-center gap-2 mb-2">
                             {getQuestionIcon(question.type)}
-                            <span className="font-medium text-black">Question {index + 1}</span>
+                            <span className="text-sm font-medium text-black">Question {index + 1}</span>
                             {question.required && (
                               <Badge variant="destructive" className="text-xs">Required</Badge>
                             )}
                           </div>
-                          <p className="text-base font-medium text-black mb-4">{question.text}</p>
+                          <p className="text-sm font-medium text-black mb-4">{question.text}</p>
                         </div>
                         
                         {/* Interactive Form Elements */}
@@ -1334,7 +1386,7 @@ export default function FeedbackFormBuilder() {
                               <div className="space-y-3">
                                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
                                   <Radio className="h-8 w-8 mx-auto text-gray-400 mb-2" />
-                                  <p className="text-sm text-gray-600 mb-3">Upload Audio File</p>
+                                  <p className="text-xs text-gray-600 mb-3">Upload Audio File</p>
                                   <input
                                     type="file"
                                     accept="audio/*"
@@ -1349,8 +1401,8 @@ export default function FeedbackFormBuilder() {
                                 </div>
                                 {formResponses[question.id] && (
                                   <div className="bg-green-50 p-3 rounded border">
-                                    <p className="text-sm text-green-700 font-medium">Audio uploaded:</p>
-                                    <p className="text-sm text-green-600">{formResponses[question.id].name}</p>
+                                    <p className="text-xs text-green-700 font-medium">Audio uploaded:</p>
+                                    <p className="text-xs text-green-600">{formResponses[question.id].name}</p>
                                     <audio controls className="mt-2 w-full">
                                       <source src={formResponses[question.id].data} type={formResponses[question.id].type} />
                                       Your browser does not support the audio element.
@@ -1364,7 +1416,7 @@ export default function FeedbackFormBuilder() {
                               <div className="space-y-3">
                                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
                                   <Video className="h-8 w-8 mx-auto text-gray-400 mb-2" />
-                                  <p className="text-sm text-gray-600 mb-3">Upload Video File</p>
+                                  <p className="text-xs text-gray-600 mb-3">Upload Video File</p>
                                   <input
                                     type="file"
                                     accept="video/*"
@@ -1379,8 +1431,8 @@ export default function FeedbackFormBuilder() {
                                 </div>
                                 {formResponses[question.id] && (
                                   <div className="bg-green-50 p-3 rounded border">
-                                    <p className="text-sm text-green-700 font-medium">Video uploaded:</p>
-                                    <p className="text-sm text-green-600">{formResponses[question.id].name}</p>
+                                    <p className="text-xs text-green-700 font-medium">Video uploaded:</p>
+                                    <p className="text-xs text-green-600">{formResponses[question.id].name}</p>
                                     <video controls className="mt-2 w-full max-w-md">
                                       <source src={formResponses[question.id].data} type={formResponses[question.id].type} />
                                       Your browser does not support the video element.
@@ -1426,13 +1478,13 @@ export default function FeedbackFormBuilder() {
                               {question.type === "audio" && (
                                 <div className="border border-gray-300 rounded p-3 text-center text-gray-500">
                                   <Radio className="h-6 w-6 mx-auto mb-1" />
-                                  <p className="text-sm">Audio upload field</p>
+                                  <p className="text-xs">Audio upload field</p>
                                 </div>
                               )}
                               {question.type === "video" && (
                                 <div className="border border-gray-300 rounded p-3 text-center text-gray-500">
                                   <Video className="h-6 w-6 mx-auto mb-1" />
-                                  <p className="text-sm">Video upload field</p>
+                                  <p className="text-xs">Video upload field</p>
                                 </div>
                               )} */}
                             </div>
@@ -1460,7 +1512,7 @@ export default function FeedbackFormBuilder() {
                                     
                                     {question.type === 'audio' && savedResponse.response_file && (
                                       <div className="bg-white p-3 rounded border">
-                                        <p className="text-sm text-blue-700 font-medium mb-2">Audio Response: {savedResponse.file_name}</p>
+                                        <p className="text-xs text-blue-700 font-medium mb-2">Audio Response: {savedResponse.file_name}</p>
                                         <audio controls className="w-full">
                                           <source src={savedResponse.response_file} type={savedResponse.file_type} />
                                           Your browser does not support the audio element.
@@ -1470,7 +1522,7 @@ export default function FeedbackFormBuilder() {
                                     
                                     {question.type === 'video' && savedResponse.response_file && (
                                       <div className="bg-white p-3 rounded border">
-                                        <p className="text-sm text-purple-700 font-medium mb-2">Video Response: {savedResponse.file_name}</p>
+                                        <p className="text-xs text-purple-700 font-medium mb-2">Video Response: {savedResponse.file_name}</p>
                                         {(() => {
                                           console.log('Rendering saved video response:', {
                                             fileName: savedResponse.file_name,
@@ -1513,7 +1565,7 @@ export default function FeedbackFormBuilder() {
                                                 const parent = target.parentElement;
                                                 if (parent && !parent.querySelector('.saved-video-error')) {
                                                   const errorDiv = document.createElement('div');
-                                                  errorDiv.className = 'text-sm text-red-600 p-2 border border-red-200 rounded bg-red-50 saved-video-error';
+                                                  errorDiv.className = 'text-xs text-red-600 p-2 border border-red-200 rounded bg-red-50 saved-video-error';
                                                   errorDiv.innerHTML = `
                                                     <p><strong>Saved Video Playback Error</strong></p>
                                                     <p>File: ${savedResponse.file_name}</p>
@@ -1533,7 +1585,7 @@ export default function FeedbackFormBuilder() {
                                             </video>
                                           </div>
                                         ) : (
-                                          <div className="text-sm text-gray-500 p-2 border border-gray-200 rounded bg-gray-50">
+                                          <div className="text-xs text-gray-500 p-2 border border-gray-200 rounded bg-gray-50">
                                             <p><strong>Saved Video Issue</strong></p>
                                             <p><strong>File:</strong> {savedResponse.file_name}</p>
                                             <p><strong>Type:</strong> {savedResponse.file_type}</p>
@@ -1568,18 +1620,19 @@ export default function FeedbackFormBuilder() {
               <div className="border-t border-gray-200 pt-4 text-sm text-gray-700">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <strong className="text-black">Created:</strong> {new Date(previewForm.created_at).toLocaleDateString()}
+                    <strong className="text-sm text-black">Created:</strong> {new Date(previewForm.created_at).toLocaleDateString()}
                   </div>
                   <div>
-                    <strong className="text-black">Last Updated:</strong> {new Date(previewForm.updated_at).toLocaleDateString()}
+                    <strong className="text-sm text-black">Last Updated:</strong> {new Date(previewForm.updated_at).toLocaleDateString()}
                   </div>
                 </div>
               </div>
             </div>
           )}
           </div>
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
+      </div>
     </div>
   )
 }

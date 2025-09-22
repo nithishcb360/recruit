@@ -22,7 +22,7 @@ export default function UnauthorizedPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <Card className="w-full max-w-md mx-auto">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-semibold text-center text-red-600">Access Denied</CardTitle>
+          <CardTitle className="text-lg font-semibold text-center text-red-600">Access Denied</CardTitle>
           <CardDescription className="text-center text-muted-foreground">
             You don't have permission to access this resource
           </CardDescription>

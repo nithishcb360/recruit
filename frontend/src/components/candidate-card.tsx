@@ -238,7 +238,7 @@ export default function CandidateCard({
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-xl text-gray-900 truncate">{candidate.name}</h3>
+            <h3 className="font-semibold text-lg text-gray-900 truncate">{candidate.name}</h3>
             {(candidate as any).current_position && (
               <p className="text-sm text-gray-600 truncate" title={(candidate as any).current_position}>
                 {extractCurrentRole((candidate as any).current_position)}
@@ -354,7 +354,7 @@ export default function CandidateCard({
             <div className="space-y-3">
               <div className="flex justify-between items-center">
                 <span className="text-sm font-medium text-purple-800">Overall Match</span>
-                <span className="text-2xl font-bold text-purple-600">
+                <span className="text-lg font-bold text-purple-600">
                   {candidate.selectedJobMatch.matchPercentage}%
                 </span>
               </div>
