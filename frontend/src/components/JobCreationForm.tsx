@@ -54,6 +54,7 @@ interface InterviewStage {
   interviewerType: 'human' | 'ai' | 'hybrid';
   feedbackFormId: string;
   feedbackFormName?: string;
+  assignee?: string;
 }
 
 interface FeedbackForm {
@@ -167,6 +168,7 @@ Make the description inclusive and avoid any language that might discourage dive
       name: '',
       interviewerType: 'human',
       feedbackFormId: '',
+      assignee: '',
     }
   ]);
   const [showFormPreview, setShowFormPreview] = useState<string | null>(null);
@@ -175,6 +177,15 @@ Make the description inclusive and avoid any language that might discourage dive
   const [selectedFlow, setSelectedFlow] = useState<InterviewFlow | null>(null);
 
   const [feedbackForms, setFeedbackForms] = useState<FeedbackForm[]>([]);
+
+  // Sample assignees - in a real app, this would come from an API
+  const assignees = [
+    { id: 'john-doe', name: 'John Doe', role: 'Senior Developer' },
+    { id: 'jane-smith', name: 'Jane Smith', role: 'Tech Lead' },
+    { id: 'mike-johnson', name: 'Mike Johnson', role: 'Engineering Manager' },
+    { id: 'sarah-wilson', name: 'Sarah Wilson', role: 'HR Manager' },
+    { id: 'david-brown', name: 'David Brown', role: 'Product Manager' },
+  ];
 
   const steps = [
     { number: 1, name: 'Job Details', active: activeStep === 1 },
@@ -579,7 +590,10 @@ Make the description inclusive and avoid any language that might discourage dive
         publish_internal: true,
         publish_external: false,
         publish_company_website: true,
-        interview_stages: interviewStages,
+        interview_stages: interviewStages.map(stage => ({
+          ...stage,
+          assigneeName: stage.assignee ? assignees.find(a => a.id === stage.assignee)?.name : undefined
+        })),
       };
 
       if (editingJob) {
@@ -2302,6 +2316,31 @@ ${preferredQuals.map(qual => `• ${qual}`).join('\n')}`
                             </Button>
                           )}
                         </div>
+                      </div>
+
+                      {/* Assignee Selection */}
+                      <div className="grid grid-cols-1 gap-3">
+                        <label className="text-sm font-medium text-gray-700">
+                          Assignee
+                        </label>
+                        <Select
+                          value={stage.assignee || ''}
+                          onValueChange={(value) => updateInterviewStage(stage.id, 'assignee', value)}
+                        >
+                          <SelectTrigger className="bg-white text-black border-gray-300 focus:border-blue-500">
+                            <SelectValue placeholder="Select assignee" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white text-black border border-gray-300 shadow-lg">
+                            {assignees.map((assignee) => (
+                              <SelectItem key={assignee.id} value={assignee.id} className="text-black hover:bg-gray-50">
+                                <div className="flex items-center justify-between w-full">
+                                  <span className="font-medium">{assignee.name}</span>
+                                  <span className="text-xs text-gray-500 ml-2">{assignee.role}</span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
 
