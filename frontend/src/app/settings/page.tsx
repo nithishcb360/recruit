@@ -155,6 +155,9 @@ interface InterviewRound {
   autoAdvance: boolean
   emailTemplate?: string
   instructions?: string
+  interviewType?: 'AI Assisted' | 'Human Only' | 'Hybrid'
+  feedbackFormId?: string
+  feedbackFormName?: string
 }
 
 interface InterviewFlow {
@@ -390,22 +393,28 @@ Make sure the requirements field contains properly formatted text, not JSON stru
   const [interviewFlows, setInterviewFlows] = useState<InterviewFlow[]>([]);
   const [isLoadingFlows, setIsLoadingFlows] = useState(true);
 
+  // Feedback Forms
+  interface FeedbackForm {
+    id: number
+    name: string
+    description: string
+    status: "draft" | "published"
+    is_active: boolean
+    is_default: boolean
+  }
+  const [feedbackForms, setFeedbackForms] = useState<FeedbackForm[]>([]);
+
   // API functions for interview flows
-  const fetchInterviewFlows = async () => {
+  const fetchInterviewFlows = async (showLoading = true) => {
     try {
-      setIsLoadingFlows(true);
+      if (showLoading) setIsLoadingFlows(true);
       const response = await fetch('http://127.0.0.1:8000/api/interview-flows/');
       if (response.ok) {
         const data = await response.json();
         const flows = Array.isArray(data) ? data : data.results || [];
         // Transform backend data to frontend format
-        const transformedFlows = flows.map((flow: any) => ({
-          id: flow.id.toString(),
-          name: flow.name,
-          description: flow.description || '',
-          isDefault: flow.is_default,
-          jobTypes: flow.job_types || [],
-          rounds: flow.rounds?.map((round: any) => ({
+        const transformedFlows = flows.map((flow: any) => {
+          const rounds = flow.rounds?.map((round: any) => ({
             id: round.id.toString(),
             name: round.name,
             type: round.type,
@@ -418,12 +427,31 @@ Make sure the requirements field contains properly formatted text, not JSON stru
             passingCriteria: round.passing_criteria || {},
             autoAdvance: round.auto_advance,
             emailTemplate: round.email_template || '',
-            instructions: round.instructions || ''
-          })) || [],
-          totalEstimatedTime: flow.total_estimated_time || 0,
-          createdAt: flow.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
-          lastModified: flow.updated_at?.split('T')[0] || new Date().toISOString().split('T')[0]
-        }));
+            instructions: round.instructions || '',
+            interviewType: round.interview_type || 'Human Only',
+            feedbackFormId: round.feedback_form_id || '',
+            feedbackFormName: round.feedback_form_name || ''
+          })) || [];
+
+          const transformedFlow = {
+            id: flow.id.toString(),
+            name: flow.name,
+            description: flow.description || '',
+            isDefault: flow.is_default,
+            jobTypes: flow.job_types || [],
+            rounds: rounds,
+            totalEstimatedTime: flow.total_estimated_time || 0,
+            createdAt: flow.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
+            lastModified: flow.updated_at?.split('T')[0] || new Date().toISOString().split('T')[0]
+          };
+
+          // Debug logging for newly created flows with rounds
+          if (rounds.length > 0) {
+            console.log(`Flow "${flow.name}" has ${rounds.length} rounds:`, rounds.map(r => r.name));
+          }
+
+          return transformedFlow;
+        });
         setInterviewFlows(transformedFlows);
       } else {
         console.error('Failed to fetch interview flows:', response.status, response.statusText);
@@ -435,7 +463,20 @@ Make sure the requirements field contains properly formatted text, not JSON stru
       // Don't use default flows on error, just log it
       setInterviewFlows([]);
     } finally {
-      setIsLoadingFlows(false);
+      if (showLoading) setIsLoadingFlows(false);
+    }
+  };
+
+  // Fetch feedback forms
+  const fetchFeedbackForms = async () => {
+    try {
+      const response = await fetch('http://127.0.0.1:8000/api/feedback-templates/');
+      if (response.ok) {
+        const forms = await response.json();
+        setFeedbackForms(forms.filter((form: any) => form.is_active));
+      }
+    } catch (error) {
+      console.error('Error fetching feedback forms:', error);
     }
   };
 
@@ -457,33 +498,67 @@ Make sure the requirements field contains properly formatted text, not JSON stru
 
       if (response.ok) {
         const newFlow = await response.json();
+        console.log('Created flow response:', newFlow);
+
+        // The backend doesn't return the ID on creation, so we need to fetch it
+        let flowWithId = newFlow;
+        if (!newFlow.id) {
+          console.log('Flow ID not returned, fetching flows to find the created one...');
+          const flowsResponse = await fetch('http://127.0.0.1:8000/api/interview-flows/');
+          if (flowsResponse.ok) {
+            const flows = await flowsResponse.json();
+            // Find the most recently created flow with matching name
+            const matchingFlow = flows.find((f: any) => f.name === flowData.name);
+            if (matchingFlow) {
+              flowWithId = matchingFlow;
+              console.log('Found created flow with ID:', flowWithId.id);
+            }
+          }
+        }
+
         // Create rounds separately
         if (flowData.rounds && flowData.rounds.length > 0) {
-          await Promise.all(flowData.rounds.map((round: any) =>
-            fetch('http://127.0.0.1:8000/api/interview-rounds/', {
+          console.log('Creating rounds for flow:', flowWithId.id, flowData.rounds);
+          const roundPromises = flowData.rounds.map(async (round: any) => {
+            const roundData = {
+              flow: flowWithId.id,
+              name: round.name,
+              type: round.type,
+              description: round.description || '',
+              duration: round.duration,
+              is_required: round.isRequired,
+              order: round.order,
+              interviewers: round.interviewers || [],
+              skills: round.skills || [],
+              passing_criteria: round.passingCriteria || {},
+              auto_advance: round.autoAdvance,
+              email_template: round.emailTemplate || '',
+              instructions: round.instructions || '',
+              interview_type: round.interviewType || 'Human Only',
+              feedback_form_id: round.feedbackFormId || null,
+              feedback_form_name: round.feedbackFormName || ''
+            };
+            console.log('Creating round:', round.name, roundData);
+            const roundResponse = await fetch('http://127.0.0.1:8000/api/interview-rounds/', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
               },
-              body: JSON.stringify({
-                flow: newFlow.id,
-                name: round.name,
-                type: round.type,
-                description: round.description || '',
-                duration: round.duration,
-                is_required: round.isRequired,
-                order: round.order,
-                interviewers: round.interviewers || [],
-                skills: round.skills || [],
-                passing_criteria: round.passingCriteria || {},
-                auto_advance: round.autoAdvance,
-                email_template: round.emailTemplate || '',
-                instructions: round.instructions || ''
-              })
-            })
-          ));
+              body: JSON.stringify(roundData)
+            });
+
+            if (!roundResponse.ok) {
+              const errorText = await roundResponse.text();
+              console.error(`Failed to create round "${round.name}":`, roundResponse.status, errorText);
+              throw new Error(`Failed to create round: ${round.name}`);
+            }
+            return roundResponse.json();
+          });
+
+          await Promise.all(roundPromises);
+          console.log('All rounds created successfully for flow:', flowWithId.id);
         }
-        return newFlow;
+        return flowWithId;
       } else {
         throw new Error('Failed to create interview flow');
       }
@@ -541,7 +616,10 @@ Make sure the requirements field contains properly formatted text, not JSON stru
                 passing_criteria: round.passingCriteria || {},
                 auto_advance: round.autoAdvance,
                 email_template: round.emailTemplate || '',
-                instructions: round.instructions || ''
+                instructions: round.instructions || '',
+                interview_type: round.interviewType || 'Human Only',
+                feedback_form_id: round.feedbackFormId || null,
+                feedback_form_name: round.feedbackFormName || ''
               })
             });
           }
@@ -687,7 +765,7 @@ Make sure the requirements field contains properly formatted text, not JSON stru
       createdAt: '2024-01-10',
       lastModified: '2024-01-25'
     }
-  ])
+  ]
 
   // Interview Flow Modal states
   const [isFlowModalOpen, setIsFlowModalOpen] = useState(false)
@@ -714,6 +792,11 @@ Make sure the requirements field contains properly formatted text, not JSON stru
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false)
   const [selectedRole, setSelectedRole] = useState<Role | null>(null)
   const [isEditingRole, setIsEditingRole] = useState(false)
+
+  // Preview modal states
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false)
+  const [previewFeedbackData, setPreviewFeedbackData] = useState<any>(null)
+
   const [newRole, setNewRole] = useState<NewRole>({
     name: '',
     description: '',
@@ -741,6 +824,7 @@ Make sure the requirements field contains properly formatted text, not JSON stru
   // Load interview flows from backend on component mount
   useEffect(() => {
     fetchInterviewFlows();
+    fetchFeedbackForms();
   }, []);
 
   // Handle settings changes with proper typing
@@ -991,7 +1075,10 @@ Make sure the requirements field contains properly formatted text, not JSON stru
       }
 
       await createInterviewFlow(flowData)
-      await fetchInterviewFlows() // Refresh the list
+      // Small delay to ensure database consistency before refreshing
+      await new Promise(resolve => setTimeout(resolve, 200))
+      console.log('Fetching flows after flow creation with rounds...');
+      await fetchInterviewFlows(false) // Refresh the list without loading state
       closeFlowModal()
       setHasUnsavedChanges(true)
 
@@ -1019,7 +1106,7 @@ Make sure the requirements field contains properly formatted text, not JSON stru
       }
 
       await updateInterviewFlow(selectedFlow.id, updatedFlowData)
-      await fetchInterviewFlows() // Refresh the list
+      await fetchInterviewFlows(false) // Refresh the list without loading state
       closeFlowModal()
       setHasUnsavedChanges(true)
 
@@ -1050,7 +1137,7 @@ Make sure the requirements field contains properly formatted text, not JSON stru
 
     try {
       await deleteInterviewFlow(flowId)
-      await fetchInterviewFlows() // Refresh the list
+      await fetchInterviewFlows(false) // Refresh the list without loading state
       setHasUnsavedChanges(true)
 
       toast({
@@ -1084,7 +1171,10 @@ Make sure the requirements field contains properly formatted text, not JSON stru
         requiredSkills: []
       },
       autoAdvance: false,
-      instructions: `Conduct ${roundTemplate.name.toLowerCase()}`
+      instructions: `Conduct ${roundTemplate.name.toLowerCase()}`,
+      interviewType: 'Human Only',
+      feedbackFormId: '',
+      feedbackFormName: ''
     }
 
     if (isEditingFlow && selectedFlow) {
@@ -1146,6 +1236,67 @@ Make sure the requirements field contains properly formatted text, not JSON stru
         ...prev,
         rounds: updatedRounds
       }))
+    }
+  }
+
+  // Update round interview type
+  const updateRoundInterviewType = (roundId: string, interviewType: 'AI Assisted' | 'Human Only' | 'Hybrid') => {
+    if (isEditingFlow && selectedFlow) {
+      setSelectedFlow({
+        ...selectedFlow,
+        rounds: selectedFlow.rounds.map(r =>
+          r.id === roundId ? { ...r, interviewType } : r
+        )
+      })
+    } else {
+      setNewFlow(prev => ({
+        ...prev,
+        rounds: prev.rounds?.map(r =>
+          r.id === roundId ? { ...r, interviewType } : r
+        ) || []
+      }))
+    }
+  }
+
+  // Update round feedback form
+  const updateRoundFeedbackForm = (roundId: string, feedbackFormId: string) => {
+    const selectedForm = feedbackForms.find(f => f.id.toString() === feedbackFormId);
+    if (isEditingFlow && selectedFlow) {
+      setSelectedFlow({
+        ...selectedFlow,
+        rounds: selectedFlow.rounds.map(r =>
+          r.id === roundId ? {
+            ...r,
+            feedbackFormId,
+            feedbackFormName: selectedForm?.name || ''
+          } : r
+        )
+      })
+    } else {
+      setNewFlow(prev => ({
+        ...prev,
+        rounds: prev.rounds?.map(r =>
+          r.id === roundId ? {
+            ...r,
+            feedbackFormId,
+            feedbackFormName: selectedForm?.name || ''
+          } : r
+        ) || []
+      }))
+    }
+  }
+
+  // Preview feedback form
+  const previewFeedbackForm = async (feedbackFormId: string) => {
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/api/feedback-templates/${feedbackFormId}/`);
+      if (response.ok) {
+        const feedbackForm = await response.json();
+        setPreviewFeedbackData(feedbackForm);
+        setIsPreviewModalOpen(true);
+      }
+    } catch (error) {
+      console.error('Error fetching feedback form details:', error);
     }
   }
 
@@ -3230,6 +3381,49 @@ Make sure the requirements field contains properly formatted text, not JSON stru
                               )}
                             </div>
                             <p className="text-sm text-black">{round.description}</p>
+
+                            {/* Interview Type and Feedback Form Dropdowns */}
+                            <div className="flex items-center space-x-4 mt-3">
+                              <div className="flex items-center space-x-2">
+                                <label className="text-xs font-medium text-gray-600">Interview Type:</label>
+                                <select
+                                  value={round.interviewType || 'Human Only'}
+                                  onChange={(e) => updateRoundInterviewType(round.id, e.target.value as 'AI Assisted' | 'Human Only' | 'Hybrid')}
+                                  className="text-xs border border-gray-300 rounded px-3 py-2 bg-white text-black focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-gray-400 transition-colors min-w-[120px]"
+                                >
+                                  <option value="AI Assisted" className="text-black bg-white">AI Assisted</option>
+                                  <option value="Human Only" className="text-black bg-white">Human Only</option>
+                                  <option value="Hybrid" className="text-black bg-white">Hybrid</option>
+                                </select>
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                <label className="text-xs font-medium text-gray-600">Feedback:</label>
+                                <div className="flex items-center space-x-2">
+                                  <select
+                                    value={round.feedbackFormId || ''}
+                                    onChange={(e) => updateRoundFeedbackForm(round.id, e.target.value)}
+                                    className="text-xs border border-gray-300 rounded px-3 py-2 bg-white text-black focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-gray-400 transition-colors min-w-[140px]"
+                                  >
+                                    <option value="" className="text-black bg-white">Select Feedback Form</option>
+                                    {feedbackForms.map((form) => (
+                                      <option key={form.id} value={form.id.toString()} className="text-black bg-white">
+                                        {form.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  {round.feedbackFormId && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="text-xs px-2 py-1 h-8 bg-white text-black border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-colors"
+                                      onClick={() => previewFeedbackForm(round.feedbackFormId!)}
+                                    >
+                                      Preview
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
                           </div>
                         </div>
                         <div className="flex items-center space-x-1">
@@ -3382,6 +3576,93 @@ Make sure the requirements field contains properly formatted text, not JSON stru
                 </Button>
               </div>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Feedback Form Preview Modal */}
+      <Dialog open={isPreviewModalOpen} onOpenChange={setIsPreviewModalOpen} modal>
+        <DialogContent className="max-w-4xl max-h-[90vh] w-[95vw] sm:w-[90vw] overflow-y-auto bg-white border border-gray-200 shadow-2xl">
+          <DialogHeader className="border-b border-gray-100 pb-3">
+            <DialogTitle className="text-xl font-semibold text-black flex items-center">
+              <FileText className="h-5 w-5 mr-2 text-blue-600" />
+              {previewFeedbackData?.name || 'Feedback Form Preview'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="p-6">
+            {previewFeedbackData ? (
+              <div className="space-y-6">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <h3 className="font-medium text-blue-900 mb-2">Form Details</h3>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="font-medium text-gray-600">Name:</span>
+                      <span className="ml-2 text-black">{previewFeedbackData.name}</span>
+                    </div>
+                    <div>
+                      <span className="font-medium text-gray-600">Status:</span>
+                      <span className="ml-2 text-black capitalize">{previewFeedbackData.status}</span>
+                    </div>
+                    <div className="col-span-2">
+                      <span className="font-medium text-gray-600">Description:</span>
+                      <span className="ml-2 text-black">{previewFeedbackData.description || 'No description available'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {previewFeedbackData.questions && previewFeedbackData.questions.length > 0 ? (
+                  <div>
+                    <h3 className="font-medium text-black mb-4">Questions ({previewFeedbackData.questions.length})</h3>
+                    <div className="space-y-4">
+                      {previewFeedbackData.questions.map((question: any, index: number) => (
+                        <div key={question.id || index} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <p className="font-medium text-black mb-2">
+                                {index + 1}. {question.question_text || question.text}
+                              </p>
+                              <div className="text-xs text-gray-600 space-x-4">
+                                <span>Type: <span className="capitalize">{question.question_type || question.type}</span></span>
+                                {question.is_required && <span className="text-red-600">Required</span>}
+                              </div>
+                              {(question.options || question.choices) && (
+                                <div className="mt-2">
+                                  <p className="text-xs font-medium text-gray-600 mb-1">Options:</p>
+                                  <ul className="text-xs text-gray-700 ml-4">
+                                    {(question.options || question.choices).map((option: any, optIndex: number) => (
+                                      <li key={optIndex} className="list-disc">
+                                        {typeof option === 'string' ? option : option.text || option.value}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    <FileText className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                    <p>No questions available in this form</p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                <p>Loading feedback form...</p>
+              </div>
+            )}
+          </div>
+          <div className="flex justify-end p-6 border-t border-gray-100">
+            <Button
+              onClick={() => setIsPreviewModalOpen(false)}
+              className="px-4 py-2 bg-gray-600 text-white hover:bg-gray-700"
+            >
+              Close
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

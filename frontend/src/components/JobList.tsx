@@ -471,8 +471,8 @@ export default function JobList({ refreshTrigger = 0 }: JobListProps) {
                               {index + 1}
                             </div>
                             <div className="text-sm">
-                              <div className="font-medium text-gray-900">{stage.name || `Stage ${index + 1}`}</div>
-                              <div className="flex items-center gap-3 text-xs text-gray-600">
+                              <div className="font-medium text-gray-900 mb-1">{stage.name || `Stage ${index + 1}`}</div>
+                              <div className="flex items-center gap-3 text-xs text-gray-600 mb-1">
                                 <span className="flex items-center gap-1">
                                   {stage.interviewerType === 'human' && (
                                     <>
@@ -502,6 +502,19 @@ export default function JobList({ refreshTrigger = 0 }: JobListProps) {
                                   </span>
                                 )}
                               </div>
+                              {/* Assignee Information */}
+                              {stage.assigneeName && (
+                                <div className="flex items-center gap-1 text-xs">
+                                  <div className="w-4 h-4 bg-indigo-100 rounded-full flex items-center justify-center">
+                                    <span className="text-indigo-700 font-semibold text-xs">
+                                      {stage.assigneeName.charAt(0).toUpperCase()}
+                                    </span>
+                                  </div>
+                                  <span className="text-indigo-700 font-medium">
+                                    {stage.assigneeName}
+                                  </span>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>

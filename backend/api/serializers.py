@@ -390,6 +390,7 @@ class InterviewRoundSerializer(serializers.ModelSerializer):
         model = InterviewRound
         fields = [
             'id', 'flow', 'name', 'type', 'description', 'duration', 'is_required', 'order',
+            'interview_type', 'feedback_form_id', 'feedback_form_name',
             'interviewers', 'skills', 'passing_criteria', 'auto_advance',
             'email_template', 'instructions', 'created_at', 'updated_at'
         ]

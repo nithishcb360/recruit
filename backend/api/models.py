@@ -387,6 +387,12 @@ class InterviewRound(models.Model):
         ('cultural', 'Cultural'),
     ]
 
+    INTERVIEW_TYPE_CHOICES = [
+        ('AI Assisted', 'AI Assisted'),
+        ('Human Only', 'Human Only'),
+        ('Hybrid', 'Hybrid'),
+    ]
+
     flow = models.ForeignKey(InterviewFlow, on_delete=models.CASCADE, related_name='rounds')
     name = models.CharField(max_length=200)
     type = models.CharField(max_length=20, choices=ROUND_TYPE_CHOICES, default='video')
@@ -394,6 +400,11 @@ class InterviewRound(models.Model):
     duration = models.IntegerField(default=30)  # Duration in minutes
     is_required = models.BooleanField(default=True)
     order = models.IntegerField(default=1)
+
+    # Interview type and feedback configuration
+    interview_type = models.CharField(max_length=20, choices=INTERVIEW_TYPE_CHOICES, blank=True, null=True)
+    feedback_form_id = models.CharField(max_length=50, blank=True, null=True)
+    feedback_form_name = models.CharField(max_length=200, blank=True, null=True)
 
     # Additional fields for interview round configuration
     interviewers = models.JSONField(default=list, blank=True)  # List of interviewer names/roles
