@@ -1060,49 +1060,68 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
 
   return (
     <ProtectedRoute>
-      <div className="p-6 space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold">Candidate Pipeline</h1>
-          <p className="text-muted-foreground">
-            {selectedJob ? (
-              <>Showing match percentages for: <span className="font-semibold text-purple-600">{selectedJob.title}</span> (candidates sorted by best match)</>
-            ) : (
-              "Manage and track candidates through your hiring process."
-            )}
-          </p>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+        {/* Header Section */}
+        <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div className="space-y-2">
+              <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
+                Candidate Pipeline
+              </h1>
+              <p className="text-slate-600 text-sm">
+                {selectedJob ? (
+                  <>
+                    Showing match percentages for: <span className="font-semibold text-purple-600 bg-purple-50 px-2 py-1 rounded-lg">{selectedJob.title}</span> (candidates sorted by best match)
+                  </>
+                ) : (
+                  "Manage and track candidates through your hiring process."
+                )}
+              </p>
+            </div>
+          </div>
         </div>
 
-      <Card className="shadow-sm">
-        <CardHeader>
-          <CardTitle>Filter Candidates</CardTitle>
-          <CardDescription>Narrow down candidates by search term, job, or stage.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search by name, job title, email, location, notes..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 pr-10"
-              />
-              {searchTerm && (
-                <button
-                  onClick={() => setSearchTerm('')}
-                  className="absolute right-1 top-1/2 transform -translate-y-1/2 h-8 w-8 p-0 rounded-md hover:bg-gray-100 flex items-center justify-center transition-colors duration-200"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-            <div className="w-full md:w-[220px]">
-              <Select value={filterJob || ""} onValueChange={setFilterJob}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="All Jobs" />
-                </SelectTrigger>
-                <SelectContent className="bg-white text-black max-h-80 overflow-y-auto">
-                  <SelectItem value="all" className="text-black hover:bg-gray-100">All Jobs</SelectItem>
+        {/* Main Content */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+
+          <Card className="bg-white/80 backdrop-blur-sm border-slate-200 shadow-lg hover:shadow-xl transition-all duration-300">
+            <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-t-lg border-b border-slate-200">
+              <CardTitle className="flex items-center text-base font-semibold text-slate-800">
+                <div className="p-2 bg-blue-100 rounded-lg mr-3">
+                  <Filter className="h-5 w-5 text-blue-600" />
+                </div>
+                Filter Candidates
+              </CardTitle>
+              <CardDescription className="text-slate-600 mt-2">
+                Narrow down candidates by search term, job, or stage.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6 p-6">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                <div className="lg:col-span-4 relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <Input
+                    placeholder="Search by name, job title, email, location, notes..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10 pr-10 border-slate-300 focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200"
+                  />
+                  {searchTerm && (
+                    <button
+                      onClick={() => setSearchTerm('')}
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0 rounded-full hover:bg-slate-100 flex items-center justify-center transition-colors duration-200"
+                    >
+                      <X className="h-3 w-3 text-slate-400" />
+                    </button>
+                  )}
+                </div>
+                <div className="lg:col-span-3">
+                  <Select value={filterJob || ""} onValueChange={setFilterJob}>
+                    <SelectTrigger className="border-slate-300 focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200">
+                      <SelectValue placeholder="All Jobs" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border-slate-200 shadow-lg max-h-80 overflow-y-auto">
+                      <SelectItem value="all" className="text-slate-700 hover:bg-blue-50 focus:bg-blue-50">All Jobs</SelectItem>
                   {jobs.map((job) => {
                     // Calculate average match percentage for this job across all candidates
                     const jobMatches = candidatesWithJobMatch.map(candidate => {
@@ -1117,7 +1136,7 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
                     const candidateCount = jobMatches.length
                     
                     return (
-                      <SelectItem key={job.id} value={String(job.id)} className="text-black hover:bg-gray-100 py-3">
+                        <SelectItem key={job.id} value={String(job.id)} className="text-slate-700 hover:bg-blue-50 focus:bg-blue-50 py-3">
                         <div className="flex flex-col w-full">
                           <div className="flex items-center justify-between">
                             <span className="font-medium">{job.title}</span>
@@ -1138,65 +1157,67 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
                   })}
                 </SelectContent>
               </Select>
-            </div>
-            <div className="w-full md:w-[180px]">
-              <Select value={filterStage || ""} onValueChange={setFilterStage}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="All Stages" />
-                </SelectTrigger>
-                <SelectContent className="bg-white text-black">
-                  <SelectItem value="all" className="text-black hover:bg-gray-100">All Stages</SelectItem>
-                  {stages.map((stage) => (
-                    <SelectItem key={stage} value={stage} className="text-black hover:bg-gray-100">
-                      {stage}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="w-full md:w-[150px]">
-              <Select value={sortBy} onValueChange={(value: any) => setSortBy(value)}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Sort by" />
-                </SelectTrigger>
-                <SelectContent className="bg-white text-black">
-                  <SelectItem value="lastActivity" className="text-black hover:bg-gray-100">Last Activity</SelectItem>
-                  <SelectItem value="name" className="text-black hover:bg-gray-100">Name</SelectItem>
-                  <SelectItem value="stage" className="text-black hover:bg-gray-100">Stage</SelectItem>
-                  <SelectItem value="rating" className="text-black hover:bg-gray-100">Rating</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <button
-              onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-              title={`Sort ${sortOrder === 'asc' ? 'Descending' : 'Ascending'}`}
-              className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg transition-colors duration-200 flex items-center justify-center"
-            >
-              {sortOrder === 'asc' ? <SortAsc className="h-4 w-4" /> : <SortDesc className="h-4 w-4" />}
-            </button>
-          </div>
-          
-          <div className="flex flex-col md:flex-row gap-2">
-            <button
-              onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-              className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg transition-colors duration-200 flex items-center gap-2 text-sm font-medium"
-            >
-              <Filter className="h-4 w-4" /> 
-              {showAdvancedFilters ? 'Hide' : 'More'} Filters
-            </button>
-            <button
-              onClick={() => {
-                setSearchTerm("")
-                setFilterJob(selectedJobId ? String(selectedJobId) : null)
-                setFilterStage(null)
-                setFilterRating(null)
-                setSortBy('lastActivity')
-                setSortOrder('desc')
-              }}
-              className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg transition-colors duration-200 flex items-center gap-2 text-sm font-medium"
-            >
-              <X className="h-4 w-4" /> Reset
-            </button>
+                  </div>
+                  <div className="lg:col-span-2">
+                    <Select value={filterStage || ""} onValueChange={setFilterStage}>
+                      <SelectTrigger className="border-slate-300 focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200">
+                        <SelectValue placeholder="All Stages" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-slate-200 shadow-lg">
+                        <SelectItem value="all" className="text-slate-700 hover:bg-blue-50 focus:bg-blue-50">All Stages</SelectItem>
+                        {stages.map((stage) => (
+                          <SelectItem key={stage} value={stage} className="text-slate-700 hover:bg-blue-50 focus:bg-blue-50">
+                            {stage}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="lg:col-span-2">
+                    <Select value={sortBy} onValueChange={(value: any) => setSortBy(value)}>
+                      <SelectTrigger className="border-slate-300 focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200">
+                        <SelectValue placeholder="Sort by" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-slate-200 shadow-lg">
+                        <SelectItem value="lastActivity" className="text-slate-700 hover:bg-blue-50 focus:bg-blue-50">Last Activity</SelectItem>
+                        <SelectItem value="name" className="text-slate-700 hover:bg-blue-50 focus:bg-blue-50">Name</SelectItem>
+                        <SelectItem value="stage" className="text-slate-700 hover:bg-blue-50 focus:bg-blue-50">Stage</SelectItem>
+                        <SelectItem value="rating" className="text-slate-700 hover:bg-blue-50 focus:bg-blue-50">Rating</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="lg:col-span-1 flex justify-center">
+                    <button
+                      onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                      title={`Sort ${sortOrder === 'asc' ? 'Descending' : 'Ascending'}`}
+                      className="bg-gradient-to-r from-slate-100 to-slate-200 hover:from-slate-200 hover:to-slate-300 text-slate-700 px-4 py-2 rounded-lg border border-slate-300 transition-all duration-200 flex items-center justify-center shadow-sm hover:shadow-md"
+                    >
+                      {sortOrder === 'asc' ? <SortAsc className="h-4 w-4" /> : <SortDesc className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                  className="bg-gradient-to-r from-indigo-100 to-purple-100 hover:from-indigo-200 hover:to-purple-200 text-indigo-700 px-4 py-2 rounded-lg border border-indigo-200 transition-all duration-200 flex items-center gap-2 text-sm font-medium shadow-sm hover:shadow-md"
+                >
+                  <Filter className="h-4 w-4" />
+                  {showAdvancedFilters ? 'Hide' : 'More'} Filters
+                </button>
+                <button
+                  onClick={() => {
+                    setSearchTerm("")
+                    setFilterJob(selectedJobId ? String(selectedJobId) : null)
+                    setFilterStage(null)
+                    setFilterRating(null)
+                    setSortBy('lastActivity')
+                    setSortOrder('desc')
+                  }}
+                  className="bg-gradient-to-r from-orange-100 to-red-100 hover:from-orange-200 hover:to-red-200 text-orange-700 px-4 py-2 rounded-lg border border-orange-200 transition-all duration-200 flex items-center gap-2 text-sm font-medium shadow-sm hover:shadow-md"
+                >
+                  <X className="h-4 w-4" /> Reset
+                </button>
             <button
               onClick={() => setIsBulkUploadOpen(true)}
               className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center gap-2 text-sm font-medium"
@@ -1235,89 +1256,121 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
         </CardContent>
       </Card>
 
-      <Card className="shadow-sm">
-        <CardContent className="p-0">
-          {isLoading || isCalculatingMatches ? (
-            <div className="flex justify-center items-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin" />
-              <span className="ml-2 text-black">
-                {isLoading ? "Loading candidates..." : "Calculating job matches..."}
-              </span>
-            </div>
-          ) : filteredAndSortedCandidates.length === 0 ? (
-            <div className="text-center text-gray-600 py-8">
-              No candidates found matching your criteria.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b bg-gray-50">
-                    <th className="text-left p-4 font-semibold text-gray-900">Name</th>
-                    {selectedJob && (
-                      <th className="text-center p-4 font-semibold text-gray-900">
-                        Match Score for {selectedJob.title}
-                      </th>
-                    )}
-                    <th className="text-center p-4 font-semibold text-gray-900">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredAndSortedCandidates.map((candidate, index) => (
-                    <tr key={candidate.id} className={`border-b hover:bg-gray-50 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-25'}`}>
-                      <td className="p-4">
-                        <div className="flex flex-col">
-                          <span className="font-medium text-gray-900">{candidate.name}</span>
-                          <span className="text-sm text-gray-600">{candidate.email}</span>
-                        </div>
-                      </td>
-                      {selectedJob && (
-                        <td className="p-4">
-                          <div className="flex flex-col items-center gap-2">
-                            {candidate.selectedJobMatch ? (
-                              <>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-2xl font-bold text-purple-600">
-                                    {candidate.selectedJobMatch.matchPercentage}%
-                                  </span>
-                                  <div className={`w-2 h-2 rounded-full ${
-                                    candidate.selectedJobMatch.matchPercentage >= 80 ? 'bg-green-500' :
-                                    candidate.selectedJobMatch.matchPercentage >= 60 ? 'bg-yellow-500' :
-                                    'bg-red-500'
-                                  }`} />
+          <Card className="bg-white/80 backdrop-blur-sm border-slate-200 shadow-lg hover:shadow-xl transition-all duration-300">
+            <CardContent className="p-0">
+              {isLoading || isCalculatingMatches ? (
+                <div className="flex justify-center items-center py-12">
+                  <div className="flex flex-col items-center gap-4">
+                    <Loader2 className="h-10 w-10 animate-spin text-blue-600" />
+                    <span className="text-slate-700 font-medium">
+                      {isLoading ? "Loading candidates..." : "Calculating job matches..."}
+                    </span>
+                  </div>
+                </div>
+              ) : filteredAndSortedCandidates.length === 0 ? (
+                <div className="text-center py-16">
+                  <div className="bg-gradient-to-br from-gray-50 to-slate-100 rounded-2xl p-8 mx-8">
+                    <h3 className="text-base font-semibold text-slate-800 mb-2">No candidates found</h3>
+                    <p className="text-slate-600">No candidates match your current criteria.</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-gradient-to-r from-slate-50 to-blue-50">
+                        <th className="text-left p-6 font-semibold text-slate-800 tracking-wide">Name</th>
+                        {selectedJob && (
+                          <th className="text-center p-6 font-semibold text-slate-800 tracking-wide">
+                            <div className="flex flex-col items-center gap-1">
+                              <span>Match Score for</span>
+                              <span className="text-purple-600 text-sm">{selectedJob.title}</span>
+                            </div>
+                          </th>
+                        )}
+                        <th className="text-center p-6 font-semibold text-slate-800 tracking-wide">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredAndSortedCandidates.map((candidate, index) => (
+                        <tr key={candidate.id} className={`border-b border-slate-100 hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 transition-all duration-200 ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
+                          <td className="p-6">
+                            <div className="flex items-center space-x-4">
+                              <div className="flex-shrink-0">
+                                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold text-sm">
+                                  {candidate.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
                                 </div>
-                                <div className="grid grid-cols-2 gap-1 text-xs text-gray-600">
-                                  <div>Title: {candidate.selectedJobMatch.jobMatchDetails.jobTitleScore}%</div>
-                                  <div>Dept: {candidate.selectedJobMatch.jobMatchDetails.departmentScore}%</div>
-                                  <div>Exp: {candidate.selectedJobMatch.jobMatchDetails.experienceScore}%</div>
-                                  <div>Loc: {candidate.selectedJobMatch.jobMatchDetails.locationScore}%</div>
-                                </div>
-                              </>
-                            ) : (
-                              <span className="text-gray-400">No match</span>
-                            )}
-                          </div>
-                        </td>
-                      )}
-                      <td className="p-4">
-                        <div className="flex gap-2 justify-center">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleViewDetails(candidate.id)}
-                            className="text-white bg-blue-600 hover:bg-blue-700 border-blue-600"
-                          >
-                            View Details
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleViewResumeClick(candidate)}
-                            className="text-white bg-green-600 hover:bg-green-700 border-green-600 p-2"
-                            title="View Resume"
-                          >
-                            <FileText className="h-4 w-4" />
-                          </Button>
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="font-semibold text-slate-900 text-base">{candidate.name}</span>
+                                <span className="text-sm text-slate-600">{candidate.email}</span>
+                                <span className="text-xs text-slate-500">{candidate.jobTitle}</span>
+                              </div>
+                            </div>
+                          </td>
+                          {selectedJob && (
+                            <td className="p-6">
+                              <div className="flex flex-col items-center gap-3">
+                                {candidate.selectedJobMatch ? (
+                                  <>
+                                    <div className="flex items-center gap-3">
+                                      <div className="relative">
+                                        <span className="text-xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+                                          {candidate.selectedJobMatch.matchPercentage}%
+                                        </span>
+                                        <div className={`absolute -top-1 -right-1 w-3 h-3 rounded-full ${
+                                          candidate.selectedJobMatch.matchPercentage >= 80 ? 'bg-emerald-500 shadow-emerald-200' :
+                                          candidate.selectedJobMatch.matchPercentage >= 60 ? 'bg-amber-500 shadow-amber-200' :
+                                          'bg-red-500 shadow-red-200'
+                                        } shadow-lg`} />
+                                      </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2 w-full max-w-32">
+                                      <div className="bg-blue-50 px-2 py-1 rounded text-xs text-blue-700 text-center">
+                                        <div className="font-medium">Title</div>
+                                        <div className="font-bold">{candidate.selectedJobMatch.jobMatchDetails.jobTitleScore}%</div>
+                                      </div>
+                                      <div className="bg-green-50 px-2 py-1 rounded text-xs text-green-700 text-center">
+                                        <div className="font-medium">Dept</div>
+                                        <div className="font-bold">{candidate.selectedJobMatch.jobMatchDetails.departmentScore}%</div>
+                                      </div>
+                                      <div className="bg-purple-50 px-2 py-1 rounded text-xs text-purple-700 text-center">
+                                        <div className="font-medium">Exp</div>
+                                        <div className="font-bold">{candidate.selectedJobMatch.jobMatchDetails.experienceScore}%</div>
+                                      </div>
+                                      <div className="bg-orange-50 px-2 py-1 rounded text-xs text-orange-700 text-center">
+                                        <div className="font-medium">Loc</div>
+                                        <div className="font-bold">{candidate.selectedJobMatch.jobMatchDetails.locationScore}%</div>
+                                      </div>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <div className="text-slate-400 bg-slate-50 px-4 py-2 rounded-lg">
+                                    <span className="text-sm font-medium">No match</span>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          )}
+                          <td className="p-6">
+                            <div className="flex gap-2 justify-center flex-wrap">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleViewDetails(candidate.id)}
+                                className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white border-blue-600 shadow-lg hover:shadow-xl transition-all duration-200"
+                              >
+                                View Details
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleViewResumeClick(candidate)}
+                                className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white border-emerald-600 p-2 shadow-lg hover:shadow-xl transition-all duration-200"
+                                title="View Resume"
+                              >
+                                <FileText className="h-4 w-4" />
+                              </Button>
                           {selectedJob && candidate.selectedJobMatch && (
                             <Button
                               variant="outline"
@@ -1468,6 +1521,7 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
           </div>
         </DialogContent>
       </Dialog>
+        </div>
       </div>
     </ProtectedRoute>
   )
@@ -1522,6 +1576,7 @@ function getStageProgress(stage: string): number {
   }
   return stageMap[stage] || 10
 }
+
 function fetchWithTimeout(arg0: string, arg1: { method: string; headers: { 'Content-Type': string }; body: string }, arg2: number) {
   throw new Error("Function not implemented.")
 }

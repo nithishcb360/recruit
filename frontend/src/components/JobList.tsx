@@ -235,18 +235,18 @@ export default function JobList({ refreshTrigger = 0 }: JobListProps) {
 
   if (loading) {
     return (
-      <div className="bg-white rounded-xl shadow-sm p-8">
+      <div className="space-y-6">
         <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/4 mb-6"></div>
+          <div className="h-8 bg-slate-200 rounded-lg w-1/4 mb-6"></div>
           <div className="space-y-4">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="border border-gray-200 rounded-lg p-6">
-                <div className="h-6 bg-gray-200 rounded w-3/4 mb-3"></div>
-                <div className="h-4 bg-gray-200 rounded w-1/2 mb-2"></div>
-                <div className="h-4 bg-gray-200 rounded w-full mb-4"></div>
+              <div key={i} className="bg-white/60 backdrop-blur-sm border border-slate-200 rounded-2xl p-6 shadow-lg">
+                <div className="h-6 bg-slate-200 rounded-lg w-3/4 mb-3"></div>
+                <div className="h-4 bg-slate-200 rounded-lg w-1/2 mb-2"></div>
+                <div className="h-4 bg-slate-200 rounded-lg w-full mb-4"></div>
                 <div className="flex justify-between">
-                  <div className="h-4 bg-gray-200 rounded w-1/4"></div>
-                  <div className="h-6 bg-gray-200 rounded w-16"></div>
+                  <div className="h-4 bg-slate-200 rounded-lg w-1/4"></div>
+                  <div className="h-6 bg-slate-200 rounded-lg w-16"></div>
                 </div>
               </div>
             ))}
@@ -258,13 +258,18 @@ export default function JobList({ refreshTrigger = 0 }: JobListProps) {
 
   if (error) {
     return (
-      <div className="bg-white rounded-xl shadow-sm p-8">
+      <div className="bg-white/80 backdrop-blur-sm border border-red-200 rounded-2xl p-8 shadow-lg">
         <div className="text-center py-8">
-          <div className="text-red-500 text-lg mb-2">Error Loading Jobs</div>
-          <p className="text-gray-600 mb-4">{error}</p>
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div className="text-red-600 text-base font-semibold mb-2">Error Loading Jobs</div>
+          <p className="text-slate-600 mb-6">{error}</p>
           <button
             onClick={loadJobs}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
+            className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
           >
             Try Again
           </button>
@@ -274,45 +279,57 @@ export default function JobList({ refreshTrigger = 0 }: JobListProps) {
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm p-8">
-      <div className="mb-8">
-        <div className="flex justify-between items-center">
-          <h2 className="text-3xl font-bold text-slate-900">Job Listings</h2>
-          <button
-            onClick={loadJobs}
-            className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg transition-colors duration-200"
-          >
-            Refresh
-          </button>
+    <div className="space-y-6">
+      <div className="flex justify-between ">
+        <div>
+          <h2 className="text-lg font-bold text-slate-800">Job Listings</h2>
+          <p className="text-slate-600 mt-1">
+            {jobs.length} job{jobs.length !== 1 ? 's' : ''} available
+          </p>
         </div>
-        <p className="text-slate-600 mt-2">
-          {jobs.length} job{jobs.length !== 1 ? 's' : ''} available
-        </p>
+        <button
+          onClick={loadJobs}
+          className="bg-gradient-to-r from-slate-100 to-slate-200 hover:from-slate-200 hover:to-slate-300 text-slate-700 px-4 py-2 rounded-xl border border-slate-300 transition-all duration-200 shadow-sm hover:shadow-md flex items-center gap-2"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          Refresh
+        </button>
       </div>
 
       {jobs.length === 0 ? (
-        <div className="text-center py-12">
-          <div className="text-gray-400 text-6xl mb-4">📋</div>
-          <h3 className="text-xl font-semibold text-gray-700 mb-2">No Jobs Yet</h3>
-          <p className="text-gray-500">Create your first job posting above to get started.</p>
+        <div className="bg-white/80 backdrop-blur-sm border border-slate-200 rounded-2xl p-12 shadow-lg text-center">
+          <div className="w-20 h-20 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <svg className="w-10 h-10 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0V6a2 2 0 012 2v6a2 2 0 01-2 2H8a2 2 0 01-2-2V8a2 2 0 012-2h8zM16 10h.01M12 14h.01M8 14h.01M8 10h.01" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-semibold text-slate-800 mb-2">No Jobs Yet</h3>
+          <p className="text-slate-600">Create your first job posting to get started with recruitment.</p>
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-4">
           {jobs.map((job) => (
             <div
               key={job.id}
-              className="border border-gray-200 rounded-lg p-6 hover:border-gray-300 hover:shadow-md transition-all duration-200"
+              className="bg-white/80 backdrop-blur-sm border border-slate-200 rounded-2xl p-6 hover:border-blue-300 hover:shadow-xl transition-all duration-300 shadow-lg"
             >
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className="text-xl font-semibold text-slate-900 mb-2">
+              <div className="flex justify-between items-start mb-6">
+                <div className="flex-1">
+                  <h3 className="text-lg font-bold text-slate-900 mb-3 hover:text-blue-600 transition-colors duration-200">
                     {job.title}
                   </h3>
-                  <div className="flex items-center text-sm text-gray-600 mb-2">
-                    <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full mr-3">
+                  <div className="flex items-center gap-3 text-sm mb-3">
+                    <span className="bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-800 px-3 py-1.5 rounded-full font-medium border border-blue-200">
                       {job.department.name}
                     </span>
-                    <span>Created {formatDate(job.created_at)}</span>
+                    <span className="text-slate-600 flex items-center gap-1">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3a2 2 0 012-2h4a2 2 0 012 2v4m-6 0h6m-6 0l-3 3m3-3l3 3M4 7h16M4 7v10a2 2 0 002 2h12a2 2 0 002-2V7" />
+                      </svg>
+                      Created {formatDate(job.created_at)}
+                    </span>
                   </div>
                   
                   {/* Publishing Status Indicators */}
@@ -338,26 +355,34 @@ export default function JobList({ refreshTrigger = 0 }: JobListProps) {
                     )}
                   </div>
                 </div>
-                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(job.status)}`}>
-                  {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
-                </span>
+                <div className="flex flex-col items-end gap-2">
+                  <span className={`px-4 py-2 rounded-xl text-sm font-semibold shadow-sm ${getStatusColor(job.status)}`}>
+                    {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
+                  </span>
+                  <span className="text-xs text-slate-500">#{job.id}</span>
+                </div>
               </div>
-              
+
               {/* Job Description */}
-              <div className="mb-4">
-                <div className="flex justify-between items-center mb-2">
-                  <h4 className="text-sm font-semibold text-gray-800">Job Description:</h4>
+              <div className="mb-6">
+                <div className="flex justify-between items-center mb-3">
+                  <h4 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                    <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Job Description
+                  </h4>
                   {job.description && job.description.length > 200 && (
                     <button
                       onClick={() => toggleDescriptionExpanded(job.id)}
-                      className="text-blue-600 hover:text-blue-800 text-xs font-medium"
+                      className="text-blue-600 hover:text-blue-800 text-xs font-medium bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded-lg transition-colors duration-200"
                     >
                       {expandedDescriptions.has(job.id) ? 'Show Less' : 'Show More'}
                     </button>
                   )}
                 </div>
-                <div className="bg-gray-50 rounded-lg p-3 text-gray-700 text-sm">
-                  <p className={expandedDescriptions.has(job.id) ? '' : 'line-clamp-3'}>
+                <div className="bg-gradient-to-br from-slate-50 to-blue-50 rounded-xl p-4 border border-slate-200">
+                  <p className={`text-slate-700 leading-relaxed ${expandedDescriptions.has(job.id) ? '' : 'line-clamp-2'}`}>
                     {job.description || 'No description available'}
                   </p>
                 </div>
@@ -365,42 +390,52 @@ export default function JobList({ refreshTrigger = 0 }: JobListProps) {
               
               {/* Requirements */}
               {job.requirements && (
-                <div className="mb-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <h4 className="text-sm font-semibold text-gray-800">Requirements:</h4>
+                <div className="mb-6">
+                  <div className="flex justify-between items-center mb-3">
+                    <h4 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                      <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Requirements
+                    </h4>
                     {job.requirements.length > 150 && (
                       <button
                         onClick={() => toggleRequirementsExpanded(job.id)}
-                        className="text-blue-600 hover:text-blue-800 text-xs font-medium"
+                        className="text-emerald-600 hover:text-emerald-800 text-xs font-medium bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded-lg transition-colors duration-200"
                       >
                         {expandedRequirements.has(job.id) ? 'Show Less' : 'Show More'}
                       </button>
                     )}
                   </div>
-                  <div className="bg-gray-50 rounded-lg p-3 text-gray-600 text-sm">
-                    <p className={expandedRequirements.has(job.id) ? '' : 'line-clamp-2'}>
+                  <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-xl p-4 border border-emerald-200">
+                    <p className={`text-slate-700 leading-relaxed ${expandedRequirements.has(job.id) ? '' : 'line-clamp-2'}`}>
                       {job.requirements}
                     </p>
                   </div>
                 </div>
               )}
-              
+
               {/* Responsibilities */}
               {job.responsibilities && (
-                <div className="mb-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <h4 className="text-sm font-semibold text-gray-800">Responsibilities:</h4>
+                <div className="mb-6">
+                  <div className="flex justify-between items-center mb-3">
+                    <h4 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                      <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                      </svg>
+                      Responsibilities
+                    </h4>
                     {job.responsibilities.length > 150 && (
                       <button
                         onClick={() => toggleResponsibilitiesExpanded(job.id)}
-                        className="text-blue-600 hover:text-blue-800 text-xs font-medium"
+                        className="text-purple-600 hover:text-purple-800 text-xs font-medium bg-purple-50 hover:bg-purple-100 px-2 py-1 rounded-lg transition-colors duration-200"
                       >
                         {expandedResponsibilities.has(job.id) ? 'Show Less' : 'Show More'}
                       </button>
                     )}
                   </div>
-                  <div className="bg-gray-50 rounded-lg p-3 text-gray-600 text-sm">
-                    <p className={expandedResponsibilities.has(job.id) ? '' : 'line-clamp-2'}>
+                  <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl p-4 border border-purple-200">
+                    <p className={`text-slate-700 leading-relaxed ${expandedResponsibilities.has(job.id) ? '' : 'line-clamp-2'}`}>
                       {job.responsibilities}
                     </p>
                   </div>
@@ -410,36 +445,6 @@ export default function JobList({ refreshTrigger = 0 }: JobListProps) {
               <div className="flex justify-between items-center">
                 <div className="text-sm text-gray-500">
                   Job ID: #{job.id}
-                </div>
-                <div className="flex gap-2 items-center">
-                  <button 
-                    onClick={() => handleViewDetails(job)}
-                    className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-                  >
-                    View Details
-                  </button>
-                  {user?.role === 'hr' && (
-                    <button 
-                      onClick={() => handleEditJob(job)}
-                      className="text-green-600 hover:text-green-800 text-sm font-medium"
-                    >
-                      Edit
-                    </button>
-                  )}
-                  {user?.role === 'hr' && (
-                    <button 
-                      onClick={() => handleDeleteJob(job)}
-                      disabled={deletingJobId === job.id}
-                      className="text-red-600 hover:text-red-800 p-1 rounded transition-colors disabled:opacity-50"
-                      title="Delete job"
-                    >
-                      {deletingJobId === job.id ? (
-                        <div className="w-4 h-4 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div>
-                      ) : (
-                        <Trash2 className="h-4 w-4" />
-                      )}
-                    </button>
-                  )}
                 </div>
               </div>
 
@@ -466,8 +471,8 @@ export default function JobList({ refreshTrigger = 0 }: JobListProps) {
                               {index + 1}
                             </div>
                             <div className="text-sm">
-                              <div className="font-medium text-gray-900">{stage.name || `Stage ${index + 1}`}</div>
-                              <div className="flex items-center gap-3 text-xs text-gray-600">
+                              <div className="font-medium text-gray-900 mb-1">{stage.name || `Stage ${index + 1}`}</div>
+                              <div className="flex items-center gap-3 text-xs text-gray-600 mb-1">
                                 <span className="flex items-center gap-1">
                                   {stage.interviewerType === 'human' && (
                                     <>
@@ -497,6 +502,19 @@ export default function JobList({ refreshTrigger = 0 }: JobListProps) {
                                   </span>
                                 )}
                               </div>
+                              {/* Assignee Information */}
+                              {stage.assigneeName && (
+                                <div className="flex items-center gap-1 text-xs">
+                                  <div className="w-4 h-4 bg-indigo-100 rounded-full flex items-center justify-center">
+                                    <span className="text-indigo-700 font-semibold text-xs">
+                                      {stage.assigneeName.charAt(0).toUpperCase()}
+                                    </span>
+                                  </div>
+                                  <span className="text-indigo-700 font-medium">
+                                    {stage.assigneeName}
+                                  </span>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -555,6 +573,50 @@ export default function JobList({ refreshTrigger = 0 }: JobListProps) {
                   </button>
                 </div>
               </div>
+
+              {/* Action Buttons */}
+              <div className="mt-6 pt-6 border-t border-slate-200">
+                <div className="flex justify-between items-center">
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => handleViewDetails(job)}
+                      className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-4 py-2.5 rounded-xl transition-all duration-200 text-sm font-medium shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                      View Details
+                    </button>
+                    {user?.role === 'hr' && (
+                      <button
+                        onClick={() => handleEditJob(job)}
+                        className="flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white px-4 py-2.5 rounded-xl transition-all duration-200 text-sm font-medium shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                        Edit Job
+                      </button>
+                    )}
+                  </div>
+                  {user?.role === 'hr' && (
+                    <button
+                      onClick={() => handleDeleteJob(job)}
+                      disabled={deletingJobId === job.id}
+                      className="flex items-center gap-2 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white px-4 py-2.5 rounded-xl transition-all duration-200 text-sm font-medium shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Delete job"
+                    >
+                      {deletingJobId === job.id ? (
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                      <span className="text-sm font-medium">Delete</span>
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           ))}
         </div>
@@ -571,11 +633,11 @@ export default function JobList({ refreshTrigger = 0 }: JobListProps) {
       {isEditModalOpen && jobToEdit && (
         <div className="fixed inset-0 z-50">
           <div className="fixed inset-0 bg-background/80 backdrop-blur-sm" onClick={closeEditModal} />
-          <div className="fixed inset-0 flex items-center justify-center p-4">
+          <div className="fixed inset-0 flex  justify-center p-4">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
               <div className="p-6 border-b border-gray-200">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-2xl font-bold text-gray-900">Edit Job</h2>
+                  <h2 className="text-lg font-bold text-gray-900">Edit Job</h2>
                   <button
                     onClick={closeEditModal}
                     className="text-gray-400 hover:text-gray-600 transition-colors"

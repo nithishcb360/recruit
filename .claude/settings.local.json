@@ -5,7 +5,32 @@
       "Bash(python manage.py:*)",
       "Bash(pip install:*)",
       "Bash(npm run dev:*)",
-      "Bash(python test_interview_stages.py)"
+      "Bash(python test_interview_stages.py)",
+      "Bash(grep:*)",
+      "Bash(npm run build:*)",
+      "Bash(find:*)",
+      "Bash(python:*)",
+      "Bash(npx next:*)",
+      "Bash(awk:*)",
+      "Bash(xxd:*)",
+      "Bash(node:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx @babel/parser:*)",
+      "Read(//d//**)",
+      "Bash(cat:*)",
+      "Bash(timeout 30 npm run build)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(tasklist:*)",
+      "Bash(wmic process where ProcessId=31460 get Name,CommandLine:*)",
+      "Bash(taskkill:*)",
+      "Bash(rm:*)",
+      "Bash(mkdir:*)",
+      "Bash(pnpm run:*)",
+      "Bash(PORT=3011 pnpm run dev)",
+      "Bash(PORT=3012 pnpm run dev)",
+      "Bash(PORT=4000 pnpm run dev)",
+      "Bash(PORT=3011 npm run dev)"
     ]
   }
 }

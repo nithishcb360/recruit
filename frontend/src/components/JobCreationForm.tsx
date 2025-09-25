@@ -15,6 +15,16 @@ import { Badge } from '@/components/ui/badge';
 // Organization settings interface
 interface OrganizationSettings {
   general: {
+    name?: string;
+    domain?: string;
+    industry?: string;
+    size?: string;
+    website?: string;
+    address?: string;
+    contactEmail?: string;
+    phone?: string;
+    timezone?: string;
+    locale?: string;
     aiProvider: string;
     aiApiKey: string;
   };
@@ -50,6 +60,7 @@ interface InterviewStage {
   interviewerType: 'human' | 'ai' | 'hybrid';
   feedbackFormId: string;
   feedbackFormName?: string;
+  assignee?: string;
 }
 
 interface FeedbackForm {
@@ -57,6 +68,37 @@ interface FeedbackForm {
   name: string;
   questions: number;
   questionsList: string[];
+}
+
+interface InterviewRound {
+  id: string;
+  name: string;
+  type: 'telephonic' | 'video' | 'technical' | 'hr' | 'panel' | 'assignment' | 'onsite' | 'cultural';
+  description: string;
+  duration: number;
+  isRequired: boolean;
+  order: number;
+  interviewers: string[];
+  skills: string[];
+  passingCriteria: {
+    minScore: number;
+    requiredSkills: string[];
+  };
+  autoAdvance: boolean;
+  emailTemplate?: string;
+  instructions?: string;
+}
+
+interface InterviewFlow {
+  id: string;
+  name: string;
+  description: string;
+  isDefault: boolean;
+  jobTypes: string[];
+  rounds: InterviewRound[];
+  totalEstimatedTime: number;
+  createdAt: string;
+  lastModified: string;
 }
 
 interface JobPostingFormProps {
@@ -96,18 +138,60 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
   const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
   const [isSearchingLocations, setIsSearchingLocations] = useState(false);
   const [isGeneratingWithAI, setIsGeneratingWithAI] = useState(false);
-  const [orgSettings, setOrgSettings] = useState<OrganizationSettings | null>(null);
+  const [orgSettings, setOrgSettings] = useState<OrganizationSettings>({
+    general: {
+      name: "Acme Corporation",
+      domain: "acmecorp.com",
+      industry: "Technology",
+      size: "201-500",
+      website: "https://www.acmecorp.com",
+      address: "123 Innovation Drive, San Francisco, CA 94105",
+      contactEmail: "hr@acmecorp.com",
+      phone: "+1 (555) 123-4567",
+      timezone: "America/Los_Angeles",
+      locale: "en-US",
+      aiProvider: "anthropic",
+      aiApiKey: ""
+    },
+    ai: {
+      jobGenerationPrompt: `You are an expert HR professional and job description writer. Create a comprehensive, engaging, and professional job description based on the provided job details.
+
+Please structure your response with clear sections and use professional language that attracts qualified candidates while accurately representing the role requirements.
+
+Include the following elements:
+- A compelling job summary that highlights the role's impact and growth opportunities
+- Detailed list of key responsibilities using action-oriented language
+- Comprehensive requirements including both hard and soft skills
+- Information about company culture and values
+- Any relevant benefits or perks that make this role attractive
+
+Make the description inclusive and avoid any language that might discourage diverse candidates from applying.`
+    }
+  });
   const [interviewStages, setInterviewStages] = useState<InterviewStage[]>([
     {
       id: '1',
       name: '',
       interviewerType: 'human',
       feedbackFormId: '',
+      assignee: '',
     }
   ]);
   const [showFormPreview, setShowFormPreview] = useState<string | null>(null);
+  const [selectedRuleType, setSelectedRuleType] = useState<string>('');
+  const [interviewFlows, setInterviewFlows] = useState<InterviewFlow[]>([]);
+  const [selectedFlow, setSelectedFlow] = useState<InterviewFlow | null>(null);
 
   const [feedbackForms, setFeedbackForms] = useState<FeedbackForm[]>([]);
+
+  // Sample assignees - in a real app, this would come from an API
+  const assignees = [
+    { id: 'john-doe', name: 'John Doe', role: 'Senior Developer' },
+    { id: 'jane-smith', name: 'Jane Smith', role: 'Tech Lead' },
+    { id: 'mike-johnson', name: 'Mike Johnson', role: 'Engineering Manager' },
+    { id: 'sarah-wilson', name: 'Sarah Wilson', role: 'HR Manager' },
+    { id: 'david-brown', name: 'David Brown', role: 'Product Manager' },
+  ];
 
   const steps = [
     { number: 1, name: 'Job Details', active: activeStep === 1 },
@@ -208,6 +292,8 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
           }
 
           setOrgSettings(settings);
+        } else {
+          console.log('No saved settings found in localStorage, using defaults');
         }
       } catch (error) {
         console.error('Error loading organization settings:', error);
@@ -255,6 +341,55 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
       }
     }
   }, [editingJob]);
+
+  // Load interview flows from API (same as settings page)
+  useEffect(() => {
+    const fetchInterviewFlows = async () => {
+      try {
+        const response = await fetch('http://127.0.0.1:8000/api/interview-flows/');
+        if (response.ok) {
+          const data = await response.json();
+          const flows = Array.isArray(data) ? data : data.results || [];
+          // Transform backend data to frontend format (same as settings page)
+          const transformedFlows = flows.map((flow: any) => ({
+            id: flow.id.toString(),
+            name: flow.name,
+            description: flow.description || '',
+            isDefault: flow.is_default,
+            jobTypes: flow.job_types || [],
+            rounds: flow.rounds?.map((round: any) => ({
+              id: round.id.toString(),
+              name: round.name,
+              type: round.type,
+              description: round.description || '',
+              duration: round.duration,
+              isRequired: round.is_required,
+              order: round.order,
+              interviewers: round.interviewers || [],
+              skills: round.skills || [],
+              passingCriteria: round.passing_criteria || {},
+              autoAdvance: round.auto_advance,
+              emailTemplate: round.email_template || '',
+              instructions: round.instructions || ''
+            })) || [],
+            totalEstimatedTime: flow.total_estimated_time || 0,
+            createdAt: flow.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
+            lastModified: flow.updated_at?.split('T')[0] || new Date().toISOString().split('T')[0]
+          }));
+          setInterviewFlows(transformedFlows);
+          console.log('Loaded interview flows for dropdown:', transformedFlows.map(f => ({ id: f.id, name: f.name })));
+        } else {
+          console.error('Failed to fetch interview flows:', response.status, response.statusText);
+          setInterviewFlows([]);
+        }
+      } catch (error) {
+        console.error('Error fetching interview flows:', error);
+        setInterviewFlows([]);
+      }
+    };
+
+    fetchInterviewFlows();
+  }, []);
 
   const departmentOptions = [
     { value: '', label: 'Select department' },
@@ -361,6 +496,39 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
     setFocusedField('');
   };
 
+  const handleRuleTypeChange = (value: string) => {
+    setSelectedRuleType(value);
+
+    // Find the selected flow and set it
+    const flow = interviewFlows.find(f => f.id === value);
+    setSelectedFlow(flow || null);
+
+    // Auto-populate interview stages with rounds from selected flow
+    if (flow && flow.rounds.length > 0) {
+      console.log('Selected interview flow:', flow.name);
+      console.log('Auto-populating stages from flow rounds:', flow.rounds.map(r => r.name));
+
+      // Convert flow rounds to interview stages
+      const newStages: InterviewStage[] = flow.rounds
+        .sort((a, b) => a.order - b.order) // Sort by order
+        .map((round, index) => ({
+          id: `${Date.now()}-${index}`, // Generate unique ID
+          name: round.name, // Use the round name as stage name
+          interviewerType: 'human' as const, // Default to human
+          feedbackFormId: '', // Empty for now, user can select
+          feedbackFormName: undefined
+        }));
+
+      setInterviewStages(newStages);
+      // Also update formData to keep it in sync
+      setFormData(prev => ({
+        ...prev,
+        interviewStages: newStages
+      }));
+      console.log('Created interview stages:', newStages.map(s => ({ id: s.id, name: s.name })));
+    }
+  };
+
   const validateForm = () => {
     const requiredFields: (keyof FormData)[] = ['jobTitle', 'department', 'experienceLevel', 'location', 'workType'];
     const errors: Record<string, boolean> = {};
@@ -441,7 +609,10 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
         publish_internal: true,
         publish_external: false,
         publish_company_website: true,
-        interview_stages: formData.interviewStages,
+        interview_stages: interviewStages.map(stage => ({
+          ...stage,
+          assigneeName: stage.assignee ? assignees.find(a => a.id === stage.assignee)?.name : undefined
+        })),
       };
 
       if (editingJob) {
@@ -466,7 +637,8 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
         experienceRange: '',
         jobDescription: '',
         requirements: '',
-        responsibilities: ''
+        responsibilities: '',
+        interviewStages: []
       });
       setActiveStep(1);
       
@@ -1951,6 +2123,97 @@ ${preferredQuals.map(qual => `• ${qual}`).join('\n')}`
                 </div>
               </div>
               <div className="p-6 space-y-6">
+                {/* Rule Type Section */}
+                <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-xl p-5 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-indigo-100 rounded-lg">
+                      <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h5 className="text-base font-semibold text-gray-900">Rule Type</h5>
+                      <p className="text-xs text-gray-600">Select an interview flow from the rule engine to configure the interview process</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label className="text-sm font-semibold text-gray-700">Interview Flow Template</Label>
+                    <Select value={selectedRuleType} onValueChange={handleRuleTypeChange}>
+                      <SelectTrigger className="bg-white text-black border-gray-300 focus:border-indigo-500">
+                        <SelectValue placeholder="Select interview flow from rule engine..." />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white text-black border border-gray-300 shadow-lg">
+                        {interviewFlows.map((flow) => (
+                          <SelectItem key={flow.id} value={flow.id} className="text-black hover:bg-indigo-50">
+                            <div className="flex items-center gap-2">
+                              <div className={`w-2 h-2 rounded-full ${flow.isDefault ? 'bg-green-500' : 'bg-blue-500'}`}></div>
+                              <div>
+                                <div className="font-medium">{flow.name}</div>
+                                <div className="text-xs text-gray-500">{flow.description}</div>
+                              </div>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Display selected flow stages */}
+                  {selectedFlow && (
+                    <div className="mt-4 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <h6 className="text-sm font-semibold text-gray-900">Selected Flow Stages:</h6>
+                        <Badge className="bg-indigo-100 text-indigo-800 text-xs">{selectedFlow.rounds.length} stages</Badge>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {selectedFlow.rounds
+                          .sort((a, b) => a.order - b.order)
+                          .map((round, index) => (
+                          <div key={round.id} className="bg-white border border-gray-200 rounded-lg p-3 hover:shadow-sm transition-shadow">
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="w-6 h-6 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center text-xs font-semibold">
+                                {index + 1}
+                              </div>
+                              <div className="font-medium text-sm text-gray-900 truncate">{round.name}</div>
+                            </div>
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-1">
+                                <Badge variant="outline" className="text-xs">
+                                  {round.type}
+                                </Badge>
+                                <span className="text-xs text-gray-500">{round.duration}min</span>
+                              </div>
+                              {round.description && (
+                                <p className="text-xs text-gray-600 line-clamp-2">{round.description}</p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-2">
+                        Total estimated time: {selectedFlow.totalEstimatedTime} minutes
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Interview Stages */}
+                {selectedFlow && interviewStages.length > 0 && (
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <h6 className="text-sm font-semibold text-green-800">Stages Auto-Populated</h6>
+                    </div>
+                    <p className="text-xs text-green-700">
+                      Interview stages have been automatically populated from the "{selectedFlow.name}" flow.
+                      You can modify these stages below or add additional ones as needed.
+                    </p>
+                  </div>
+                )}
+
                 {interviewStages.map((stage, index) => (
                   <div key={stage.id} className="bg-gradient-to-r from-gray-50 to-blue-50 border border-gray-200 rounded-xl p-5 space-y-4 hover:shadow-md transition-shadow">
                     <div className="flex items-center justify-between">
@@ -2080,6 +2343,31 @@ ${preferredQuals.map(qual => `• ${qual}`).join('\n')}`
                             </Button>
                           )}
                         </div>
+                      </div>
+
+                      {/* Assignee Selection */}
+                      <div className="grid grid-cols-1 gap-3">
+                        <label className="text-sm font-medium text-gray-700">
+                          Assignee
+                        </label>
+                        <Select
+                          value={stage.assignee || ''}
+                          onValueChange={(value) => updateInterviewStage(stage.id, 'assignee', value)}
+                        >
+                          <SelectTrigger className="bg-white text-black border-gray-300 focus:border-blue-500">
+                            <SelectValue placeholder="Select assignee" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white text-black border border-gray-300 shadow-lg">
+                            {assignees.map((assignee) => (
+                              <SelectItem key={assignee.id} value={assignee.id} className="text-black hover:bg-gray-50">
+                                <div className="flex items-center justify-between w-full">
+                                  <span className="font-medium">{assignee.name}</span>
+                                  <span className="text-xs text-gray-500 ml-2">{assignee.role}</span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
 

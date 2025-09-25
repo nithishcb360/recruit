@@ -664,7 +664,7 @@ export default function ScreeningPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">AI Candidate Screening</h1>
+            <h1 className="text-xl font-bold text-gray-900">AI Candidate Screening</h1>
             <p className="text-gray-600">Intelligent candidate analysis and job matching</p>
           </div>
           <div className="flex items-center gap-4">
@@ -685,7 +685,7 @@ export default function ScreeningPage() {
                     <User className="h-5 w-5 text-blue-600" />
                   </div>
                   <div>
-                    <CardTitle className="text-lg text-blue-900">
+                    <CardTitle className="text-base text-blue-900">
                       Candidate Moved for Screening: {movedCandidateData.name}
                     </CardTitle>
                     <CardDescription className="text-blue-700">
@@ -921,7 +921,7 @@ export default function ScreeningPage() {
             <CardContent className="pt-6">
               <div className="text-center py-12">
                 <Target className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Job Position</h3>
+                <h3 className="text-base font-medium text-gray-900 mb-2">Select a Job Position</h3>
                 <p className="text-gray-600">Choose a job position from the dropdown above to start screening candidates.</p>
               </div>
             </CardContent>
@@ -934,7 +934,7 @@ export default function ScreeningPage() {
             <CardContent className="pt-6">
               <div className="text-center py-12">
                 <Users className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No Candidates Found</h3>
+                <h3 className="text-base font-medium text-gray-900 mb-2">No Candidates Found</h3>
                 <p className="text-gray-600">
                   {searchTerm ? 
                     'No candidates match your search criteria. Try adjusting your filters.' :
@@ -950,7 +950,7 @@ export default function ScreeningPage() {
         {/* {selectedJobId && !isLoading && filteredResults.length > 0 && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-gray-900">Screening Results</h2>
+              <h2 className="text-lg font-semibold text-gray-900">Screening Results</h2>
               <div className="text-sm text-gray-600">
                 Sorted by AI compatibility score
               </div>
@@ -969,7 +969,7 @@ export default function ScreeningPage() {
                               {result.candidate.first_name[0]}{result.candidate.last_name[0]}
                             </div>
                             <div>
-                              <CardTitle className="text-lg">
+                              <CardTitle className="text-base">
                                 {result.candidate.first_name} {result.candidate.last_name}
                               </CardTitle>
                               <CardDescription className="flex items-center gap-4">
@@ -991,7 +991,7 @@ export default function ScreeningPage() {
                           </div>
                           <div className="flex items-center gap-4">
                             <div className="text-right">
-                              <div className={`text-2xl font-bold ${getScoreColor(result.totalScore)}`}>
+                              <div className={`text-lg font-bold ${getScoreColor(result.totalScore)}`}>
                                 {result.totalScore}%
                               </div>
                               <Badge className={`${getRecommendationColor(result.recommendation)} border-0`}>
@@ -1015,25 +1015,25 @@ export default function ScreeningPage() {
                     
                         <div className="grid grid-cols-4 gap-4 mt-4">
                           <div className="text-center">
-                            <div className={`text-lg font-semibold ${getScoreColor(result.breakdown.jobTitleScore)}`}>
+                            <div className={`text-base font-semibold ${getScoreColor(result.breakdown.jobTitleScore)}`}>
                               {result.breakdown.jobTitleScore}%
                             </div>
                             <div className="text-xs text-gray-500">Job Title</div>
                           </div>
                           <div className="text-center">
-                            <div className={`text-lg font-semibold ${getScoreColor(result.breakdown.departmentScore)}`}>
+                            <div className={`text-base font-semibold ${getScoreColor(result.breakdown.departmentScore)}`}>
                               {result.breakdown.departmentScore}%
                             </div>
                             <div className="text-xs text-gray-500">Department</div>
                           </div>
                           <div className="text-center">
-                            <div className={`text-lg font-semibold ${getScoreColor(result.experienceScore)}`}>
+                            <div className={`text-base font-semibold ${getScoreColor(result.experienceScore)}`}>
                               {result.experienceScore}%
                             </div>
                             <div className="text-xs text-gray-500">Experience</div>
                           </div>
                           <div className="text-center">
-                            <div className={`text-lg font-semibold ${getScoreColor(result.breakdown.locationScore)}`}>
+                            <div className={`text-base font-semibold ${getScoreColor(result.breakdown.locationScore)}`}>
                               {result.breakdown.locationScore}%
                             </div>
                             <div className="text-xs text-gray-500">Location</div>

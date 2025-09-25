@@ -46,6 +46,8 @@ export interface JobCreateData {
     interviewerType: 'human' | 'ai' | 'hybrid'
     feedbackFormId: string
     feedbackFormName?: string
+    assignee?: string
+    assigneeName?: string
   }>
 }
 
@@ -72,6 +74,8 @@ export interface Job {
     interviewerType: 'human' | 'ai' | 'hybrid'
     feedbackFormId: string
     feedbackFormName?: string
+    assignee?: string
+    assigneeName?: string
   }>
 }
 
