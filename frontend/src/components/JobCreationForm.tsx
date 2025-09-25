@@ -19,7 +19,13 @@ interface OrganizationSettings {
     aiApiKey: string;
   };
   ai: {
-    jobGenerationPrompt: string;
+    selectedImplementation: string;
+    implementations: {
+      [key: string]: {
+        name: string;
+        prompt: string;
+      };
+    };
   };
 }
 
@@ -186,6 +192,21 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
         const savedSettings = localStorage.getItem('organizationSettings');
         if (savedSettings) {
           const settings = JSON.parse(savedSettings);
+
+          // Migration logic for JobCreationForm: convert old jobGenerationPrompt to new structure
+          if (settings.ai && settings.ai.jobGenerationPrompt && !settings.ai.implementations) {
+            console.log('JobCreationForm: Migrating old AI settings to new structure');
+            settings.ai = {
+              selectedImplementation: "jobDescription",
+              implementations: {
+                jobDescription: {
+                  name: "Job Description Generation",
+                  prompt: settings.ai.jobGenerationPrompt
+                }
+              }
+            };
+          }
+
           setOrgSettings(settings);
         }
       } catch (error) {
@@ -556,13 +577,24 @@ export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isMod
       const department = departments.find(d => d.id.toString() === formData.department)?.name || formData.department;
       
       // Prepare AI configuration from organization settings
+      const selectedImpl = orgSettings?.ai?.selectedImplementation;
+      const currentPrompt = selectedImpl && orgSettings?.ai?.implementations?.[selectedImpl]?.prompt;
+
       const aiConfig: AIConfig | undefined = orgSettings?.general?.aiProvider && orgSettings?.general?.aiApiKey
         ? {
             provider: orgSettings.general.aiProvider,
             apiKey: orgSettings.general.aiApiKey,
-            customPrompt: orgSettings?.ai?.jobGenerationPrompt
+            customPrompt: currentPrompt
           }
         : undefined;
+
+      // Debug log for custom prompt usage
+      if (aiConfig?.customPrompt) {
+        console.log('Using custom AI prompt from organization settings');
+        console.log('Prompt length:', aiConfig.customPrompt.length, 'characters');
+      } else {
+        console.log('Using default AI prompt - no custom prompt configured');
+      }
 
       const generatedContent = await generateJobDescriptionWithAI({
         jobTitle: formData.jobTitle,
