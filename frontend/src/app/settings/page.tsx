@@ -74,7 +74,13 @@ interface OrganizationSettings {
     aiApiKey: string
   }
   ai: {
-    jobGenerationPrompt: string
+    selectedImplementation: string
+    implementations: {
+      [key: string]: {
+        name: string
+        prompt: string
+      }
+    }
   }
   security: {
     mfaRequired: boolean
@@ -294,7 +300,11 @@ export default function ClientOrganizationSettings() {
       aiApiKey: ""
     },
     ai: {
-      jobGenerationPrompt: `You are an expert HR professional and job description writer. Create professional, engaging, and comprehensive job descriptions that attract qualified candidates.
+      selectedImplementation: "jobDescription",
+      implementations: {
+        jobDescription: {
+          name: "Job Description Generation",
+          prompt: `You are an expert HR professional and job description writer. Create professional, engaging, and comprehensive job descriptions that attract qualified candidates.
 
 Your task is to generate:
 1. A detailed job description (3-4 paragraphs)
@@ -322,6 +332,8 @@ Preferred Qualifications:
 • Item 2
 
 Make sure the requirements field contains properly formatted text, not JSON structure.`
+        }
+      }
     },
     security: {
       mfaRequired: true,
@@ -542,6 +554,61 @@ Make sure the requirements field contains properly formatted text, not JSON stru
       const savedSettings = localStorage.getItem('organizationSettings');
       if (savedSettings) {
         const parsedSettings = JSON.parse(savedSettings);
+
+        // Migration logic: convert old jobGenerationPrompt to new structure
+        if (parsedSettings.ai && parsedSettings.ai.jobGenerationPrompt && !parsedSettings.ai.implementations) {
+          console.log('Migrating old AI settings to new structure');
+          parsedSettings.ai = {
+            selectedImplementation: "jobDescription",
+            implementations: {
+              jobDescription: {
+                name: "Job Description Generation",
+                prompt: parsedSettings.ai.jobGenerationPrompt
+              }
+            }
+          };
+          // Save the migrated settings
+          localStorage.setItem('organizationSettings', JSON.stringify(parsedSettings));
+        }
+
+        // Ensure ai.implementations exists
+        if (parsedSettings.ai && !parsedSettings.ai.implementations) {
+          parsedSettings.ai.implementations = {
+            jobDescription: {
+              name: "Job Description Generation",
+              prompt: parsedSettings.ai.jobGenerationPrompt || `You are an expert HR professional and job description writer. Create professional, engaging, and comprehensive job descriptions that attract qualified candidates.
+
+Your task is to generate:
+1. A detailed job description (3-4 paragraphs)
+2. Comprehensive requirements list (both required and preferred qualifications)
+
+Make the content:
+- Professional yet engaging
+- Specific to the role and industry
+- Include relevant technologies and skills for the position
+- Follow modern job posting best practices
+- Be inclusive and welcoming
+
+Format the response as JSON with two fields: "description" and "requirements".
+For the requirements field, format it as a clean, readable text with sections like:
+Required Qualifications:
+• Item 1
+• Item 2
+
+Technical Skills:
+• Skill 1
+• Skill 2
+
+Preferred Qualifications:
+• Item 1
+• Item 2
+
+Make sure the requirements field contains properly formatted text, not JSON structure.`
+            }
+          };
+          parsedSettings.ai.selectedImplementation = parsedSettings.ai.selectedImplementation || "jobDescription";
+        }
+
         setOrgSettings(prevSettings => ({
           ...prevSettings,
           ...parsedSettings
@@ -568,7 +635,7 @@ Make sure the requirements field contains properly formatted text, not JSON stru
 
     // Auto-save AI settings immediately for better UX
     if ((section === 'general' && (field === 'aiProvider' || field === 'aiApiKey')) ||
-        (section === 'ai' && field === 'jobGenerationPrompt')) {
+        (section === 'ai' && (field === 'selectedImplementation' || field.startsWith('implementations.')))) {
       try {
         localStorage.setItem('organizationSettings', JSON.stringify(newSettings));
         console.log('Auto-saved AI settings to localStorage:', { section, field, value: typeof value === 'string' && value.length > 50 ? value.substring(0, 50) + '...' : value });
@@ -1923,38 +1990,81 @@ Make sure the requirements field contains properly formatted text, not JSON stru
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Zap className="h-5 w-5" />
-                  Generative AI Prompt
+                  AI Implementation Management
                 </CardTitle>
                 <CardDescription>
-                  Customize the system prompt used when generating job descriptions and requirements with AI. This prompt is sent to the AI provider (https://api.anthropic.com/v1/messages) when you click the "Generate with AI" button on job creation pages.
+                  Manage different AI implementations and their prompts. Select an implementation from the dropdown to view and edit its prompt.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-6">
+                {/* Implementation Selector */}
                 <div className="space-y-2">
-                  <Label htmlFor="ai-prompt">System Prompt</Label>
-                  <Textarea
-                    id="ai-prompt"
-                    rows={15}
-                    className="font-mono text-sm"
-                    placeholder="Enter your custom AI prompt here..."
-                    value={orgSettings.ai.jobGenerationPrompt}
-                    onChange={(e) => handleSettingsChange('ai', 'jobGenerationPrompt', e.target.value)}
-                  />
+                  <Label>AI Implementation</Label>
+                  <Select
+                    value={orgSettings.ai.selectedImplementation}
+                    onValueChange={(value) => handleSettingsChange('ai', 'selectedImplementation', value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select AI implementation" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border border-gray-200 shadow-lg z-50">
+                      {Object.entries(orgSettings.ai.implementations || {}).map(([key, impl]) => (
+                        <SelectItem key={key} value={key} className="text-black hover:bg-gray-100">
+                          {impl.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <p className="text-sm text-gray-600">
-                    This prompt will be sent to your selected AI provider ({orgSettings.general.aiProvider}) to generate job descriptions.
-                    You can customize it to match your company's tone, requirements format, and specific needs.
-                  </p>
-                  <p className="text-xs text-green-600 font-medium">
-                    ✓ AI prompt is automatically saved when changed
+                    Select which AI implementation you want to view or edit. In the future, new AI features can be added here.
                   </p>
                 </div>
 
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    className="border-blue-500 text-blue-600 hover:bg-blue-50 hover:border-blue-600"
-                    onClick={() => {
-                      const defaultPrompt = `You are an expert HR professional and job description writer. Create professional, engaging, and comprehensive job descriptions that attract qualified candidates.
+                {/* Current Implementation Details */}
+                {orgSettings.ai.selectedImplementation && orgSettings.ai.implementations?.[orgSettings.ai.selectedImplementation] && (
+                  <div className="space-y-4">
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Activity className="h-4 w-4 text-blue-600" />
+                        <h4 className="font-medium text-blue-900">
+                          {orgSettings.ai.implementations?.[orgSettings.ai.selectedImplementation]?.name}
+                        </h4>
+                      </div>
+                      <p className="text-sm text-blue-700">
+                        This prompt is sent to your AI provider ({orgSettings.general.aiProvider}) when using this implementation.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="ai-prompt">System Prompt</Label>
+                      <Textarea
+                        id="ai-prompt"
+                        rows={15}
+                        className="font-mono text-sm"
+                        placeholder="Enter your custom AI prompt here..."
+                        value={orgSettings.ai.implementations?.[orgSettings.ai.selectedImplementation]?.prompt || ''}
+                        onChange={(e) => {
+                          const newImplementations = {
+                            ...orgSettings.ai.implementations,
+                            [orgSettings.ai.selectedImplementation]: {
+                              ...orgSettings.ai.implementations?.[orgSettings.ai.selectedImplementation],
+                              prompt: e.target.value
+                            }
+                          };
+                          handleSettingsChange('ai', 'implementations', newImplementations);
+                        }}
+                      />
+                      <p className="text-xs text-green-600 font-medium">
+                        ✓ AI prompt is automatically saved when changed
+                      </p>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        className="border-blue-500 text-blue-600 hover:bg-blue-50 hover:border-blue-600"
+                        onClick={() => {
+                          const defaultPrompt = `You are an expert HR professional and job description writer. Create professional, engaging, and comprehensive job descriptions that attract qualified candidates.
 
 Your task is to generate:
 1. A detailed job description (3-4 paragraphs)
@@ -1983,50 +2093,83 @@ Preferred Qualifications:
 
 Make sure the requirements field contains properly formatted text, not JSON structure.`;
 
-                      handleSettingsChange('ai', 'jobGenerationPrompt', defaultPrompt);
-                      toast({
-                        title: "Prompt Reset",
-                        description: "AI prompt has been reset to default.",
-                        variant: "default"
-                      })
-                    }}
-                  >
-                    Reset to Default
-                  </Button>
+                          const newImplementations = {
+                            ...orgSettings.ai.implementations,
+                            [orgSettings.ai.selectedImplementation]: {
+                              ...orgSettings.ai.implementations?.[orgSettings.ai.selectedImplementation],
+                              prompt: defaultPrompt
+                            }
+                          };
+                          handleSettingsChange('ai', 'implementations', newImplementations);
+                          toast({
+                            title: "Prompt Reset",
+                            description: "AI prompt has been reset to default.",
+                            variant: "default"
+                          })
+                        }}
+                      >
+                        Reset to Default
+                      </Button>
 
-                  <Button
-                    className="bg-blue-600 hover:bg-blue-700 text-white"
-                    disabled={isLoading}
-                    onClick={() => {
-                      handleSaveSettings()
-                      toast({
-                        title: "AI Prompt Updated",
-                        description: "Your custom prompt will now be used for API calls to https://api.anthropic.com/v1/messages",
-                        variant: "default"
-                      })
-                    }}
-                  >
-                    <Save className="h-4 w-4 mr-2" />
-                    {isLoading ? 'Saving...' : 'Save & Update API'}
-                  </Button>
-                </div>
+                      <Button
+                        className="bg-blue-600 hover:bg-blue-700 text-white"
+                        disabled={isLoading}
+                        onClick={() => {
+                          handleSaveSettings()
+                          toast({
+                            title: "AI Prompt Updated",
+                            description: "Your custom prompt will now be used for API calls to your AI provider",
+                            variant: "default"
+                          })
+                        }}
+                      >
+                        <Save className="h-4 w-4 mr-2" />
+                        {isLoading ? 'Saving...' : 'Save & Update API'}
+                      </Button>
 
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <div className="flex items-start gap-2">
-                    <div className="text-blue-600 mt-0.5">
-                      <Activity className="h-4 w-4" />
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          const newKey = `implementation_${Date.now()}`;
+                          const newImplementations = {
+                            ...orgSettings.ai.implementations,
+                            [newKey]: {
+                              name: "New AI Implementation",
+                              prompt: "Enter your AI prompt here..."
+                            }
+                          };
+                          handleSettingsChange('ai', 'implementations', newImplementations);
+                          handleSettingsChange('ai', 'selectedImplementation', newKey);
+                          toast({
+                            title: "New Implementation Created",
+                            description: "A new AI implementation has been added.",
+                            variant: "default"
+                          })
+                        }}
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add New Implementation
+                      </Button>
                     </div>
-                    <div className="text-sm text-blue-800">
-                      <p className="font-medium mb-1">How it works:</p>
-                      <ul className="space-y-1 text-xs">
-                        <li>• This prompt is sent as the "system" message to your AI provider</li>
-                        <li>• The job details (title, department, experience level) are automatically included</li>
-                        <li>• The AI uses this prompt to understand how to format and structure responses</li>
-                        <li>• Changes take effect immediately for new job generations</li>
-                      </ul>
+
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <div className="flex items-start gap-2">
+                        <div className="text-blue-600 mt-0.5">
+                          <Activity className="h-4 w-4" />
+                        </div>
+                        <div className="text-sm text-blue-800">
+                          <p className="font-medium mb-1">How it works:</p>
+                          <ul className="space-y-1 text-xs">
+                            <li>• Select an implementation from the dropdown to view/edit its prompt</li>
+                            <li>• Each implementation can have its own specialized prompt</li>
+                            <li>• Future AI features (like resume screening, candidate matching) can be added here</li>
+                            <li>• Changes take effect immediately for the selected implementation</li>
+                          </ul>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
               </CardContent>
             </Card>
           </div>
