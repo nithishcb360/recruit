@@ -45,11 +45,57 @@ export function getScreeningCandidateData(): ScreeningCandidateData | null {
 }
 
 /**
+ * Add candidate to screening list (supports multiple candidates)
+ */
+export function addToScreeningList(data: ScreeningCandidateData): void {
+  try {
+    const existingData = getScreeningCandidatesList()
+
+    // Check if candidate is already in the list
+    const isAlreadyAdded = existingData.some(candidate => candidate.id === data.id)
+
+    if (!isAlreadyAdded) {
+      const updatedList = [...existingData, data]
+      sessionStorage.setItem('screeningCandidatesList', JSON.stringify(updatedList))
+    }
+  } catch (error) {
+    console.error('Error adding candidate to screening list:', error)
+  }
+}
+
+/**
+ * Get all candidates in screening list
+ */
+export function getScreeningCandidatesList(): ScreeningCandidateData[] {
+  try {
+    const data = sessionStorage.getItem('screeningCandidatesList')
+    return data ? JSON.parse(data) : []
+  } catch (error) {
+    console.error('Error retrieving screening candidates list:', error)
+    return []
+  }
+}
+
+/**
+ * Remove candidate from screening list
+ */
+export function removeFromScreeningList(candidateId: number): void {
+  try {
+    const existingData = getScreeningCandidatesList()
+    const updatedList = existingData.filter(candidate => candidate.id !== candidateId)
+    sessionStorage.setItem('screeningCandidatesList', JSON.stringify(updatedList))
+  } catch (error) {
+    console.error('Error removing candidate from screening list:', error)
+  }
+}
+
+/**
  * Clear screening candidate data from sessionStorage
  */
 export function clearScreeningCandidateData(): void {
   try {
     sessionStorage.removeItem('screeningCandidateData')
+    sessionStorage.removeItem('screeningCandidatesList')
   } catch (error) {
     console.error('Error clearing screening candidate data:', error)
   }

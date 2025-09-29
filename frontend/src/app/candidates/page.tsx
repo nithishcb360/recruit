@@ -20,7 +20,7 @@ import { deleteCandidate } from "@/lib/api/candidates-new"
 import { getJobs, type JobListItem } from "@/lib/api/jobs"
 import { useToast } from "@/hooks/use-toast"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
-import { setScreeningCandidateData } from "@/utils/screeningData"
+import { addToScreeningList } from "@/utils/screeningData"
 
 interface Candidate {
   id: number
@@ -1029,15 +1029,17 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
 
       console.log('Candidate data prepared:', candidateData)
 
-      // Store candidate data using utility function for the screening page
-      setScreeningCandidateData(candidateData)
-      
-      // Remove candidate from current list (they are now permanently in screening)
-      setCandidates(prev => {
-        const filtered = prev.filter(c => c.id !== candidate.id)
-        console.log('Candidates after filtering:', filtered.length, 'remaining')
-        return filtered
-      })
+      // Add candidate to screening list using utility function
+      addToScreeningList(candidateData)
+
+      // Update candidate status to 'screening' but keep them in the list
+      setCandidates(prev =>
+        prev.map(c =>
+          c.id === candidate.id
+            ? { ...c, stage: 'screening' }
+            : c
+        )
+      )
       
       // Navigate to screening page with candidate and job info as query parameters
       router.push(`/screening?candidateId=${candidate.id}&jobId=${jobId}`)
