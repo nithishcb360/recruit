@@ -30,7 +30,18 @@
       "Bash(PORT=3011 pnpm run dev)",
       "Bash(PORT=3012 pnpm run dev)",
       "Bash(PORT=4000 pnpm run dev)",
-      "Bash(PORT=3011 npm run dev)"
+      "Bash(PORT=3011 npm run dev)",
+      "Bash(git checkout:*)",
+      "WebSearch",
+      "WebFetch(domain:docs.retellai.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.retellai.com)",
+      "Bash(npm info:*)",
+      "Bash(npm install:*)",
+      "Bash(npm ls:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(timeout 30 npm run dev)",
+      "Bash(timeout 15 npm run dev)"
     ]
   }
 }

@@ -20,8 +20,11 @@ import {
   deleteFeedbackTemplate,
   publishFeedbackTemplate,
   unpublishFeedbackTemplate,
+  generateAIQuestions,
   type FeedbackTemplate,
-  type Question
+  type Question,
+  type FormType,
+  type QuestionGenerationRequest
 } from "@/lib/api/feedback-templates"
 import { saveFormResponse, getFormResponses, deleteFormResponse, cleanupFormResponsesStorage, type FormResponse } from "@/lib/api/form-responses"
 
@@ -78,6 +81,14 @@ export default function FeedbackFormBuilder() {
   const [builderResponses, setBuilderResponses] = useState<Record<number, any>>({})
   const [isFillingInBuilder, setIsFillingInBuilder] = useState(false)
 
+  // New state for form type functionality
+  const [selectedFormType, setSelectedFormType] = useState<FormType>('question_only')
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false)
+  const [aiTopic, setAiTopic] = useState("")
+  const [aiNumQuestions, setAiNumQuestions] = useState(5)
+  const [aiQuestionTypes, setAiQuestionTypes] = useState<Array<'text' | 'textarea' | 'audio' | 'video'>>(['text', 'textarea'])
+  const [aiConfig, setAiConfig] = useState<{provider: string; apiKey: string} | null>(null)
+
   // Helper functions for local storage
   const saveFormsToLocalStorage = (forms: FeedbackTemplate[]) => {
     try {
@@ -97,6 +108,97 @@ export default function FeedbackFormBuilder() {
     }
   }
  
+  // Load AI configuration from localStorage (simulating settings)
+  useEffect(() => {
+    try {
+      const storedConfig = localStorage.getItem('ai-config')
+      if (storedConfig) {
+        setAiConfig(JSON.parse(storedConfig))
+      }
+    } catch (error) {
+      console.warn('Failed to load AI config:', error)
+    }
+  }, [])
+
+  // Function to handle AI question generation
+  const handleGenerateAIQuestions = async () => {
+    if (!aiTopic.trim()) {
+      toast({
+        title: "Topic Required",
+        description: "Please enter a topic for AI question generation.",
+        variant: "destructive"
+      })
+      return
+    }
+
+    if (!aiConfig || !aiConfig.apiKey) {
+      toast({
+        title: "AI Configuration Missing",
+        description: "Please configure AI settings first. Using demo mode with limited functionality.",
+        variant: "default"
+      })
+    }
+
+    setIsGeneratingAI(true)
+
+    try {
+      const request: QuestionGenerationRequest = {
+        topic: aiTopic,
+        num_questions: aiNumQuestions,
+        question_types: aiQuestionTypes,
+        include_answers: selectedFormType === 'ai_question_with_answer',
+        custom_prompt: `Generate professional feedback questions for: ${aiTopic}`
+      }
+
+      const generatedQuestions = await generateAIQuestions(
+        request,
+        aiConfig || undefined
+      )
+
+      if (editingForm) {
+        setEditingForm(prev => prev ? {
+          ...prev,
+          questions: [...prev.questions, ...generatedQuestions],
+          form_type: selectedFormType,
+          ai_config: {
+            provider: aiConfig?.provider || 'anthropic',
+            topic: aiTopic,
+            num_questions: aiNumQuestions
+          }
+        } : null)
+
+        toast({
+          title: "AI Questions Generated!",
+          description: `Successfully generated ${generatedQuestions.length} questions about "${aiTopic}".`,
+          variant: "default"
+        })
+
+        // Reset AI form
+        setAiTopic("")
+        setAiNumQuestions(5)
+      }
+    } catch (error) {
+      console.error('AI generation error:', error)
+
+      // Check if it's an authentication error
+      if (error instanceof Error && error.message.includes('authentication_error')) {
+        toast({
+          title: "API Key Invalid",
+          description: "Your Anthropic API key is invalid. Using demo questions instead. Configure a valid API key in settings for full AI functionality.",
+          variant: "default"
+        })
+      } else {
+        toast({
+          title: "Generation Failed",
+          description: error instanceof Error ? error.message : "Failed to generate AI questions. Using demo questions instead.",
+          variant: "default"
+        })
+      }
+    } finally {
+      setIsGeneratingAI(false)
+    }
+  }
+
   // Load feedback templates on component mount
   useEffect(() => {
     const fetchTemplates = async () => {
@@ -157,6 +259,7 @@ export default function FeedbackFormBuilder() {
       is_default: false,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
+      form_type: selectedFormType,
     })
     setActiveTab("builder")
   }
@@ -208,7 +311,9 @@ export default function FeedbackFormBuilder() {
         questions: editingForm.questions,
         status: editingForm.status,
         is_active: editingForm.is_active,
-        is_default: editingForm.is_default
+        is_default: editingForm.is_default,
+        form_type: editingForm.form_type,
+        ai_config: editingForm.ai_config
       }
  
       let savedForm: FeedbackTemplate
@@ -227,7 +332,9 @@ export default function FeedbackFormBuilder() {
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
             sections: [],
-            rating_criteria: []
+            rating_criteria: [],
+            form_type: editingForm.form_type || 'question_only',
+            ai_config: editingForm.ai_config
           } as FeedbackTemplate
         }
         
@@ -237,7 +344,7 @@ export default function FeedbackFormBuilder() {
           saveFormsToLocalStorage(newForms)
           return newForms
         })
-        
+
         toast({
           title: "Success!",
           description: `Feedback form "${savedForm.name}" has been created.`,
@@ -352,22 +459,28 @@ export default function FeedbackFormBuilder() {
     
     // Load existing responses for this form
     try {
+      console.log('Loading responses for form:', form.id, 'Form name:', form.name)
+      console.log('Form questions:', form.questions.map(q => ({ id: q.id, text: q.text })))
+
       const responses = await getFormResponses(form.id)
       setSavedFormResponses(responses)
-      
+
       // Populate form responses state with existing data
       const responseMap: Record<number, any> = {}
-      console.log('Loading saved form responses:', responses.length, 'responses found')
-      
+      console.log('Loading saved form responses:', responses.length, 'responses found for form', form.id)
+
       responses.forEach(response => {
         console.log(`Processing response for question ${response.question_id}:`, {
+          formId: response.form_id,
+          questionId: response.question_id,
           type: response.response_type,
           fileName: response.file_name,
           fileType: response.file_type,
           hasFileData: !!response.response_file,
+          responseText: response.response_text,
           fileDataPreview: response.response_file?.substring(0, 50)
         })
-        
+
         if (response.response_type === 'text' || response.response_type === 'textarea') {
           responseMap[response.question_id] = response.response_text || ''
         } else if (response.response_type === 'audio' || response.response_type === 'video') {
@@ -380,8 +493,9 @@ export default function FeedbackFormBuilder() {
         }
       })
       setFormResponses(responseMap)
-      
+
       console.log('Form responses state updated:', Object.keys(responseMap))
+      console.log('Response map content:', responseMap)
     } catch (error) {
       console.error('Error loading form responses:', error)
       setSavedFormResponses([])
@@ -470,13 +584,21 @@ export default function FeedbackFormBuilder() {
         throw new Error('Unsupported question type')
       }
 
+      console.log('Saving response data:', responseData)
       const savedResponse = await saveFormResponse(responseData)
       console.log('Response saved successfully:', savedResponse)
-      
+
       // Update saved responses
       const responses = await getFormResponses(previewForm.id)
       console.log('Reloaded responses after save:', responses.length, 'responses')
+      console.log('All responses after save:', responses)
       setSavedFormResponses(responses)
+
+      // Also update the form responses state immediately
+      setFormResponses(prev => ({
+        ...prev,
+        [questionId]: response
+      }))
 
       // Show appropriate success message based on storage method
       const isLocalStorage = savedResponse.id && savedResponse.id > 1000000000000 // localStorage uses timestamp IDs
@@ -600,7 +722,7 @@ export default function FeedbackFormBuilder() {
 
   const handleSaveBuilderQuestion = async (questionId: number) => {
     if (!editingForm) return
-    
+
     const response = builderResponses[questionId]
     if (!response) {
       toast({
@@ -796,20 +918,77 @@ export default function FeedbackFormBuilder() {
  
           <TabsContent value="forms" className="mt-6">
             <Card className="bg-white/95 backdrop-blur-md border border-slate-200 shadow-xl hover:shadow-2xl transition-all duration-300 rounded-2xl overflow-hidden">
-              <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-slate-200 flex flex-row items-center justify-between space-y-0 pb-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg">
-                    <ListChecks className="h-6 w-6 text-white" />
+              <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-slate-200 pb-6">
+                <div className="flex flex-col space-y-4">
+                  {/* Title Row */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg">
+                        <ListChecks className="h-6 w-6 text-white" />
+                      </div>
+                      <CardTitle className="text-lg font-bold text-slate-900">Feedback Forms</CardTitle>
+                    </div>
                   </div>
-                  <CardTitle className="text-lg font-bold text-slate-900">Existing Feedback Forms</CardTitle>
+
+                  {/* Form Type Selection Row */}
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <Label className="text-sm font-medium text-slate-700 whitespace-nowrap">Form Type:</Label>
+                      <Select
+                        value={selectedFormType}
+                        onValueChange={(value) => setSelectedFormType(value as FormType)}
+                      >
+                        <SelectTrigger className="w-56 bg-white border-slate-300 text-black font-medium hover:border-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                          <SelectValue className="text-black" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white border border-slate-300 shadow-xl text-black">
+                          {/* <SelectItem value="question_only" className="text-black hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
+                            <div className="flex items-center gap-2 text-black">
+                              <MessageSquareText className="h-4 w-4 text-gray-600" />
+                              <span className="text-black font-medium">Question Only</span>
+                            </div>
+                          </SelectItem> */}
+                          <SelectItem value="question_with_answer" className="text-black hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
+                            <div className="flex items-center gap-2 text-black">
+                              <MessageSquareText className="h-4 w-4 text-gray-600" />
+                              <span className="text-black font-medium">Question with Answer</span>
+                            </div>
+                          </SelectItem>
+                          {/* <SelectItem value="ai_question_only" className="text-black hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
+                            <div className="flex items-center gap-2 text-black">
+                              <Star className="h-4 w-4 text-purple-600" />
+                              <span className="text-black font-medium">AI Question Only</span>
+                            </div>
+                          </SelectItem> */}
+                          <SelectItem value="ai_question_with_answer" className="text-black hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
+                            <div className="flex items-center gap-2 text-black">
+                              <Star className="h-4 w-4 text-purple-600" />
+                              <span className="text-black font-medium">AI Question with Answer</span>
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <Button
+                      onClick={handleCreateNewForm}
+                      className="bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white font-semibold px-6 py-2 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-0.5"
+                    >
+                      <Plus className="h-5 w-5 mr-2" />
+                      Create New Form
+                    </Button>
+                  </div>
+
+                  {/* Form Type Description */}
+                  <div className="bg-white/70 rounded-lg p-3 border border-slate-200">
+                    <p className="text-sm text-slate-600">
+                      {selectedFormType === 'question_only' && "Create forms with custom questions for manual responses."}
+                      {selectedFormType === 'question_with_answer' && "Create forms with questions that include predefined answer options."}
+                      {selectedFormType === 'ai_question_only' && "Let AI generate relevant questions based on your topic."}
+                      {selectedFormType === 'ai_question_with_answer' && "Let AI generate questions with sample answers and response guidance."}
+                    </p>
+                  </div>
                 </div>
-                <Button
-                  onClick={handleCreateNewForm}
-                  className="bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white font-semibold px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-0.5"
-                >
-                  <Plus className="h-5 w-5 mr-2" />
-                  Create New Form
-                </Button>
               </CardHeader>
               <CardContent className="p-8">
                 {isLoading ? (
@@ -952,6 +1131,8 @@ export default function FeedbackFormBuilder() {
                             <span className="text-sm font-medium">Question {question.id}</span>
                             <Badge variant="secondary">{question.type}</Badge>
                             {question.required && <Badge variant="outline">Required</Badge>}
+                            {question.ai_generated && <Badge className="bg-purple-100 text-purple-800 border-purple-200">AI</Badge>}
+                            {question.answer && <Badge className="bg-green-100 text-green-800 border-green-200">With Answer</Badge>}
                           </div>
                           <div className="flex gap-2">
                             <Button
@@ -986,14 +1167,14 @@ export default function FeedbackFormBuilder() {
                                 handleQuestionPropertyChange(question.id, "type", value)
                               }
                             >
-                              <SelectTrigger className="w-40 text-black">
+                              <SelectTrigger className="w-40 bg-white border-slate-300 text-black font-medium hover:border-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
                                 <SelectValue className="text-black" />
                               </SelectTrigger>
-                              <SelectContent className="text-black bg-white border border-gray-200">
-                                <SelectItem value="text" className="text-black">Text</SelectItem>
-                                <SelectItem value="textarea" className="text-black">Textarea</SelectItem>
-                                <SelectItem value="audio" className="text-black">Audio</SelectItem>
-                                <SelectItem value="video" className="text-black">Video</SelectItem>
+                              <SelectContent className="bg-white border border-slate-300 shadow-xl text-black">
+                                <SelectItem value="text" className="text-black hover:bg-gray-100 focus:bg-gray-100 cursor-pointer font-medium">Text</SelectItem>
+                                <SelectItem value="textarea" className="text-black hover:bg-gray-100 focus:bg-gray-100 cursor-pointer font-medium">Textarea</SelectItem>
+                                <SelectItem value="audio" className="text-black hover:bg-gray-100 focus:bg-gray-100 cursor-pointer font-medium">Audio</SelectItem>
+                                <SelectItem value="video" className="text-black hover:bg-gray-100 focus:bg-gray-100 cursor-pointer font-medium">Video</SelectItem>
                               </SelectContent>
                             </Select>
                             <div className="flex items-center space-x-2">
@@ -1007,6 +1188,47 @@ export default function FeedbackFormBuilder() {
                               <Label htmlFor={`required-${question.id}`}>Required</Label>
                             </div>
                           </div>
+
+                          {/* Show answer if it exists */}
+                          {question.answer && (
+                            <div className="mt-3 p-3 bg-green-50 rounded-lg border border-green-200">
+                              <Label className="text-sm font-medium text-green-800 mb-2 block">
+                                Sample Answer/Guidance:
+                              </Label>
+                              <p className="text-sm text-green-700">{question.answer}</p>
+                              {editingForm?.form_type === 'question_with_answer' && (
+                                <div className="mt-2">
+                                  <Textarea
+                                    value={question.answer}
+                                    onChange={(e) =>
+                                      handleQuestionPropertyChange(question.id, "answer", e.target.value)
+                                    }
+                                    placeholder="Edit answer or guidance..."
+                                    className="text-sm"
+                                    rows={3}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Add answer field for question_with_answer type */}
+                          {editingForm?.form_type === 'question_with_answer' && !question.answer && (
+                            <div className="mt-3">
+                              <Label className="text-sm font-medium text-slate-700 mb-2 block">
+                                Add Sample Answer/Guidance:
+                              </Label>
+                              <Textarea
+                                placeholder="Provide a sample answer or guidance for this question..."
+                                onChange={(e) =>
+                                  handleQuestionPropertyChange(question.id, "answer", e.target.value)
+                                }
+                                className="text-sm"
+                                rows={3}
+                              />
+                            </div>
+                          )}
+
                           {/* {question.type === "text" && (
                             <div className="mt-2">
                               <label className="text-xs text-gray-600">Text Input Preview:</label>
@@ -1171,85 +1393,241 @@ export default function FeedbackFormBuilder() {
                     )}
                   </div>
  
-                  <div className="border-2 border-dashed rounded-lg p-6">
-                    <h4 className="text-sm font-medium mb-4">Add New Question</h4>
+                  <div className="border-2 border-dashed border-slate-200 rounded-lg p-6 bg-gradient-to-br from-blue-50/50 to-indigo-50/30">
+                    <h4 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                      <Plus className="h-5 w-5 text-blue-600" />
+                      Add New Question
+                    </h4>
                     <div className="space-y-4">
-                      <Input
-                        value={newQuestionText}
-                        onChange={(e) => setNewQuestionText(e.target.value)}
-                        placeholder="Enter question text..."
-                      />
-                      <div className="flex gap-4">
-                        <Select
-                          value={newQuestionType}
-                          onValueChange={(value) => setNewQuestionType(value as Question["type"])}
-                        >
-                          <SelectTrigger className="w-40 text-black">
-                            <SelectValue className="text-black" />
-                          </SelectTrigger>
-                          <SelectContent className="text-black bg-white border border-gray-200">
-                            <SelectItem value="text" className="text-black">Text</SelectItem>
-                            <SelectItem value="textarea" className="text-black">Textarea</SelectItem>
-                            <SelectItem value="audio" className="text-black">Audio</SelectItem>
-                            <SelectItem value="video" className="text-black">Video</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <div className="flex items-center space-x-2">
+                      <div>
+                        <Label htmlFor="new-question-text" className="text-sm font-medium text-slate-700">
+                          Question Text
+                        </Label>
+                        <Input
+                          id="new-question-text"
+                          value={newQuestionText}
+                          onChange={(e) => setNewQuestionText(e.target.value)}
+                          placeholder="Enter your question here..."
+                          className="mt-1"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <Label className="text-sm font-medium text-slate-700">Question Type</Label>
+                          <Select
+                            value={newQuestionType}
+                            onValueChange={(value) => setNewQuestionType(value as Question["type"])}
+                          >
+                            <SelectTrigger className="mt-1 bg-white border-slate-300 text-black font-medium hover:border-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                              <SelectValue className="text-black" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white border border-slate-300 shadow-xl text-black">
+                              <SelectItem value="text" className="text-black hover:bg-gray-100 focus:bg-gray-100 cursor-pointer font-medium">Text Input</SelectItem>
+                              <SelectItem value="textarea" className="text-black hover:bg-gray-100 focus:bg-gray-100 cursor-pointer font-medium">Long Text</SelectItem>
+                              <SelectItem value="audio" className="text-black hover:bg-gray-100 focus:bg-gray-100 cursor-pointer font-medium">Audio Upload</SelectItem>
+                              <SelectItem value="video" className="text-black hover:bg-gray-100 focus:bg-gray-100 cursor-pointer font-medium">Video Upload</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="flex items-center mt-6">
                           <Checkbox
                             id="new-required"
                             checked={newQuestionRequired}
                             onCheckedChange={(checked) => setNewQuestionRequired(checked as boolean)}
                           />
-                          <Label htmlFor="new-required">Required</Label>
+                          <Label htmlFor="new-required" className="ml-2 text-sm font-medium text-slate-700">
+                            Required field
+                          </Label>
                         </div>
                       </div>
-                      {newQuestionType === "text" && (
-                        <div className="mt-2">
-                          <label className="text-xs text-gray-600">Text Input Preview:</label>
+
+                      {/* Question Type Preview */}
+                      <div className="mt-4 p-4 bg-white rounded-lg border border-slate-200">
+                        <Label className="text-sm font-medium text-slate-600 mb-2 block">
+                          Question Preview:
+                        </Label>
+
+                        {newQuestionType === "text" && (
                           <Input
-                            placeholder="User can type text here..."
-                            className="bg-white border border-gray-300 mt-1"
+                            placeholder="Users will see a text input like this..."
+                            disabled
+                            className="bg-slate-50"
                           />
-                        </div>
-                      )}
-                      {newQuestionType === "textarea" && (
-                        <div className="mt-2">
-                          <label className="text-xs text-gray-600">Textarea Preview:</label>
+                        )}
+
+                        {newQuestionType === "textarea" && (
                           <Textarea
-                            placeholder="User can type long text here..."
+                            placeholder="Users will see a large text area like this for longer responses..."
                             rows={3}
-                            className="bg-white border border-gray-300 mt-1"
+                            disabled
+                            className="bg-slate-50"
                           />
-                        </div>
-                      )}
-                      {newQuestionType === "audio" && (
-                        <div className="mt-2">
-                          <label className="text-xs text-gray-600">Audio Upload Preview:</label>
-                          <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center bg-white mt-1">
-                            <Radio className="h-8 w-8 mx-auto text-gray-400 mb-2" />
-                            <p className="text-xs text-gray-600 mb-2">User can upload audio files here</p>
-                            <input type="file" accept="audio/*" className="text-xs text-gray-600" />
+                        )}
+
+                        {newQuestionType === "audio" && (
+                          <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center bg-slate-50">
+                            <Radio className="h-8 w-8 mx-auto text-slate-400 mb-2" />
+                            <p className="text-sm text-slate-600 mb-2">Audio File Upload Area</p>
+                            <p className="text-xs text-slate-500">Users can upload .mp3, .wav, or other audio files</p>
                           </div>
-                        </div>
-                      )}
-                      {newQuestionType === "video" && (
-                        <div className="mt-2">
-                          <label className="text-xs text-gray-600">Video Upload Preview:</label>
-                          <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center bg-white mt-1">
-                            <Video className="h-8 w-8 mx-auto text-gray-400 mb-2" />
-                            <p className="text-xs text-gray-600 mb-2">User can upload video files here</p>
-                            <input type="file" accept="video/*" className="text-xs text-gray-600" />
+                        )}
+
+                        {newQuestionType === "video" && (
+                          <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center bg-slate-50">
+                            <Video className="h-8 w-8 mx-auto text-slate-400 mb-2" />
+                            <p className="text-sm text-slate-600 mb-2">Video File Upload Area</p>
+                            <p className="text-xs text-slate-500">Users can upload .mp4, .mov, or other video files</p>
                           </div>
-                        </div>
-                      )}
-                      <Button onClick={handleAddQuestion} disabled={!newQuestionText} className="bg-blue-600 hover:bg-blue-700 text-white disabled:bg-blue-400 disabled:text-white">
-                        <Plus className="h-4 w-4 mr-2" /> Add Question
-                      </Button>
+                        )}
+                      </div>
+
+                      <div className="flex justify-end pt-2">
+                        <Button
+                          onClick={handleAddQuestion}
+                          disabled={!newQuestionText.trim()}
+                          className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium px-6 py-2 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add Question
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </CardContent>
               </Card>
- 
+
+              {/* AI Question Generation Section */}
+              {editingForm && (editingForm.form_type === 'ai_question_only' || editingForm.form_type === 'ai_question_with_answer') && (
+                <Card className="mt-6">
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Star className="h-5 w-5 text-purple-600" />
+                      AI Question Generation
+                    </CardTitle>
+                    <CardDescription>Generate professional questions using AI</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="ai-topic" className="text-sm font-medium text-slate-700">
+                          Topic/Subject
+                        </Label>
+                        <Input
+                          id="ai-topic"
+                          value={aiTopic}
+                          onChange={(e) => setAiTopic(e.target.value)}
+                          placeholder="e.g., Technical Interview, Leadership Skills..."
+                          className="mt-1"
+                        />
+                      </div>
+
+                      <div>
+                        <Label htmlFor="ai-num" className="text-sm font-medium text-slate-700">
+                          Number of Questions
+                        </Label>
+                        <Select
+                          value={aiNumQuestions.toString()}
+                          onValueChange={(value) => setAiNumQuestions(parseInt(value))}
+                        >
+                          <SelectTrigger className="mt-1 bg-white border-slate-300 text-black font-medium hover:border-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                            <SelectValue className="text-black" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white border border-slate-300 shadow-xl text-black">
+                            <SelectItem value="3" className="text-black hover:bg-gray-100 focus:bg-gray-100 cursor-pointer font-medium">3 questions</SelectItem>
+                            <SelectItem value="5" className="text-black hover:bg-gray-100 focus:bg-gray-100 cursor-pointer font-medium">5 questions</SelectItem>
+                            <SelectItem value="8" className="text-black hover:bg-gray-100 focus:bg-gray-100 cursor-pointer font-medium">8 questions</SelectItem>
+                            <SelectItem value="10" className="text-black hover:bg-gray-100 focus:bg-gray-100 cursor-pointer font-medium">10 questions</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label className="text-sm font-medium text-slate-700 mb-2 block">
+                        Question Types (select multiple)
+                      </Label>
+                      <div className="flex flex-wrap gap-3">
+                        {(['text', 'textarea', 'audio', 'video'] as const).map((type) => (
+                          <div key={type} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`ai-type-${type}`}
+                              checked={aiQuestionTypes.includes(type)}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setAiQuestionTypes(prev => [...prev, type])
+                                } else {
+                                  setAiQuestionTypes(prev => prev.filter(t => t !== type))
+                                }
+                              }}
+                            />
+                            <Label htmlFor={`ai-type-${type}`} className="text-sm capitalize">
+                              {type === 'textarea' ? 'Long Text' : type}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {!aiConfig && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <p className="text-sm text-amber-700">
+                              <strong>AI Configuration Missing:</strong> Configure your AI provider in settings for full functionality.
+                            </p>
+                            <p className="text-xs text-amber-600 mt-1">
+                              For demo purposes, you can use the built-in fallback mode with limited capabilities.
+                            </p>
+                          </div>
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              // Set up demo config
+                              const demoConfig = {
+                                provider: 'anthropic',
+                                apiKey: 'demo-key'
+                              };
+                              localStorage.setItem('ai-config', JSON.stringify(demoConfig));
+                              setAiConfig(demoConfig);
+                              toast({
+                                title: "Demo Mode Enabled",
+                                description: "Using demo AI configuration. Configure proper API keys in settings for full functionality.",
+                                variant: "default"
+                              });
+                            }}
+                            className="bg-amber-600 hover:bg-amber-700 text-white text-xs"
+                          >
+                            Enable Demo
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex justify-end pt-2">
+                      <Button
+                        onClick={handleGenerateAIQuestions}
+                        disabled={!aiTopic.trim() || isGeneratingAI}
+                        className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-medium px-6 py-2 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isGeneratingAI ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Generating...
+                          </>
+                        ) : (
+                          <>
+                            <Star className="h-4 w-4 mr-2" />
+                            Generate AI Questions
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               <div className="flex gap-2">
                 <Button onClick={handleSaveForm} disabled={isSubmitting} className="bg-blue-600 hover:bg-blue-700 text-white disabled:bg-blue-400 disabled:text-white">
                   {isSubmitting ? (

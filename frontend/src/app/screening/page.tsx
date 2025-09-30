@@ -1,18 +1,20 @@
 'use client'
 
 import React, { useState, useEffect, useMemo } from 'react'
-import { Search, Filter, Users, Target, Brain, ChevronDown, ChevronRight, Star, CheckCircle, XCircle, User, Briefcase, MapPin, Clock, Download, Trash2 } from 'lucide-react'
+import { Search, Filter, Users, Target, Brain, ChevronDown, ChevronRight, Star, CheckCircle, XCircle, User, Briefcase, MapPin, Clock, Download, Trash2, Phone } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { PDFViewer } from "@/components/ui/pdf-viewer"
+import { AudioPlayer } from "@/components/ui/audio-player"
 import { Progress } from "@/components/ui/progress"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { useToast } from "@/hooks/use-toast"
 import { getJobs } from "@/lib/api/jobs"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
-import { getScreeningCandidateData, clearScreeningCandidateData, ScreeningCandidateData } from "@/utils/screeningData"
+import { getScreeningCandidateData, getScreeningCandidatesList, removeFromScreeningList, clearScreeningCandidateData, ScreeningCandidateData } from "@/utils/screeningData"
 
 interface Job {
   id: number
@@ -35,6 +37,9 @@ interface Candidate {
   experience_years: number | null
   experience_level: string
   resume_text: string
+  resume_file?: string
+  call_audio_url?: string
+  call_transcript?: string
   education: any[]
   certifications: any[]
   salary_expectation: number | null
@@ -179,7 +184,7 @@ export default function ScreeningPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [screeningResults, setScreeningResults] = useState<ScreeningResult[]>([])
   const [expandedCards, setExpandedCards] = useState<Set<number>>(new Set())
-  const [movedCandidateData, setMovedCandidateData] = useState<ScreeningCandidateData | null>(null)
+  const [movedCandidatesList, setMovedCandidatesList] = useState<ScreeningCandidateData[]>([])
 
   // Load jobs and applications on component mount
   useEffect(() => {
@@ -187,10 +192,19 @@ export default function ScreeningPage() {
     fetchCandidates()
     fetchApplications()
     
-    // Check for moved candidate data from candidates page
+    // Load screening candidates list
+    const screeningList = getScreeningCandidatesList()
+    setMovedCandidatesList(screeningList)
+
+    // Check for single moved candidate data from candidates page (legacy support)
     const screeningData = getScreeningCandidateData()
     if (screeningData) {
-      setMovedCandidateData(screeningData)
+      // Add to list if not already present
+      if (!screeningList.some(candidate => candidate.id === screeningData.id)) {
+        const updatedList = [...screeningList, screeningData]
+        setMovedCandidatesList(updatedList)
+      }
+
       // Auto-select the job if provided
       if (screeningData.jobId) {
         setSelectedJobId(screeningData.jobId.toString())
@@ -617,11 +631,11 @@ export default function ScreeningPage() {
 
   // Handle closing the moved candidate data
   const handleCloseMovedCandidate = async () => {
-    if (!movedCandidateData) return
+    if (!movedCandidatesList) return
 
     try {
       // Update candidate status back to "new" so they appear in candidates page again
-      const response = await fetch(`http://localhost:8000/api/candidates/${movedCandidateData.id}/`, {
+      const response = await fetch(`http://localhost:8000/api/candidates/${movedCandidatesList[0].id}/`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -635,25 +649,212 @@ export default function ScreeningPage() {
         throw new Error(`Failed to update candidate status: ${response.statusText}`)
       }
 
-      setMovedCandidateData(null)
+      setMovedCandidatesList([])
       clearScreeningCandidateData()
 
       toast({
         title: "Candidate Returned",
-        description: `${movedCandidateData.name} has been returned to the candidates page.`,
+        description: `${movedCandidatesList[0].name} has been returned to the candidates page.`,
         variant: "default"
       })
 
     } catch (error) {
       console.error('Error returning candidate:', error)
       // Even if the API call fails, clear the local data
-      setMovedCandidateData(null)
+      setMovedCandidatesList([])
       clearScreeningCandidateData()
 
       toast({
         title: "Candidate Data Cleared",
         description: "The screening data has been cleared. Please check the candidates page manually.",
         variant: "default"
+      })
+    }
+  }
+
+  // Handle removing a candidate from screening list
+  const handleRemoveFromScreening = async (candidateId: number) => {
+    const candidateToRemove = movedCandidatesList.find(c => c.id === candidateId)
+    if (!candidateToRemove) {
+      console.error(`Candidate with ID ${candidateId} not found in moved candidates list`);
+      toast({
+        title: "Error",
+        description: `Candidate with ID ${candidateId} not found in screening list`,
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      console.log(`Attempting to update candidate ${candidateId} status to 'new'`);
+
+      // First check if candidate exists
+      const checkResponse = await fetch(`http://localhost:8000/api/candidates/${candidateId}/`);
+      if (!checkResponse.ok) {
+        if (checkResponse.status === 404) {
+          console.warn(`Candidate ${candidateId} not found in backend, removing from local list only`);
+          // Remove from local list since it doesn't exist in backend
+          removeFromScreeningList(candidateId);
+          setMovedCandidatesList(prev => prev.filter(c => c.id !== candidateId));
+
+          toast({
+            title: "Candidate Removed",
+            description: `${candidateToRemove.name} has been removed from screening (candidate not found in database).`,
+            variant: "default"
+          });
+          return;
+        }
+        throw new Error(`Failed to check candidate existence: ${checkResponse.statusText}`);
+      }
+
+      // Update candidate status back to "new" so they appear in candidates page again
+      const response = await fetch(`http://localhost:8000/api/candidates/${candidateId}/`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          status: 'new'
+        })
+      })
+
+      console.log(`Response status: ${response.status}, statusText: ${response.statusText}`);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`API Error Response: ${errorText}`);
+        throw new Error(`Failed to update candidate status: ${response.statusText} (${response.status}) - ${errorText}`)
+      }
+
+      // Remove from local list and sessionStorage
+      removeFromScreeningList(candidateId)
+      setMovedCandidatesList(prev => prev.filter(c => c.id !== candidateId))
+
+      toast({
+        title: "Candidate Removed",
+        description: `${candidateToRemove.name} has been removed from screening and returned to the candidates page.`,
+        variant: "default"
+      })
+
+    } catch (error) {
+      console.error('Error removing candidate:', error)
+      // Even if the API call fails, remove from local data
+      removeFromScreeningList(candidateId)
+      setMovedCandidatesList(prev => prev.filter(c => c.id !== candidateId))
+
+      toast({
+        title: "Error",
+        description: "Failed to update candidate status, but removed from screening.",
+        variant: "destructive"
+      })
+    }
+  }
+
+  // Handle clearing all candidates from screening
+  const handleClearAllCandidates = async () => {
+    if (movedCandidatesList.length === 0) return
+
+    try {
+      // Update all candidates status back to "new"
+      await Promise.all(
+        movedCandidatesList.map(candidate =>
+          fetch(`http://localhost:8000/api/candidates/${candidate.id}/`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              status: 'new'
+            })
+          })
+        )
+      )
+
+      // Clear all data
+      clearScreeningCandidateData()
+      setMovedCandidatesList([])
+
+      toast({
+        title: "All Candidates Cleared",
+        description: "All candidates have been returned to the candidates page.",
+        variant: "default"
+      })
+
+    } catch (error) {
+      console.error('Error clearing candidates:', error)
+      // Even if API calls fail, clear local data
+      clearScreeningCandidateData()
+      setMovedCandidatesList([])
+
+      toast({
+        title: "Error",
+        description: "Failed to update candidate statuses, but cleared from screening.",
+        variant: "destructive"
+      })
+    }
+  }
+
+  // Handle MCP server call with candidate
+  const handleStartMCPCall = async (candidate: ScreeningCandidateData) => {
+    // Check if candidate has a phone number
+    if (!candidate.phone) {
+      toast({
+        title: "No Phone Number",
+        description: `${candidate.name} doesn't have a phone number on file`,
+        variant: "destructive"
+      })
+      return;
+    }
+
+    try {
+      const requestData = {
+        candidateName: candidate.name,
+        candidateEmail: candidate.email,
+        candidatePhone: candidate.phone,
+        jobTitle: candidate.jobTitle || 'Open Position',
+        action: 'start_screening_call'
+      };
+
+      console.log('Frontend - Sending MCP call request:', requestData);
+
+      const response = await fetch('/api/mcp-call', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestData)
+      });
+
+      console.log('Frontend - Response status:', response.status);
+      console.log('Frontend - Response ok:', response.ok);
+
+      const result = await response.json();
+      console.log('Frontend - Response data:', result);
+
+      if (result.success) {
+        const title = result.demo ? "Demo Call Initiated" : "Call Initiated";
+        const description = result.demo ?
+          `Demo call started for ${candidate.name} (Retell AI not configured)` :
+          `Calling ${candidate.name} at ${candidate.phone}`;
+
+        toast({
+          title,
+          description,
+          variant: "default"
+        })
+      } else {
+        toast({
+          title: "Call Failed",
+          description: result.message || "Failed to initiate call",
+          variant: "destructive"
+        })
+      }
+    } catch (error) {
+      console.error('Error starting call:', error)
+      toast({
+        title: "Error",
+        description: "Failed to start call",
+        variant: "destructive"
       })
     }
   }
@@ -672,11 +873,29 @@ export default function ScreeningPage() {
               <Brain className="h-4 w-4" />
               AI Powered
             </Badge>
+            <Badge variant="outline" className="flex items-center gap-2 text-blue-600 border-blue-300">
+              <Phone className="h-4 w-4" />
+              MCP Server Calls
+            </Badge>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleStartMCPCall({
+                id: 999,
+                name: "Test Candidate",
+                email: "test@example.com",
+                phone: "1234567890",
+                jobTitle: "Test Position"
+              })}
+              className="text-green-600 hover:text-green-800"
+            >
+              Test Call
+            </Button>
           </div>
         </div>
 
-        {/* Moved Candidate Data Section */}
-        {movedCandidateData && (
+        {/* Screening Candidates List Section */}
+        {movedCandidatesList.length > 0 && (
           <Card className="border-2 border-blue-200 bg-blue-50/30">
             <CardHeader className="pb-4">
               <div className="flex items-center justify-between">
@@ -686,146 +905,130 @@ export default function ScreeningPage() {
                   </div>
                   <div>
                     <CardTitle className="text-base text-blue-900">
-                      Candidate Moved for Screening: {movedCandidateData.name}
+                      Candidates for Screening ({movedCandidatesList.length})
                     </CardTitle>
                     <CardDescription className="text-blue-700">
-                      {movedCandidateData.jobTitle && `Applied for: ${movedCandidateData.jobTitle}`}
+                      Select a job below to screen these candidates
                     </CardDescription>
                   </div>
                 </div>
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  onClick={handleCloseMovedCandidate}
-                  className="text-blue-600 hover:text-blue-800"
-                >
-                  <XCircle className="h-4 w-4 mr-2" />
-                  Clear
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleClearAllCandidates}
+                    className="text-blue-600 hover:text-blue-800 border-blue-300"
+                  >
+                    <XCircle className="h-4 w-4 mr-2" />
+                    Clear All
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
-              <div className="grid md:grid-cols-3 gap-6">
-                {/* Basic Information */}
-                <div className="space-y-3">
-                  <h4 className="font-semibold text-gray-900 flex items-center gap-2">
-                    <User className="h-4 w-4" />
-                    Basic Information
-                  </h4>
-                  <div className="space-y-2 text-sm">
-                    <div>
-                      <span className="font-medium text-gray-600">Email:</span>
-                      <div className="text-gray-900">{movedCandidateData.email}</div>
+              <div className="space-y-4">
+                {movedCandidatesList.map((candidate, index) => (
+                  <div key={candidate.id} className="border border-slate-200 rounded-lg p-4 bg-white/50">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <h4 className="font-semibold text-gray-900">{candidate.name}</h4>
+                        <p className="text-sm text-gray-600">{candidate.email}</p>
+                        {candidate.jobTitle && (
+                          <p className="text-xs text-blue-600">Applied for: {candidate.jobTitle}</p>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleStartMCPCall(candidate)}
+                          className={candidate.phone ?
+                            "text-blue-600 hover:text-blue-800 hover:bg-blue-50" :
+                            "text-gray-400 hover:text-gray-600 hover:bg-gray-50"
+                          }
+                          title={candidate.phone ?
+                            `Call ${candidate.name} at ${candidate.phone}` :
+                            "No phone number available"
+                          }
+                        >
+                          <Phone className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRemoveFromScreening(candidate.id)}
+                          className="text-red-600 hover:text-red-800 hover:bg-red-50"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
-                    {movedCandidateData.phone && (
-                      <div>
-                        <span className="font-medium text-gray-600">Phone:</span>
-                        <div className="text-gray-900">{movedCandidateData.phone}</div>
-                      </div>
-                    )}
-                    {movedCandidateData.location && (
-                      <div>
-                        <span className="font-medium text-gray-600">Location:</span>
-                        <div className="text-gray-900 flex items-center gap-1">
-                          <MapPin className="h-3 w-3" />
-                          {movedCandidateData.location}
-                        </div>
-                      </div>
-                    )}
-                    {movedCandidateData.salary_expectation && (
-                      <div>
-                        <span className="font-medium text-gray-600">Expected Salary:</span>
-                        <div className="text-gray-900">${movedCandidateData.salary_expectation.toLocaleString()}</div>
-                      </div>
-                    )}
-                  </div>
-                </div>
 
-                {/* Experience */}
-                <div className="space-y-3">
-                  <h4 className="font-semibold text-gray-900 flex items-center gap-2">
-                    <Briefcase className="h-4 w-4" />
-                    Experience
-                  </h4>
-                  <div className="space-y-2 text-sm">
-                    {movedCandidateData.experience_years && (
-                      <div>
-                        <span className="font-medium text-gray-600">Years of Experience:</span>
-                        <div className="text-gray-900 flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          {movedCandidateData.experience_years} years
-                        </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                      {/* Basic Info */}
+                      <div className="space-y-2">
+                        {candidate.phone && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-500">Phone:</span>
+                            <span>{candidate.phone}</span>
+                          </div>
+                        )}
+                        {candidate.location && (
+                          <div className="flex items-center gap-2">
+                            <MapPin className="h-3 w-3 text-gray-500" />
+                            <span>{candidate.location}</span>
+                          </div>
+                        )}
+                        {candidate.salary_expectation && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-500">Expected:</span>
+                            <span>${candidate.salary_expectation.toLocaleString()}</span>
+                          </div>
+                        )}
                       </div>
-                    )}
-                    {movedCandidateData.experience_level && (
-                      <div>
-                        <span className="font-medium text-gray-600">Experience Level:</span>
-                        <Badge variant="outline" className="text-xs">
-                          {movedCandidateData.experience_level}
-                        </Badge>
-                      </div>
-                    )}
-                    {movedCandidateData.current_position && (
-                      <div>
-                        <span className="font-medium text-gray-600">Current Position:</span>
-                        <div className="text-gray-900" title={movedCandidateData.current_position}>
-                          {extractCurrentRole(movedCandidateData.current_position)}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
 
-                {/* Skills & Education */}
-                <div className="space-y-3">
-                  <h4 className="font-semibold text-gray-900 flex items-center gap-2">
-                    <Target className="h-4 w-4" />
-                    Skills & Education
-                  </h4>
-                  <div className="space-y-3 text-sm">
-                    {movedCandidateData.skills && movedCandidateData.skills.length > 0 && (
-                      <div>
-                        <span className="font-medium text-gray-600">Skills:</span>
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {movedCandidateData.skills.slice(0, 8).map((skill, index) => (
-                            <Badge key={index} variant="secondary" className="text-xs">
-                              {skill}
-                            </Badge>
-                          ))}
-                          {movedCandidateData.skills.length > 8 && (
-                            <Badge variant="outline" className="text-xs">
-                              +{movedCandidateData.skills.length - 8} more
-                            </Badge>
-                          )}
-                        </div>
+                      {/* Professional Info */}
+                      <div className="space-y-2">
+                        {candidate.experience_years && (
+                          <div className="flex items-center gap-2">
+                            <Clock className="h-3 w-3 text-gray-500" />
+                            <span>{candidate.experience_years} years experience</span>
+                          </div>
+                        )}
+                        {candidate.experience_level && (
+                          <Badge variant="outline" className="text-xs">
+                            {candidate.experience_level}
+                          </Badge>
+                        )}
+                        {candidate.current_position && (
+                          <div className="text-xs text-gray-600" title={candidate.current_position}>
+                            {extractCurrentRole(candidate.current_position)}
+                          </div>
+                        )}
                       </div>
-                    )}
-                    {movedCandidateData.education && movedCandidateData.education.length > 0 && (
-                      <div>
-                        <span className="font-medium text-gray-600">Education:</span>
-                        <div className="space-y-1">
-                          {movedCandidateData.education.slice(0, 2).map((edu, index) => (
-                            <div key={index} className="text-gray-900 text-xs bg-gray-100 px-2 py-1 rounded">
-                              {typeof edu === 'string' ? edu : JSON.stringify(edu)}
+
+                      {/* Skills */}
+                      <div className="space-y-2">
+                        {candidate.skills && candidate.skills.length > 0 && (
+                          <div>
+                            <div className="flex flex-wrap gap-1">
+                              {candidate.skills.slice(0, 4).map((skill, idx) => (
+                                <Badge key={idx} variant="secondary" className="text-xs">
+                                  {skill}
+                                </Badge>
+                              ))}
+                              {candidate.skills.length > 4 && (
+                                <Badge variant="outline" className="text-xs">
+                                  +{candidate.skills.length - 4} more
+                                </Badge>
+                              )}
                             </div>
-                          ))}
-                        </div>
+                          </div>
+                        )}
                       </div>
-                    )}
-                    {movedCandidateData.certifications && movedCandidateData.certifications.length > 0 && (
-                      <div>
-                        <span className="font-medium text-gray-600">Certifications:</span>
-                        <div className="space-y-1">
-                          {movedCandidateData.certifications.slice(0, 2).map((cert, index) => (
-                            <div key={index} className="text-gray-900 text-xs bg-green-100 px-2 py-1 rounded">
-                              {typeof cert === 'string' ? cert : JSON.stringify(cert)}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                    </div>
                   </div>
-                </div>
+                ))}
               </div>
             </CardContent>
           </Card>
@@ -947,7 +1150,7 @@ export default function ScreeningPage() {
         )} */}
 
      
-        {/* {selectedJobId && !isLoading && filteredResults.length > 0 && (
+        {selectedJobId && !isLoading && filteredResults.length > 0 && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold text-gray-900">Screening Results</h2>
@@ -1044,50 +1247,51 @@ export default function ScreeningPage() {
 
                     <CollapsibleContent>
                       <CardContent>
-                        <div className="grid md:grid-cols-2 gap-6">
-                        
-                          <div className="space-y-4">
-                            <h4 className="font-semibold text-gray-900">Detailed Analysis</h4>
-                            
-                            <div className="space-y-3">
-                              <div>
-                                <div className="flex justify-between items-center mb-1">
-                                  <span className="text-sm font-medium">Required Skills Match</span>
-                                  <span className="text-sm font-semibold">{result.breakdown.requiredSkillsMatch}%</span>
-                                </div>
-                                <Progress value={result.breakdown.requiredSkillsMatch} className="h-2" />
-                              </div>
+                        <div className="space-y-6">
+                          {/* Main Content Grid */}
+                          <div className="grid md:grid-cols-2 gap-6">
 
-                              <div>
-                                <div className="flex justify-between items-center mb-1">
-                                  <span className="text-sm font-medium">Experience Level Fit</span>
-                                  <span className="text-sm font-semibold">{result.breakdown.experienceLevelMatch}%</span>
-                                </div>
-                                <Progress value={result.breakdown.experienceLevelMatch} className="h-2" />
-                              </div>
+                            <div className="space-y-4">
+                              <h4 className="font-semibold text-gray-900">Detailed Analysis</h4>
 
-                              <div>
-                                <div className="flex justify-between items-center mb-1">
-                                  <span className="text-sm font-medium">Keyword Relevance</span>
-                                  <span className="text-sm font-semibold">{result.keywordScore}%</span>
+                              <div className="space-y-3">
+                                <div>
+                                  <div className="flex justify-between items-center mb-1">
+                                    <span className="text-sm font-medium">Required Skills Match</span>
+                                    <span className="text-sm font-semibold">{result.breakdown.requiredSkillsMatch}%</span>
+                                  </div>
+                                  <Progress value={result.breakdown.requiredSkillsMatch} className="h-2" />
                                 </div>
-                                <Progress value={result.keywordScore} className="h-2" />
-                              </div>
 
-                              <div>
-                                <div className="flex justify-between items-center mb-1">
-                                  <span className="text-sm font-medium">Salary Expectation</span>
-                                  <Badge variant={result.breakdown.salaryFit === 'good' ? 'default' : 'secondary'}>
-                                    {result.breakdown.salaryFit}
-                                  </Badge>
+                                <div>
+                                  <div className="flex justify-between items-center mb-1">
+                                    <span className="text-sm font-medium">Experience Level Fit</span>
+                                    <span className="text-sm font-semibold">{result.breakdown.experienceLevelMatch}%</span>
+                                  </div>
+                                  <Progress value={result.breakdown.experienceLevelMatch} className="h-2" />
+                                </div>
+
+                                <div>
+                                  <div className="flex justify-between items-center mb-1">
+                                    <span className="text-sm font-medium">Keyword Relevance</span>
+                                    <span className="text-sm font-semibold">{result.keywordScore}%</span>
+                                  </div>
+                                  <Progress value={result.keywordScore} className="h-2" />
+                                </div>
+
+                                <div>
+                                  <div className="flex justify-between items-center mb-1">
+                                    <span className="text-sm font-medium">Salary Expectation</span>
+                                    <Badge variant={result.breakdown.salaryFit === 'good' ? 'default' : 'secondary'}>
+                                      {result.breakdown.salaryFit}
+                                    </Badge>
+                                  </div>
                                 </div>
                               </div>
                             </div>
-                          </div>
 
-                        
-                          <div className="space-y-4">
-                            <h4 className="font-semibold text-gray-900">Candidate Profile</h4>
+                            <div className="space-y-4">
+                              <h4 className="font-semibold text-gray-900">Candidate Profile</h4>
                             
                             <div className="space-y-3 text-sm">
                               
@@ -1133,6 +1337,46 @@ export default function ScreeningPage() {
                             </div>
                           </div>
                         </div>
+
+                        {/* Media Content Grid */}
+                          <div className="grid lg:grid-cols-2 gap-6">
+                            {/* Resume PDF Viewer */}
+                            <div className="space-y-4">
+                              <h4 className="font-semibold text-gray-900">Resume</h4>
+                              {result.candidate.resume_file ? (
+                                <PDFViewer
+                                  url={result.candidate.resume_file}
+                                  candidateName={`${result.candidate.first_name}_${result.candidate.last_name}`}
+                                  className="w-full"
+                                />
+                              ) : (
+                                <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-gray-300 rounded-lg">
+                                  <User className="h-12 w-12 text-gray-400 mb-4" />
+                                  <p className="text-gray-600 text-center">No resume file available</p>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Call Audio Player */}
+                            <div className="space-y-4">
+                              <h4 className="font-semibold text-gray-900">Screening Call</h4>
+                              {result.candidate.call_audio_url ? (
+                                <AudioPlayer
+                                  url={result.candidate.call_audio_url}
+                                  candidateName={`${result.candidate.first_name}_${result.candidate.last_name}`}
+                                  transcript={result.candidate.call_transcript}
+                                  className="w-full"
+                                />
+                              ) : (
+                                <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-gray-300 rounded-lg">
+                                  <Phone className="h-12 w-12 text-gray-400 mb-4" />
+                                  <p className="text-gray-600 text-center">No call recording available</p>
+                                  <p className="text-gray-500 text-sm mt-1">Start a screening call to generate recording</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
                       </CardContent>
                     </CollapsibleContent>
                   </Collapsible>
@@ -1140,7 +1384,7 @@ export default function ScreeningPage() {
               )
             })}
           </div>
-        )} */}
+        )}
       </div>
     </ProtectedRoute>
   )
