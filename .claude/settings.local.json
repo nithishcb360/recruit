@@ -39,7 +39,9 @@
       "Bash(npm info:*)",
       "Bash(npm install:*)",
       "Bash(npm ls:*)",
-      "Bash(npm uninstall:*)"
+      "Bash(npm uninstall:*)",
+      "Bash(timeout 30 npm run dev)",
+      "Bash(timeout 15 npm run dev)"
     ]
   }
 }

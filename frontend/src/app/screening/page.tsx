@@ -6,6 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { PDFViewer } from "@/components/ui/pdf-viewer"
+import { AudioPlayer } from "@/components/ui/audio-player"
 import { Progress } from "@/components/ui/progress"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -35,6 +37,9 @@ interface Candidate {
   experience_years: number | null
   experience_level: string
   resume_text: string
+  resume_file?: string
+  call_audio_url?: string
+  call_transcript?: string
   education: any[]
   certifications: any[]
   salary_expectation: number | null
@@ -626,11 +631,11 @@ export default function ScreeningPage() {
 
   // Handle closing the moved candidate data
   const handleCloseMovedCandidate = async () => {
-    if (!movedCandidateData) return
+    if (!movedCandidatesList) return
 
     try {
       // Update candidate status back to "new" so they appear in candidates page again
-      const response = await fetch(`http://localhost:8000/api/candidates/${movedCandidateData.id}/`, {
+      const response = await fetch(`http://localhost:8000/api/candidates/${movedCandidatesList[0].id}/`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -644,19 +649,19 @@ export default function ScreeningPage() {
         throw new Error(`Failed to update candidate status: ${response.statusText}`)
       }
 
-      setMovedCandidateData(null)
+      setMovedCandidatesList([])
       clearScreeningCandidateData()
 
       toast({
         title: "Candidate Returned",
-        description: `${movedCandidateData.name} has been returned to the candidates page.`,
+        description: `${movedCandidatesList[0].name} has been returned to the candidates page.`,
         variant: "default"
       })
 
     } catch (error) {
       console.error('Error returning candidate:', error)
       // Even if the API call fails, clear the local data
-      setMovedCandidateData(null)
+      setMovedCandidatesList([])
       clearScreeningCandidateData()
 
       toast({
@@ -1145,7 +1150,7 @@ export default function ScreeningPage() {
         )} */}
 
      
-        {/* {selectedJobId && !isLoading && filteredResults.length > 0 && (
+        {selectedJobId && !isLoading && filteredResults.length > 0 && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold text-gray-900">Screening Results</h2>
@@ -1242,50 +1247,51 @@ export default function ScreeningPage() {
 
                     <CollapsibleContent>
                       <CardContent>
-                        <div className="grid md:grid-cols-2 gap-6">
-                        
-                          <div className="space-y-4">
-                            <h4 className="font-semibold text-gray-900">Detailed Analysis</h4>
-                            
-                            <div className="space-y-3">
-                              <div>
-                                <div className="flex justify-between items-center mb-1">
-                                  <span className="text-sm font-medium">Required Skills Match</span>
-                                  <span className="text-sm font-semibold">{result.breakdown.requiredSkillsMatch}%</span>
-                                </div>
-                                <Progress value={result.breakdown.requiredSkillsMatch} className="h-2" />
-                              </div>
+                        <div className="space-y-6">
+                          {/* Main Content Grid */}
+                          <div className="grid md:grid-cols-2 gap-6">
 
-                              <div>
-                                <div className="flex justify-between items-center mb-1">
-                                  <span className="text-sm font-medium">Experience Level Fit</span>
-                                  <span className="text-sm font-semibold">{result.breakdown.experienceLevelMatch}%</span>
-                                </div>
-                                <Progress value={result.breakdown.experienceLevelMatch} className="h-2" />
-                              </div>
+                            <div className="space-y-4">
+                              <h4 className="font-semibold text-gray-900">Detailed Analysis</h4>
 
-                              <div>
-                                <div className="flex justify-between items-center mb-1">
-                                  <span className="text-sm font-medium">Keyword Relevance</span>
-                                  <span className="text-sm font-semibold">{result.keywordScore}%</span>
+                              <div className="space-y-3">
+                                <div>
+                                  <div className="flex justify-between items-center mb-1">
+                                    <span className="text-sm font-medium">Required Skills Match</span>
+                                    <span className="text-sm font-semibold">{result.breakdown.requiredSkillsMatch}%</span>
+                                  </div>
+                                  <Progress value={result.breakdown.requiredSkillsMatch} className="h-2" />
                                 </div>
-                                <Progress value={result.keywordScore} className="h-2" />
-                              </div>
 
-                              <div>
-                                <div className="flex justify-between items-center mb-1">
-                                  <span className="text-sm font-medium">Salary Expectation</span>
-                                  <Badge variant={result.breakdown.salaryFit === 'good' ? 'default' : 'secondary'}>
-                                    {result.breakdown.salaryFit}
-                                  </Badge>
+                                <div>
+                                  <div className="flex justify-between items-center mb-1">
+                                    <span className="text-sm font-medium">Experience Level Fit</span>
+                                    <span className="text-sm font-semibold">{result.breakdown.experienceLevelMatch}%</span>
+                                  </div>
+                                  <Progress value={result.breakdown.experienceLevelMatch} className="h-2" />
+                                </div>
+
+                                <div>
+                                  <div className="flex justify-between items-center mb-1">
+                                    <span className="text-sm font-medium">Keyword Relevance</span>
+                                    <span className="text-sm font-semibold">{result.keywordScore}%</span>
+                                  </div>
+                                  <Progress value={result.keywordScore} className="h-2" />
+                                </div>
+
+                                <div>
+                                  <div className="flex justify-between items-center mb-1">
+                                    <span className="text-sm font-medium">Salary Expectation</span>
+                                    <Badge variant={result.breakdown.salaryFit === 'good' ? 'default' : 'secondary'}>
+                                      {result.breakdown.salaryFit}
+                                    </Badge>
+                                  </div>
                                 </div>
                               </div>
                             </div>
-                          </div>
 
-                        
-                          <div className="space-y-4">
-                            <h4 className="font-semibold text-gray-900">Candidate Profile</h4>
+                            <div className="space-y-4">
+                              <h4 className="font-semibold text-gray-900">Candidate Profile</h4>
                             
                             <div className="space-y-3 text-sm">
                               
@@ -1331,6 +1337,46 @@ export default function ScreeningPage() {
                             </div>
                           </div>
                         </div>
+
+                        {/* Media Content Grid */}
+                          <div className="grid lg:grid-cols-2 gap-6">
+                            {/* Resume PDF Viewer */}
+                            <div className="space-y-4">
+                              <h4 className="font-semibold text-gray-900">Resume</h4>
+                              {result.candidate.resume_file ? (
+                                <PDFViewer
+                                  url={result.candidate.resume_file}
+                                  candidateName={`${result.candidate.first_name}_${result.candidate.last_name}`}
+                                  className="w-full"
+                                />
+                              ) : (
+                                <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-gray-300 rounded-lg">
+                                  <User className="h-12 w-12 text-gray-400 mb-4" />
+                                  <p className="text-gray-600 text-center">No resume file available</p>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Call Audio Player */}
+                            <div className="space-y-4">
+                              <h4 className="font-semibold text-gray-900">Screening Call</h4>
+                              {result.candidate.call_audio_url ? (
+                                <AudioPlayer
+                                  url={result.candidate.call_audio_url}
+                                  candidateName={`${result.candidate.first_name}_${result.candidate.last_name}`}
+                                  transcript={result.candidate.call_transcript}
+                                  className="w-full"
+                                />
+                              ) : (
+                                <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-gray-300 rounded-lg">
+                                  <Phone className="h-12 w-12 text-gray-400 mb-4" />
+                                  <p className="text-gray-600 text-center">No call recording available</p>
+                                  <p className="text-gray-500 text-sm mt-1">Start a screening call to generate recording</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
                       </CardContent>
                     </CollapsibleContent>
                   </Collapsible>
@@ -1338,7 +1384,7 @@ export default function ScreeningPage() {
               )
             })}
           </div>
-        )} */}
+        )}
       </div>
     </ProtectedRoute>
   )
