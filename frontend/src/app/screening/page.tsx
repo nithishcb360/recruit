@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast"
 import { getJobs } from "@/lib/api/jobs"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { getScreeningCandidateData, getScreeningCandidatesList, removeFromScreeningList, clearScreeningCandidateData, ScreeningCandidateData } from "@/utils/screeningData"
+import { enhancedRetellAPI, EnhancedRetellCallData } from "@/lib/api/retell-enhanced"
 
 interface Job {
   id: number
@@ -185,6 +186,168 @@ export default function ScreeningPage() {
   const [screeningResults, setScreeningResults] = useState<ScreeningResult[]>([])
   const [expandedCards, setExpandedCards] = useState<Set<number>>(new Set())
   const [movedCandidatesList, setMovedCandidatesList] = useState<ScreeningCandidateData[]>([])
+  const [candidateCallData, setCandidateCallData] = useState<Map<number, EnhancedRetellCallData>>(new Map())
+  const [loadingCallData, setLoadingCallData] = useState<Set<number>>(new Set())
+  const [callIdInputs, setCallIdInputs] = useState<Map<number, string>>(new Map())
+  const [autoCallScheduled, setAutoCallScheduled] = useState<Set<number>>(new Set())
+  const [autoCallInProgress, setAutoCallInProgress] = useState<Set<number>>(new Set())
+
+  // Check if current time is within working hours (10 AM - 6 PM)
+  const isWithinWorkingHours = (): boolean => {
+    const currentHour = new Date().getHours()
+    return currentHour >= 10 && currentHour < 18 // 10 AM to 6 PM (18:00)
+  }
+
+  // Initiate automatic call for a candidate
+  const initiateAutomaticCall = async (candidate: ScreeningCandidateData) => {
+    // Check if it's within working hours
+    if (!isWithinWorkingHours()) {
+      console.log(`Outside working hours. Skipping call for ${candidate.name}`)
+      return
+    }
+
+    // Check if candidate has a phone number
+    if (!candidate.phone) {
+      console.log(`No phone number for ${candidate.name}. Skipping call.`)
+      return
+    }
+
+    // Check if call already scheduled or in progress
+    if (autoCallScheduled.has(candidate.id) || autoCallInProgress.has(candidate.id)) {
+      console.log(`Call already scheduled or in progress for ${candidate.name}`)
+      return
+    }
+
+    try {
+      // Mark as in progress
+      setAutoCallInProgress(prev => new Set(prev).add(candidate.id))
+
+      console.log(`Initiating automatic call for ${candidate.name} at ${candidate.phone}`)
+
+      // Call the existing handleStartMCPCall function
+      await handleStartMCPCall(candidate)
+
+      // Mark as scheduled
+      setAutoCallScheduled(prev => new Set(prev).add(candidate.id))
+
+      // Poll for call completion and fetch recording
+      pollForCallCompletion(candidate)
+
+    } catch (error) {
+      console.error(`Error initiating automatic call for ${candidate.name}:`, error)
+      // Remove from in progress on error
+      setAutoCallInProgress(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(candidate.id)
+        return newSet
+      })
+    }
+  }
+
+  // Poll for call completion and fetch recording/transcript
+  const pollForCallCompletion = async (candidate: ScreeningCandidateData) => {
+    let pollAttempts = 0
+    const maxPollAttempts = 20 // Poll for 10 minutes (20 * 30 seconds)
+
+    const pollInterval = setInterval(async () => {
+      pollAttempts++
+
+      try {
+        // Try to fetch recent completed calls from Retell AI
+        if (enhancedRetellAPI.isConfigured()) {
+          const recentCalls = await enhancedRetellAPI.getRecentCompletedCalls(10)
+
+          // Try to match by candidate phone number or timing
+          const matchingCall = recentCalls.find(call => {
+            // You could implement more sophisticated matching logic here
+            // For now, we'll take the most recent completed call
+            return call.call_status === 'ended' || call.call_status === 'completed'
+          })
+
+          if (matchingCall) {
+            console.log(`Call completed for ${candidate.name}. Fetching recording and transcript...`)
+
+            // Store call data for this candidate
+            setCandidateCallData(prev => {
+              const newMap = new Map(prev)
+              newMap.set(candidate.id, matchingCall)
+              return newMap
+            })
+
+            // Remove from in progress
+            setAutoCallInProgress(prev => {
+              const newSet = new Set(prev)
+              newSet.delete(candidate.id)
+              return newSet
+            })
+
+            // Show success notification
+            toast({
+              title: "Call Completed",
+              description: `Call with ${candidate.name} completed. Recording and transcript loaded.`,
+              variant: "default"
+            })
+
+            clearInterval(pollInterval)
+            return
+          }
+        }
+
+        // Stop polling after max attempts
+        if (pollAttempts >= maxPollAttempts) {
+          console.log(`Max poll attempts reached for ${candidate.name}. Stopping polling.`)
+
+          // Remove from in progress
+          setAutoCallInProgress(prev => {
+            const newSet = new Set(prev)
+            newSet.delete(candidate.id)
+            return newSet
+          })
+
+          clearInterval(pollInterval)
+        }
+      } catch (error) {
+        console.error(`Error polling for call completion for ${candidate.name}:`, error)
+      }
+    }, 30000) // Poll every 30 seconds
+  }
+
+  // Automatic call scheduling effect - runs only once when candidates are added
+  useEffect(() => {
+    // Only proceed if we have candidates in the screening list
+    if (movedCandidatesList.length === 0) return
+
+    // Only proceed if within working hours
+    if (!isWithinWorkingHours()) {
+      console.log('Outside working hours. Automatic calls will not be initiated.')
+      return
+    }
+
+    // Check localStorage to see if calls were already made for these candidates
+    const callsAlreadyMade = JSON.parse(localStorage.getItem('screening_calls_made') || '[]')
+
+    // Iterate through candidates and initiate calls
+    movedCandidatesList.forEach(candidate => {
+      // Skip if call was already made for this candidate
+      if (callsAlreadyMade.includes(candidate.id)) {
+        console.log(`Call already made for ${candidate.name}, skipping.`)
+        return
+      }
+
+      // Only initiate if not already scheduled or in progress
+      if (!autoCallScheduled.has(candidate.id) && !autoCallInProgress.has(candidate.id)) {
+        // Add a small delay to stagger calls
+        const delay = Math.random() * 5000 // Random delay up to 5 seconds
+        setTimeout(() => {
+          initiateAutomaticCall(candidate)
+          // Mark call as made in localStorage
+          const updatedCalls = JSON.parse(localStorage.getItem('screening_calls_made') || '[]')
+          updatedCalls.push(candidate.id)
+          localStorage.setItem('screening_calls_made', JSON.stringify(updatedCalls))
+        }, delay)
+      }
+    })
+  }, [movedCandidatesList])
 
   // Load jobs and applications on component mount
   useEffect(() => {
@@ -595,9 +758,152 @@ export default function ScreeningPage() {
 
   const getScoreColor = (score: number) => {
     if (score >= 85) return 'text-green-600'
-    if (score >= 70) return 'text-blue-600' 
+    if (score >= 70) return 'text-blue-600'
     if (score >= 55) return 'text-yellow-600'
     return 'text-red-600'
+  }
+
+  // Function to manually fetch call data by call ID
+  const fetchCallDataByCallId = async (candidateId: number, callId: string) => {
+    if (!callId.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter a valid call ID",
+        variant: "destructive"
+      })
+      return
+    }
+
+    // Add to loading state
+    setLoadingCallData(prev => new Set(prev).add(candidateId))
+
+    try {
+      console.log(`Fetching call data for candidate ${candidateId} with call ID: ${callId}`)
+
+      const callData = await enhancedRetellAPI.getCallDetails(callId.trim())
+
+      if (callData) {
+        // Store call data for this candidate
+        setCandidateCallData(prev => {
+          const newMap = new Map(prev)
+          newMap.set(candidateId, callData)
+          return newMap
+        })
+
+        toast({
+          title: "Call Data Retrieved",
+          description: `Successfully loaded call recording and transcript for the candidate`,
+          variant: "default"
+        })
+
+        console.log('Call data retrieved:', {
+          callId: callData.call_id,
+          hasRecording: !!callData.recording_url,
+          hasTranscript: !!callData.transcript,
+          status: callData.call_status,
+          duration: callData.duration_ms
+        })
+      } else {
+        toast({
+          title: "Call Not Found",
+          description: "Could not find call data with the provided call ID",
+          variant: "destructive"
+        })
+      }
+    } catch (error) {
+      console.error('Error fetching call data:', error)
+      toast({
+        title: "Error",
+        description: "Failed to fetch call data from Retell AI",
+        variant: "destructive"
+      })
+    } finally {
+      // Remove from loading state
+      setLoadingCallData(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(candidateId)
+        return newSet
+      })
+    }
+  }
+
+  // Function to load recent calls and try to match with candidates
+  const loadRecentCallsForCandidates = async () => {
+    if (!enhancedRetellAPI.isConfigured()) {
+      toast({
+        title: "Retell AI Not Configured",
+        description: "Please configure Retell AI credentials to load call data",
+        variant: "destructive"
+      })
+      return
+    }
+
+    try {
+      console.log('Loading recent calls from Retell AI...')
+      const recentCalls = await enhancedRetellAPI.getRecentCompletedCalls(50)
+
+      console.log(`Found ${recentCalls.length} recent completed calls`)
+
+      // Try to match calls with candidates based on phone numbers
+      const candidatesWithPhones = screeningResults.filter(result =>
+        result.candidate.email || result.candidate.id
+      )
+
+      let matchedCalls = 0
+      recentCalls.forEach(call => {
+        // You could implement phone number matching here
+        // For now, let's store the most recent call for demo purposes
+        if (candidatesWithPhones.length > 0 && matchedCalls === 0) {
+          const candidate = candidatesWithPhones[0].candidate
+          setCandidateCallData(prev => {
+            const newMap = new Map(prev)
+            newMap.set(candidate.id, call)
+            return newMap
+          })
+          matchedCalls++
+        }
+      })
+
+      if (matchedCalls > 0) {
+        toast({
+          title: "Recent Calls Loaded",
+          description: `Loaded ${matchedCalls} recent call(s) for candidates`,
+          variant: "default"
+        })
+      } else {
+        toast({
+          title: "No Matching Calls",
+          description: "No recent calls could be matched with current candidates",
+          variant: "default"
+        })
+      }
+    } catch (error) {
+      console.error('Error loading recent calls:', error)
+      toast({
+        title: "Error",
+        description: "Failed to load recent calls from Retell AI",
+        variant: "destructive"
+      })
+    }
+  }
+
+  // Function to get call data for a candidate
+  const getCallDataForCandidate = (candidateId: number): EnhancedRetellCallData | null => {
+    return candidateCallData.get(candidateId) || null
+  }
+
+  // Function to handle call ID input changes
+  const handleCallIdInputChange = (candidateId: number, callId: string) => {
+    setCallIdInputs(prev => {
+      const newMap = new Map(prev)
+      newMap.set(candidateId, callId)
+      return newMap
+    })
+  }
+
+  // Function to get call ID input for a candidate
+  const getCallIdInput = (candidateId: number): string => {
+    return callIdInputs.get(candidateId) || ""
   }
 
   const handleDeleteCandidate = async (candidateId: number) => {
@@ -1027,6 +1333,30 @@ export default function ScreeningPage() {
                         )}
                       </div>
                     </div>
+
+                    {/* Call Recording and Transcript Section */}
+                    {(() => {
+                      const callData = getCallDataForCandidate(candidate.id)
+                      if (callData && callData.recording_url) {
+                        return (
+                          <div className="mt-4 pt-4 border-t border-slate-200">
+                            <h5 className="text-sm font-semibold text-gray-900 mb-2">Screening Call Recording</h5>
+                            <AudioPlayer
+                              url={callData.recording_url}
+                              candidateName={candidate.name}
+                              transcript={callData.transcript}
+                              className="w-full"
+                            />
+                            {callData.call_status && (
+                              <div className="mt-2 text-xs text-gray-600">
+                                Status: {callData.call_status} {callData.duration_ms && `• Duration: ${Math.round(callData.duration_ms / 1000)}s`}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      }
+                      return null
+                    })()}
                   </div>
                 ))}
               </div>
@@ -1360,20 +1690,91 @@ export default function ScreeningPage() {
                             {/* Call Audio Player */}
                             <div className="space-y-4">
                               <h4 className="font-semibold text-gray-900">Screening Call</h4>
-                              {result.candidate.call_audio_url ? (
-                                <AudioPlayer
-                                  url={result.candidate.call_audio_url}
-                                  candidateName={`${result.candidate.first_name}_${result.candidate.last_name}`}
-                                  transcript={result.candidate.call_transcript}
-                                  className="w-full"
-                                />
-                              ) : (
-                                <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-gray-300 rounded-lg">
-                                  <Phone className="h-12 w-12 text-gray-400 mb-4" />
-                                  <p className="text-gray-600 text-center">No call recording available</p>
-                                  <p className="text-gray-500 text-sm mt-1">Start a screening call to generate recording</p>
-                                </div>
-                              )}
+                              {(() => {
+                                const callData = getCallDataForCandidate(result.candidate.id)
+                                const isLoadingCallData = loadingCallData.has(result.candidate.id)
+
+                                if (callData) {
+                                  return (
+                                    <div className="space-y-4">
+                                      {/* Call Information */}
+                                      <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                                        <div className="flex items-center gap-2 mb-2">
+                                          <CheckCircle className="h-4 w-4 text-green-600" />
+                                          <span className="text-sm font-medium text-green-800">Call Data Retrieved</span>
+                                        </div>
+                                        <div className="text-xs text-green-700 space-y-1">
+                                          <div>Call ID: {callData.call_id}</div>
+                                          <div>Status: {callData.call_status}</div>
+                                          {callData.duration_ms && (
+                                            <div>Duration: {Math.round(callData.duration_ms / 1000)}s</div>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      {/* Audio Player */}
+                                      {callData.recording_url ? (
+                                        <AudioPlayer
+                                          url={callData.recording_url}
+                                          candidateName={`${result.candidate.first_name}_${result.candidate.last_name}`}
+                                          transcript={callData.transcript}
+                                          className="w-full"
+                                        />
+                                      ) : (
+                                        <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                          <p className="text-yellow-800 text-sm">Call data found but no recording URL available</p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )
+                                }
+
+                                return (
+                                  <div className="space-y-4">
+                                    {/* Manual Call ID Input */}
+                                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                                      <div className="flex items-center gap-2 mb-3">
+                                        <Phone className="h-4 w-4 text-blue-600" />
+                                        <span className="text-sm font-medium text-blue-800">Load Existing Call Data</span>
+                                      </div>
+                                      <div className="space-y-3">
+                                        <Input
+                                          placeholder="Enter Retell AI Call ID..."
+                                          value={getCallIdInput(result.candidate.id)}
+                                          onChange={(e) => handleCallIdInputChange(result.candidate.id, e.target.value)}
+                                          className="text-sm"
+                                          disabled={isLoadingCallData}
+                                        />
+                                        <Button
+                                          onClick={() => fetchCallDataByCallId(result.candidate.id, getCallIdInput(result.candidate.id))}
+                                          disabled={isLoadingCallData || !getCallIdInput(result.candidate.id).trim()}
+                                          size="sm"
+                                          className="w-full"
+                                        >
+                                          {isLoadingCallData ? (
+                                            <>
+                                              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-2"></div>
+                                              Loading...
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Download className="h-3 w-3 mr-2" />
+                                              Fetch Call Data
+                                            </>
+                                          )}
+                                        </Button>
+                                      </div>
+                                    </div>
+
+                                    {/* No Call Data Placeholder */}
+                                    <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-gray-300 rounded-lg">
+                                      <Phone className="h-12 w-12 text-gray-400 mb-4" />
+                                      <p className="text-gray-600 text-center">No call recording available</p>
+                                      <p className="text-gray-500 text-sm mt-1">Enter a call ID above to load existing call data</p>
+                                    </div>
+                                  </div>
+                                )
+                              })()}
                             </div>
                           </div>
                         </div>
