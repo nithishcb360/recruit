@@ -1235,12 +1235,17 @@ export default function ScreeningPage() {
               <div className="space-y-4">
                 {movedCandidatesList.map((candidate, index) => (
                   <div key={candidate.id} className="border border-slate-200 rounded-lg p-4 bg-white/50">
-                    <div className="flex items-center justify-between mb-3">
-                      <div>
-                        <h4 className="font-semibold text-gray-900">{candidate.name}</h4>
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3">
+                          <h4 className="font-semibold text-gray-900">{candidate.name}</h4>
+                          {candidate.phone && (
+                            <span className="text-sm text-gray-600">{candidate.phone}</span>
+                          )}
+                        </div>
                         <p className="text-sm text-gray-600">{candidate.email}</p>
                         {candidate.jobTitle && (
-                          <p className="text-xs text-blue-600">Applied for: {candidate.jobTitle}</p>
+                          <p className="text-xs text-blue-600 mt-1">Applied for: {candidate.jobTitle}</p>
                         )}
                       </div>
                       <div className="flex gap-2">
@@ -1267,70 +1272,6 @@ export default function ScreeningPage() {
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                      {/* Basic Info */}
-                      <div className="space-y-2">
-                        {candidate.phone && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-gray-500">Phone:</span>
-                            <span>{candidate.phone}</span>
-                          </div>
-                        )}
-                        {candidate.location && (
-                          <div className="flex items-center gap-2">
-                            <MapPin className="h-3 w-3 text-gray-500" />
-                            <span>{candidate.location}</span>
-                          </div>
-                        )}
-                        {candidate.salary_expectation && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-gray-500">Expected:</span>
-                            <span>${candidate.salary_expectation.toLocaleString()}</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Professional Info */}
-                      <div className="space-y-2">
-                        {candidate.experience_years && (
-                          <div className="flex items-center gap-2">
-                            <Clock className="h-3 w-3 text-gray-500" />
-                            <span>{candidate.experience_years} years experience</span>
-                          </div>
-                        )}
-                        {candidate.experience_level && (
-                          <Badge variant="outline" className="text-xs">
-                            {candidate.experience_level}
-                          </Badge>
-                        )}
-                        {candidate.current_position && (
-                          <div className="text-xs text-gray-600" title={candidate.current_position}>
-                            {extractCurrentRole(candidate.current_position)}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Skills */}
-                      <div className="space-y-2">
-                        {candidate.skills && candidate.skills.length > 0 && (
-                          <div>
-                            <div className="flex flex-wrap gap-1">
-                              {candidate.skills.slice(0, 4).map((skill, idx) => (
-                                <Badge key={idx} variant="secondary" className="text-xs">
-                                  {skill}
-                                </Badge>
-                              ))}
-                              {candidate.skills.length > 4 && (
-                                <Badge variant="outline" className="text-xs">
-                                  +{candidate.skills.length - 4} more
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                        )}
                       </div>
                     </div>
 
