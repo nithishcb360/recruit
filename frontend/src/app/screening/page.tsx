@@ -1247,6 +1247,36 @@ export default function ScreeningPage() {
                         {candidate.jobTitle && (
                           <p className="text-xs text-blue-600 mt-1">Applied for: {candidate.jobTitle}</p>
                         )}
+                        <div className="mt-2 space-y-2">
+                          <a
+                            href={`/webdesk/${candidate.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-green-600 hover:text-green-800 hover:underline flex items-center gap-1"
+                          >
+                            <Clock className="h-3 w-3" />
+                            Start WebDesk Assessment
+                          </a>
+                          {candidate.assessment_username && candidate.assessment_password && (
+                            <div className="bg-blue-50 border border-blue-200 rounded p-2 text-xs">
+                              <p className="font-semibold text-blue-900 mb-1">WebDesk Credentials:</p>
+                              <p className="text-blue-700">Username: <span className="font-mono font-bold">{candidate.assessment_username}</span></p>
+                              <p className="text-blue-700">Password: <span className="font-mono font-bold">{candidate.assessment_password}</span></p>
+                            </div>
+                          )}
+                          {candidate.assessment_completed && (
+                            <div className="bg-green-50 border border-green-200 rounded p-2 text-xs">
+                              <p className="font-semibold text-green-900">Assessment: Completed</p>
+                              <p className="text-green-700">Score: {candidate.assessment_score}%</p>
+                              {candidate.assessment_tab_switches > 0 && (
+                                <p className="text-orange-700">Tab Switches: {candidate.assessment_tab_switches}</p>
+                              )}
+                              {candidate.assessment_disqualified && (
+                                <p className="text-red-700 font-bold">Status: DISQUALIFIED</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
                       <div className="flex gap-2">
                         <Button
@@ -1461,6 +1491,38 @@ export default function ScreeningPage() {
                                   </span>
                                 )}
                               </CardDescription>
+
+                              {/* WebDesk Credentials */}
+                              {result.candidate.assessment_username && result.candidate.assessment_password && (
+                                <div className="mt-2 bg-blue-50 border border-blue-200 rounded p-2 text-xs max-w-md">
+                                  <p className="font-semibold text-blue-900 mb-1">🔐 WebDesk Login:</p>
+                                  <div className="flex gap-4">
+                                    <span className="text-blue-700">User: <span className="font-mono font-bold">{result.candidate.assessment_username}</span></span>
+                                    <span className="text-blue-700">Pass: <span className="font-mono font-bold">{result.candidate.assessment_password}</span></span>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Assessment Status */}
+                              {result.candidate.assessment_completed && (
+                                <div className={`mt-2 border rounded p-2 text-xs max-w-md ${
+                                  result.candidate.assessment_disqualified
+                                    ? 'bg-red-50 border-red-200'
+                                    : 'bg-green-50 border-green-200'
+                                }`}>
+                                  <p className={`font-semibold mb-1 ${
+                                    result.candidate.assessment_disqualified ? 'text-red-900' : 'text-green-900'
+                                  }`}>
+                                    ✅ Assessment: {result.candidate.assessment_disqualified ? 'DISQUALIFIED' : 'Completed'}
+                                  </p>
+                                  <p className={result.candidate.assessment_disqualified ? 'text-red-700' : 'text-green-700'}>
+                                    Score: {result.candidate.assessment_score}%
+                                  </p>
+                                  {result.candidate.assessment_tab_switches > 0 && (
+                                    <p className="text-orange-700">⚠️ Tab Switches: {result.candidate.assessment_tab_switches}</p>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
                           <div className="flex items-center gap-4">
@@ -1627,6 +1689,29 @@ export default function ScreeningPage() {
                                 </div>
                               )}
                             </div>
+
+                            {/* WebDesk Assessment Recording */}
+                            {result.candidate.assessment_recording && (
+                              <div className="space-y-4 mb-6">
+                                <h4 className="font-semibold text-gray-900">📹 WebDesk Assessment Recording</h4>
+                                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                  <video
+                                    controls
+                                    className="w-full rounded"
+                                    style={{ maxHeight: '400px' }}
+                                  >
+                                    <source src={`http://localhost:8000${result.candidate.assessment_recording}`} type="video/webm" />
+                                    Your browser does not support the video tag.
+                                  </video>
+                                  <div className="mt-2 text-xs text-gray-600">
+                                    <p>Full assessment video with audio</p>
+                                    {result.candidate.assessment_time_taken && (
+                                      <p>Duration: {Math.floor(result.candidate.assessment_time_taken / 60)}m {result.candidate.assessment_time_taken % 60}s</p>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
 
                             {/* Call Audio Player */}
                             <div className="space-y-4">

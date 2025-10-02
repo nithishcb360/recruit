@@ -160,6 +160,9 @@ class CandidateSerializer(serializers.ModelSerializer):
             'summary', 'projects', 'work_experience', 'languages', 'achievements',
             'linkedin_url', 'github_url', 'portfolio_url', 'visa_status',
             'preferred_location', 'notice_period',
+            'assessment_url', 'assessment_username', 'assessment_password',
+            'assessment_score', 'assessment_completed', 'assessment_time_taken',
+            'assessment_tab_switches', 'assessment_disqualified', 'assessment_recording',
             'created_at', 'updated_at'
         ]
 
