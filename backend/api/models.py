@@ -274,6 +274,7 @@ class Candidate(models.Model):
     assessment_tab_switches = models.IntegerField(default=0, help_text='Number of tab switches detected')
     assessment_disqualified = models.BooleanField(default=False, help_text='Whether candidate was disqualified for cheating')
     assessment_recording = models.FileField(upload_to='assessment_recordings/', null=True, blank=True, help_text='Video/audio recording of assessment')
+    assessment_responses = models.JSONField(default=dict, blank=True, help_text='Full assessment question responses with answers')
 
     # Metadata
     created_at = models.DateTimeField(default=timezone.now)

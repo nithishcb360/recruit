@@ -1690,6 +1690,85 @@ export default function ScreeningPage() {
                               )}
                             </div>
 
+                            {/* WebDesk Assessment Responses */}
+                            {result.candidate.assessment_responses && result.candidate.assessment_responses.questions && (
+                              <div className="space-y-4 mb-6">
+                                <h4 className="font-semibold text-gray-900">📝 Assessment Responses</h4>
+                                <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-4">
+                                  {result.candidate.assessment_responses.questions.map((response: any, index: number) => (
+                                    <div key={response.questionId} className="border-b border-gray-200 pb-4 last:border-b-0 last:pb-0">
+                                      <div className="flex items-start justify-between mb-2">
+                                        <h5 className="font-semibold text-sm text-gray-900">
+                                          Question {index + 1} ({response.type.toUpperCase()})
+                                        </h5>
+                                        <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                          {response.points} points
+                                        </span>
+                                      </div>
+                                      <p className="text-sm text-gray-700 mb-3">{response.question}</p>
+
+                                      {/* MCQ Response */}
+                                      {response.type === 'mcq' && response.options && (
+                                        <div className="space-y-2">
+                                          {response.options.map((option: string, optIndex: number) => {
+                                            const isCorrect = optIndex === response.correctAnswer
+                                            const isSelected = optIndex === response.candidateAnswer
+                                            return (
+                                              <div
+                                                key={optIndex}
+                                                className={`text-sm p-2 rounded ${
+                                                  isSelected && isCorrect
+                                                    ? 'bg-green-100 border border-green-300'
+                                                    : isSelected && !isCorrect
+                                                    ? 'bg-red-100 border border-red-300'
+                                                    : isCorrect
+                                                    ? 'bg-green-50 border border-green-200'
+                                                    : 'bg-gray-50 border border-gray-200'
+                                                }`}
+                                              >
+                                                <span className="font-medium">{String.fromCharCode(65 + optIndex)}.</span> {option}
+                                                {isSelected && <span className="ml-2 text-xs font-bold">(Selected)</span>}
+                                                {isCorrect && <span className="ml-2 text-xs text-green-700 font-bold">✓ Correct</span>}
+                                              </div>
+                                            )
+                                          })}
+                                        </div>
+                                      )}
+
+                                      {/* Text/Coding Response */}
+                                      {(response.type === 'text' || response.type === 'coding') && (
+                                        <div className="mt-2">
+                                          <p className="text-xs text-gray-600 mb-1 font-medium">Candidate Answer:</p>
+                                          <div className="bg-gray-50 border border-gray-200 rounded p-3">
+                                            <pre className={`text-sm whitespace-pre-wrap ${response.type === 'coding' ? 'font-mono' : ''}`}>
+                                              {response.candidateAnswer || <span className="text-gray-400 italic">No answer provided</span>}
+                                            </pre>
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {/* Result indicator */}
+                                      {response.isCorrect !== null && (
+                                        <div className={`mt-2 text-xs font-semibold ${response.isCorrect ? 'text-green-600' : 'text-red-600'}`}>
+                                          {response.isCorrect ? '✓ Correct' : '✗ Incorrect'}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+
+                                  {/* Score Summary */}
+                                  <div className="mt-4 pt-4 border-t border-gray-300">
+                                    <div className="flex justify-between items-center">
+                                      <span className="font-bold text-gray-900">Total Score:</span>
+                                      <span className="text-lg font-bold text-blue-600">
+                                        {result.candidate.assessment_responses.percentage}% ({result.candidate.assessment_responses.totalScore}/{result.candidate.assessment_responses.maxScore} points)
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
                             {/* WebDesk Assessment Recording */}
                             {result.candidate.assessment_recording && (
                               <div className="space-y-4 mb-6">

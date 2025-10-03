@@ -9,6 +9,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Progress } from "@/components/ui/progress"
+import { CodeEditor } from "@/components/ui/code-editor"
 import { useToast } from "@/hooks/use-toast"
 import { Clock, CheckCircle, AlertCircle, X } from 'lucide-react'
 
@@ -49,6 +50,12 @@ const assessmentQuestions: Question[] = [
   },
   {
     id: 3,
+    question: "Write a function that checks if a given string is a palindrome (reads the same forwards and backwards). You can use any programming language.",
+    type: "coding",
+    points: 25
+  },
+  {
+    id: 4,
     question: "What does REST stand for in web services?",
     type: "mcq",
     options: [
@@ -61,19 +68,19 @@ const assessmentQuestions: Question[] = [
     points: 10
   },
   {
-    id: 4,
+    id: 5,
     question: "Explain the difference between SQL and NoSQL databases. When would you use each?",
     type: "text",
     points: 20
   },
   {
-    id: 5,
-    question: "Write a function to reverse a string in your preferred programming language.",
+    id: 6,
+    question: "Write a function to find the factorial of a number. Test it with input 5 (expected output: 120).",
     type: "coding",
     points: 25
   },
   {
-    id: 6,
+    id: 7,
     question: "What is the purpose of virtual DOM in React?",
     type: "mcq",
     options: [
@@ -84,12 +91,6 @@ const assessmentQuestions: Question[] = [
     ],
     correctAnswer: 0,
     points: 10
-  },
-  {
-    id: 7,
-    question: "Describe your approach to debugging a production issue.",
-    type: "text",
-    points: 15
   }
 ]
 
@@ -502,11 +503,25 @@ export default function WebDeskAssessment() {
     const result = calculateScore()
     const timeTaken = 3600 - timeRemaining
 
+    // Prepare full responses with questions and answers
+    const fullResponses = assessmentQuestions.map(question => ({
+      questionId: question.id,
+      question: question.question,
+      type: question.type,
+      options: question.options || null,
+      correctAnswer: question.correctAnswer !== undefined ? question.correctAnswer : null,
+      points: question.points,
+      candidateAnswer: answers[question.id] !== undefined ? answers[question.id] : null,
+      isCorrect: question.type === 'mcq' && question.correctAnswer !== undefined
+        ? answers[question.id] === question.correctAnswer
+        : null
+    }))
+
     try {
       // Upload recording first
       await uploadRecording()
 
-      // Then submit assessment data
+      // Then submit assessment data with full responses
       const response = await fetch(`http://localhost:8000/api/candidates/${candidateId}/`, {
         method: 'PATCH',
         headers: {
@@ -516,15 +531,22 @@ export default function WebDeskAssessment() {
           assessment_score: result.percentage,
           assessment_completed: true,
           assessment_time_taken: timeTaken,
-          assessment_tab_switches: tabSwitchCount
+          assessment_tab_switches: tabSwitchCount,
+          assessment_responses: {
+            questions: fullResponses,
+            totalScore: result.score,
+            maxScore: result.maxScore,
+            percentage: result.percentage,
+            completedAt: new Date().toISOString()
+          }
         })
       })
 
       if (response.ok) {
         setAssessmentCompleted(true)
         toast({
-          title: "Assessment Submitted",
-          description: `Score: ${result.percentage}% (${result.score}/${result.maxScore} points)`,
+          title: "Assessment Submitted Successfully",
+          description: "Thank you for completing the assessment. You may now close this window.",
           variant: "default"
         })
       }
@@ -639,7 +661,6 @@ export default function WebDeskAssessment() {
   }
 
   if (assessmentCompleted) {
-    const result = calculateScore()
     return (
       <div className="fixed inset-0 bg-gradient-to-br from-green-50 to-blue-50 flex items-center justify-center p-6 m-0" style={{ width: '100vw', height: '100vh' }}>
         <button
@@ -655,37 +676,43 @@ export default function WebDeskAssessment() {
             <div className="flex items-center justify-center mb-4">
               <CheckCircle className="h-16 w-16 text-green-600" />
             </div>
-            <CardTitle className="text-center text-2xl text-green-900">
+            <CardTitle className="text-center text-2xl text-black font-bold">
               Assessment Completed!
             </CardTitle>
-            <CardDescription className="text-center text-green-700">
+            <CardDescription className="text-center text-black text-base font-medium">
               Thank you for completing the assessment
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="bg-white rounded-lg p-6 text-center">
-              <p className="text-sm text-gray-600 mb-2">Your Score</p>
-              <p className="text-5xl font-bold text-green-600 mb-2">{result.percentage}%</p>
-              <p className="text-gray-700">{result.score} out of {result.maxScore} points</p>
+              <p className="text-4xl font-bold text-green-600 mb-3">✓ Completed</p>
+              <p className="text-black font-semibold text-lg">Your responses have been submitted successfully</p>
+              <p className="text-gray-700 mt-2">The recruitment team will review your assessment and contact you soon.</p>
             </div>
 
             <div className="bg-white rounded-lg p-4">
-              <h4 className="font-semibold mb-3">Assessment Summary</h4>
+              <h4 className="font-bold text-black mb-3">Assessment Summary</h4>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Questions Answered:</span>
-                  <span className="font-medium">{answeredCount} / {assessmentQuestions.length}</span>
+                  <span className="text-black font-medium">Questions Answered:</span>
+                  <span className="font-bold text-black">{answeredCount} / {assessmentQuestions.length}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Time Taken:</span>
-                  <span className="font-medium">{formatTime(3600 - timeRemaining)}</span>
+                  <span className="text-black font-medium">Time Taken:</span>
+                  <span className="font-bold text-black">{formatTime(3600 - timeRemaining)}</span>
                 </div>
+                {tabSwitchCount > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-orange-700 font-medium">Tab Switches Detected:</span>
+                    <span className="font-bold text-orange-700">{tabSwitchCount}</span>
+                  </div>
+                )}
               </div>
             </div>
 
             <Button
               onClick={() => window.close()}
-              className="w-full"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold"
             >
               Close Window
             </Button>
@@ -829,17 +856,17 @@ export default function WebDeskAssessment() {
         <CardContent className="pt-6">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-xl font-semibold text-blue-900">
+              <h2 className="text-xl font-semibold text-black">
                 {candidate.first_name} {candidate.last_name}
               </h2>
-              <p className="text-sm text-blue-700">{candidate.email}</p>
+              <p className="text-sm text-gray-900">{candidate.email}</p>
             </div>
             <div className="text-right">
-              <div className="flex items-center gap-2 text-blue-900">
+              <div className="flex items-center gap-2 text-black">
                 <Clock className="h-5 w-5" />
                 <span className="text-2xl font-bold">{formatTime(timeRemaining)}</span>
               </div>
-              <p className="text-xs text-blue-700">Time Remaining</p>
+              <p className="text-xs text-gray-900">Time Remaining</p>
             </div>
           </div>
         </CardContent>
@@ -850,13 +877,13 @@ export default function WebDeskAssessment() {
         <CardContent className="pt-6">
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Progress</span>
-              <span className="font-medium">
+              <span className="text-black font-medium">Progress</span>
+              <span className="font-semibold text-black">
                 Question {currentQuestion + 1} of {assessmentQuestions.length}
               </span>
             </div>
             <Progress value={progress} className="h-2" />
-            <div className="flex justify-between text-xs text-gray-500">
+            <div className="flex justify-between text-xs text-gray-800">
               <span>Answered: {answeredCount}</span>
               <span>Remaining: {assessmentQuestions.length - answeredCount}</span>
             </div>
@@ -869,15 +896,15 @@ export default function WebDeskAssessment() {
         <CardHeader>
           <div className="flex items-start justify-between">
             <div className="flex-1">
-              <CardTitle className="text-lg">
+              <CardTitle className="text-lg text-black">
                 Question {currentQuestion + 1}
               </CardTitle>
-              <CardDescription className="mt-2 text-base text-gray-900">
+              <CardDescription className="mt-2 text-base text-black font-medium">
                 {question.question}
               </CardDescription>
             </div>
             <div className="ml-4 text-right">
-              <span className="inline-block bg-blue-100 text-blue-800 text-xs font-semibold px-3 py-1 rounded-full">
+              <span className="inline-block bg-blue-100 text-black text-xs font-bold px-3 py-1 rounded-full">
                 {question.points} points
               </span>
             </div>
@@ -895,7 +922,7 @@ export default function WebDeskAssessment() {
                     <RadioGroupItem value={String(index)} id={`q${question.id}-option${index}`} />
                     <Label
                       htmlFor={`q${question.id}-option${index}`}
-                      className="flex-1 cursor-pointer"
+                      className="flex-1 cursor-pointer text-black font-medium"
                     >
                       {option}
                     </Label>
@@ -905,12 +932,20 @@ export default function WebDeskAssessment() {
             </RadioGroup>
           )}
 
-          {(question.type === 'text' || question.type === 'coding') && (
+          {question.type === 'text' && (
             <Textarea
               value={String(answers[question.id] ?? '')}
               onChange={(e) => handleAnswer(question.id, e.target.value)}
-              placeholder={question.type === 'coding' ? 'Write your code here...' : 'Type your answer here...'}
-              className="min-h-[200px] font-mono"
+              placeholder="Type your answer here..."
+              className="min-h-[200px] text-black"
+            />
+          )}
+
+          {question.type === 'coding' && (
+            <CodeEditor
+              value={String(answers[question.id] ?? '')}
+              onChange={(value) => handleAnswer(question.id, value)}
+              question={question.question}
             />
           )}
         </CardContent>
@@ -924,6 +959,7 @@ export default function WebDeskAssessment() {
               variant="outline"
               onClick={() => setCurrentQuestion(prev => Math.max(0, prev - 1))}
               disabled={currentQuestion === 0}
+              className="text-black font-semibold border-gray-300"
             >
               Previous
             </Button>
@@ -933,12 +969,12 @@ export default function WebDeskAssessment() {
                 <button
                   key={index}
                   onClick={() => setCurrentQuestion(index)}
-                  className={`w-8 h-8 rounded-full text-sm font-medium transition-colors ${
+                  className={`w-8 h-8 rounded-full text-sm font-bold transition-colors ${
                     currentQuestion === index
                       ? 'bg-blue-600 text-white'
                       : answers[assessmentQuestions[index].id] !== undefined
-                      ? 'bg-green-200 text-green-800'
-                      : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                      ? 'bg-green-500 text-white'
+                      : 'bg-gray-300 text-black hover:bg-gray-400'
                   }`}
                 >
                   {index + 1}
@@ -950,13 +986,14 @@ export default function WebDeskAssessment() {
               <Button
                 onClick={handleSubmit}
                 disabled={isSubmitting}
-                className="bg-green-600 hover:bg-green-700"
+                className="bg-green-600 hover:bg-green-700 text-white font-bold"
               >
                 {isSubmitting ? 'Submitting...' : 'Submit Assessment'}
               </Button>
             ) : (
               <Button
                 onClick={() => setCurrentQuestion(prev => Math.min(assessmentQuestions.length - 1, prev + 1))}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold"
               >
                 Next
               </Button>

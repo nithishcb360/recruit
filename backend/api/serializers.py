@@ -163,6 +163,7 @@ class CandidateSerializer(serializers.ModelSerializer):
             'assessment_url', 'assessment_username', 'assessment_password',
             'assessment_score', 'assessment_completed', 'assessment_time_taken',
             'assessment_tab_switches', 'assessment_disqualified', 'assessment_recording',
+            'assessment_responses',
             'created_at', 'updated_at'
         ]
 
