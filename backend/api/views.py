@@ -472,7 +472,46 @@ class CandidateViewSet(viewsets.ModelViewSet):
         except Exception as e:
             logger.error(f"Error in candidate matching jobs: {e}")
             return Response(
-                {'error': f'Failed to find matching jobs: {str(e)}'}, 
+                {'error': f'Failed to find matching jobs: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['post'])
+    def generate_credentials(self, request, pk=None):
+        """
+        Generate WebDesk assessment credentials for a candidate
+        """
+        import random
+        import string
+
+        try:
+            candidate = self.get_object()
+
+            # Generate username from first name + random numbers
+            first_name = candidate.first_name.lower().replace(' ', '')
+            random_suffix = ''.join(random.choices(string.digits, k=4))
+            username = f"{first_name}{random_suffix}"
+
+            # Generate random password (8 characters: letters + numbers + special chars)
+            password_chars = string.ascii_letters + string.digits + '@#$%'
+            password = ''.join(random.choices(password_chars, k=8))
+
+            # Update candidate with credentials
+            candidate.assessment_username = username
+            candidate.assessment_password = password
+            candidate.save()
+
+            return Response({
+                'id': candidate.id,
+                'assessment_username': username,
+                'assessment_password': password,
+                'message': 'Credentials generated successfully'
+            })
+
+        except Exception as e:
+            logger.error(f"Error generating credentials: {e}")
+            return Response(
+                {'error': f'Failed to generate credentials: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 

@@ -1231,7 +1231,6 @@ export default function ScreeningPage() {
               MCP Server Calls
             </Badge>
             <Button
-              variant="outline"
               size="sm"
               onClick={() => handleStartMCPCall({
                 id: 999,
@@ -1240,10 +1239,24 @@ export default function ScreeningPage() {
                 phone: "1234567890",
                 jobTitle: "Test Position"
               })}
-              className="text-green-600 hover:text-green-800"
+              className="bg-blue-600 hover:bg-blue-700 text-white"
             >
               Test Call
             </Button>
+          </div>
+        </div>
+
+        {/* Search Bar */}
+        <div className="mb-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input
+              type="text"
+              placeholder="Search candidates by name, email, or phone..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 w-full"
+            />
           </div>
         </div>
 
@@ -1267,10 +1280,9 @@ export default function ScreeningPage() {
                 </div>
                 <div className="flex gap-2">
                   <Button
-                    variant="outline"
                     size="sm"
                     onClick={handleClearAllCandidates}
-                    className="text-blue-600 hover:text-blue-800 border-blue-300"
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
                   >
                     <XCircle className="h-4 w-4 mr-2" />
                     Clear All
@@ -1280,7 +1292,17 @@ export default function ScreeningPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {movedCandidatesList.map((candidate, index) => (
+                {movedCandidatesList
+                  .filter(candidate => {
+                    if (!searchTerm) return true
+                    const search = searchTerm.toLowerCase()
+                    return (
+                      candidate.name?.toLowerCase().includes(search) ||
+                      candidate.email?.toLowerCase().includes(search) ||
+                      candidate.phone?.toLowerCase().includes(search)
+                    )
+                  })
+                  .map((candidate, index) => (
                   <div key={candidate.id} className="border border-slate-200 rounded-lg p-4 bg-white/50">
                     <div className="flex items-center justify-between">
                       <div className="flex-1">
@@ -1327,13 +1349,9 @@ export default function ScreeningPage() {
                       </div>
                       <div className="flex gap-2">
                         <Button
-                          variant="outline"
                           size="sm"
                           onClick={() => handleStartMCPCall(candidate)}
-                          className={candidate.phone ?
-                            "text-blue-600 hover:text-blue-800 hover:bg-blue-50" :
-                            "text-gray-400 hover:text-gray-600 hover:bg-gray-50"
-                          }
+                          className="bg-blue-600 hover:bg-blue-700 text-white"
                           title={candidate.phone ?
                             `Call ${candidate.name} at ${candidate.phone}` :
                             "No phone number available"
@@ -1342,10 +1360,9 @@ export default function ScreeningPage() {
                           <Phone className="h-4 w-4" />
                         </Button>
                         <Button
-                          variant="ghost"
                           size="sm"
                           onClick={() => handleRemoveFromScreening(candidate.id)}
-                          className="text-red-600 hover:text-red-800 hover:bg-red-50"
+                          className="bg-blue-600 hover:bg-blue-700 text-white"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -1582,14 +1599,14 @@ export default function ScreeningPage() {
                               </Badge>
                             </div>
                             <Button
-                              variant="ghost"
                               size="sm"
                               onClick={(e) => {
                                 e.stopPropagation()
                                 handleDeleteCandidate(result.candidate.id)
                               }}
+                              className="bg-blue-600 hover:bg-blue-700 text-white"
                             >
-                              <Trash2 className="h-4 w-4 text-red-500" />
+                              <Trash2 className="h-4 w-4" />
                             </Button>
                             {isExpanded ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
                           </div>
@@ -1901,7 +1918,7 @@ export default function ScreeningPage() {
                                           onClick={() => fetchCallDataByCallId(result.candidate.id, getCallIdInput(result.candidate.id))}
                                           disabled={isLoadingCallData || !getCallIdInput(result.candidate.id).trim()}
                                           size="sm"
-                                          className="w-full"
+                                          className="w-full bg-blue-600 hover:bg-blue-700 text-white border-blue-600"
                                         >
                                           {isLoadingCallData ? (
                                             <>

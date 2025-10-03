@@ -988,6 +988,34 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
     }
 
     try {
+      // Generate WebDesk credentials if not already present
+      let generatedUsername = (candidate as any).assessment_username
+      let generatedPassword = (candidate as any).assessment_password
+
+      if (!generatedUsername || !generatedPassword) {
+        console.log('Generating WebDesk credentials...')
+        try {
+          const credentialsResponse = await fetch(`http://localhost:8000/api/candidates/${candidate.id}/generate_credentials/`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            credentials: 'include'
+          })
+
+          if (credentialsResponse.ok) {
+            const credentialsData = await credentialsResponse.json()
+            generatedUsername = credentialsData.assessment_username
+            generatedPassword = credentialsData.assessment_password
+            console.log('Credentials generated:', { username: generatedUsername, password: generatedPassword })
+          } else {
+            console.error('Failed to generate credentials, will proceed without them')
+          }
+        } catch (credError) {
+          console.error('Error generating credentials:', credError)
+        }
+      }
+
       // UPDATE candidate status to "screening" instead of deleting them
       console.log('Updating candidate status to screening...')
       const response = await fetchWithTimeout(`http://localhost:8000/api/candidates/${candidate.id}/`, {
@@ -1023,8 +1051,8 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
         education: (candidate as any).education || [],
         certifications: (candidate as any).certifications || [],
         salary_expectation: (candidate as any).salary_expectation,
-        assessment_username: (candidate as any).assessment_username,
-        assessment_password: (candidate as any).assessment_password,
+        assessment_username: generatedUsername,
+        assessment_password: generatedPassword,
         assessment_completed: (candidate as any).assessment_completed,
         assessment_score: (candidate as any).assessment_score,
         assessment_tab_switches: (candidate as any).assessment_tab_switches,
