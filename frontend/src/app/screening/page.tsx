@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, ReactNode } from 'react'
 import { Search, Filter, Users, Target, Brain, ChevronDown, ChevronRight, Star, CheckCircle, XCircle, User, Briefcase, MapPin, Clock, Download, Trash2, Phone } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -30,6 +30,15 @@ interface Job {
 }
 
 interface Candidate {
+  assessment_username?: string
+  assessment_password?: string
+  assessment_completed?: boolean
+  assessment_disqualified?: boolean
+  assessment_score?: number
+  assessment_tab_switches?: number
+  assessment_responses?: any
+  assessment_recording?: string
+  assessment_time_taken?: number
   id: number
   first_name: string
   last_name: string
@@ -354,7 +363,7 @@ export default function ScreeningPage() {
     fetchJobs()
     fetchCandidates()
     fetchApplications()
-    
+
     // Load screening candidates list
     const screeningList = getScreeningCandidatesList()
     setMovedCandidatesList(screeningList)
@@ -373,7 +382,45 @@ export default function ScreeningPage() {
         setSelectedJobId(screeningData.jobId.toString())
       }
     }
+
+    // Refresh candidate data from API to get latest assessment credentials
+    refreshMovedCandidatesData(screeningList)
   }, [])
+
+  // Function to refresh moved candidates data from API
+  const refreshMovedCandidatesData = async (candidatesList: ScreeningCandidateData[]) => {
+    if (candidatesList.length === 0) return
+
+    try {
+      // Fetch fresh data for each candidate
+      const updatedCandidates = await Promise.all(
+        candidatesList.map(async (candidate) => {
+          try {
+            const response = await fetch(`http://localhost:8000/api/candidates/${candidate.id}/`)
+            if (response.ok) {
+              const freshData = await response.json()
+              return {
+                ...candidate,
+                assessment_username: freshData.assessment_username,
+                assessment_password: freshData.assessment_password,
+                assessment_completed: freshData.assessment_completed,
+                assessment_score: freshData.assessment_score,
+                assessment_tab_switches: freshData.assessment_tab_switches,
+                assessment_disqualified: freshData.assessment_disqualified
+              }
+            }
+            return candidate
+          } catch (error) {
+            console.error(`Error fetching candidate ${candidate.id}:`, error)
+            return candidate
+          }
+        })
+      )
+      setMovedCandidatesList(updatedCandidates)
+    } catch (error) {
+      console.error('Error refreshing candidate data:', error)
+    }
+  }
 
   const fetchJobs = async () => {
     try {
@@ -1258,17 +1305,17 @@ export default function ScreeningPage() {
                             Start WebDesk Assessment
                           </a>
                           {candidate.assessment_username && candidate.assessment_password && (
-                            <div className="bg-blue-50 border border-blue-200 rounded p-2 text-xs">
-                              <p className="font-semibold text-blue-900 mb-1">WebDesk Credentials:</p>
-                              <p className="text-blue-700">Username: <span className="font-mono font-bold">{candidate.assessment_username}</span></p>
-                              <p className="text-blue-700">Password: <span className="font-mono font-bold">{candidate.assessment_password}</span></p>
+                            <div className="bg-red-50 border border-red-200 rounded p-2 text-xs">
+                              <p className="font-semibold text-red-900 mb-1">WebDesk Credentials:</p>
+                              <p className="text-red-700">Username: <span className="font-mono font-bold">{candidate.assessment_username}</span></p>
+                              <p className="text-red-700">Password: <span className="font-mono font-bold">{candidate.assessment_password}</span></p>
                             </div>
                           )}
                           {candidate.assessment_completed && (
                             <div className="bg-green-50 border border-green-200 rounded p-2 text-xs">
                               <p className="font-semibold text-green-900">Assessment: Completed</p>
                               <p className="text-green-700">Score: {candidate.assessment_score}%</p>
-                              {candidate.assessment_tab_switches > 0 && (
+                              {(candidate.assessment_tab_switches ?? 0) > 0 && (
                                 <p className="text-orange-700">Tab Switches: {candidate.assessment_tab_switches}</p>
                               )}
                               {candidate.assessment_disqualified && (
@@ -1494,11 +1541,11 @@ export default function ScreeningPage() {
 
                               {/* WebDesk Credentials */}
                               {result.candidate.assessment_username && result.candidate.assessment_password && (
-                                <div className="mt-2 bg-blue-50 border border-blue-200 rounded p-2 text-xs max-w-md">
-                                  <p className="font-semibold text-blue-900 mb-1">🔐 WebDesk Login:</p>
+                                <div className="mt-2 bg-red-50 border border-red-200 rounded p-2 text-xs max-w-md">
+                                  <p className="font-semibold text-red-900 mb-1">🔐 WebDesk Login:</p>
                                   <div className="flex gap-4">
-                                    <span className="text-blue-700">User: <span className="font-mono font-bold">{result.candidate.assessment_username}</span></span>
-                                    <span className="text-blue-700">Pass: <span className="font-mono font-bold">{result.candidate.assessment_password}</span></span>
+                                    <span className="text-red-700">User: <span className="font-mono font-bold">{result.candidate.assessment_username}</span></span>
+                                    <span className="text-red-700">Pass: <span className="font-mono font-bold">{result.candidate.assessment_password}</span></span>
                                   </div>
                                 </div>
                               )}
@@ -1518,7 +1565,7 @@ export default function ScreeningPage() {
                                   <p className={result.candidate.assessment_disqualified ? 'text-red-700' : 'text-green-700'}>
                                     Score: {result.candidate.assessment_score}%
                                   </p>
-                                  {result.candidate.assessment_tab_switches > 0 && (
+                                  {(result.candidate.assessment_tab_switches ?? 0) > 0 && (
                                     <p className="text-orange-700">⚠️ Tab Switches: {result.candidate.assessment_tab_switches}</p>
                                   )}
                                 </div>

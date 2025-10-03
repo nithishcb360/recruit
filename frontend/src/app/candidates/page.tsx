@@ -1023,6 +1023,12 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
         education: (candidate as any).education || [],
         certifications: (candidate as any).certifications || [],
         salary_expectation: (candidate as any).salary_expectation,
+        assessment_username: (candidate as any).assessment_username,
+        assessment_password: (candidate as any).assessment_password,
+        assessment_completed: (candidate as any).assessment_completed,
+        assessment_score: (candidate as any).assessment_score,
+        assessment_tab_switches: (candidate as any).assessment_tab_switches,
+        assessment_disqualified: (candidate as any).assessment_disqualified,
         jobId: jobId,
         jobTitle: jobMatch.jobTitle
       }
