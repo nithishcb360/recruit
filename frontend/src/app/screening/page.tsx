@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useMemo, ReactNode } from 'react'
-import { Search, Filter, Users, Target, Brain, ChevronDown, ChevronRight, Star, CheckCircle, XCircle, User, Briefcase, MapPin, Clock, Download, Trash2, Phone } from 'lucide-react'
+import { Search, Filter, Users, Target, Brain, ChevronDown, ChevronRight, Star, CheckCircle, XCircle, User, Briefcase, MapPin, Clock, Download, Trash2, Phone, Mail } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -200,6 +200,7 @@ export default function ScreeningPage() {
   const [callIdInputs, setCallIdInputs] = useState<Map<number, string>>(new Map())
   const [autoCallScheduled, setAutoCallScheduled] = useState<Set<number>>(new Set())
   const [autoCallInProgress, setAutoCallInProgress] = useState<Set<number>>(new Set())
+  const [initiatedCallIds, setInitiatedCallIds] = useState<Map<number, string>>(new Map())
 
   // Check if current time is within working hours (10 AM - 6 PM)
   const isWithinWorkingHours = (): boolean => {
@@ -859,9 +860,10 @@ export default function ScreeningPage() {
       }
     } catch (error) {
       console.error('Error fetching call data:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch call data from Retell AI'
       toast({
         title: "Error",
-        description: "Failed to fetch call data from Retell AI",
+        description: errorMessage,
         variant: "destructive"
       })
     } finally {
@@ -1185,10 +1187,26 @@ export default function ScreeningPage() {
       console.log('Frontend - Response data:', result);
 
       if (result.success) {
+        // Store the call ID if available
+        if (result.callId) {
+          setInitiatedCallIds(prev => {
+            const newMap = new Map(prev)
+            newMap.set(candidate.id, result.callId)
+            return newMap
+          })
+
+          // Also set it in the input field for easy access
+          setCallIdInputs(prev => {
+            const newMap = new Map(prev)
+            newMap.set(candidate.id, result.callId)
+            return newMap
+          })
+        }
+
         const title = result.demo ? "Demo Call Initiated" : "Call Initiated";
         const description = result.demo ?
           `Demo call started for ${candidate.name} (Retell AI not configured)` :
-          `Calling ${candidate.name} at ${candidate.phone}`;
+          `Calling ${candidate.name} at ${candidate.phone}${result.callId ? `\nCall ID: ${result.callId}` : ''}`;
 
         toast({
           title,
@@ -1304,68 +1322,199 @@ export default function ScreeningPage() {
                   })
                   .map((candidate, index) => (
                   <div key={candidate.id} className="border border-slate-200 rounded-lg p-4 bg-white/50">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
+                    {/* Candidate Info */}
+                    <div>
+                      <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <h4 className="font-semibold text-gray-900">{candidate.name}</h4>
                           {candidate.phone && (
                             <span className="text-sm text-gray-600">{candidate.phone}</span>
                           )}
                         </div>
-                        <p className="text-sm text-gray-600">{candidate.email}</p>
-                        {candidate.jobTitle && (
-                          <p className="text-xs text-blue-600 mt-1">Applied for: {candidate.jobTitle}</p>
-                        )}
-                        <div className="mt-2 space-y-2">
-                          <a
-                            href={`/webdesk/${candidate.id}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-green-600 hover:text-green-800 hover:underline flex items-center gap-1"
+                        {/* Buttons next to name */}
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            onClick={async () => {
+                              const fromEmail = process.env.NEXT_PUBLIC_COMPANY_EMAIL || 'hr@company.com'
+                              const subject = `Next Round Interview - WebDesk Assessment`
+
+                              // Get current domain and port for WebDesk link
+                              const hostname = window.location.hostname
+                              const port = window.location.port
+                              const protocol = window.location.protocol
+                              let baseUrl = `${protocol}//${hostname}`
+                              if (port && port !== '80' && port !== '443') {
+                                baseUrl += `:${port}`
+                              }
+                              const webdeskLink = `${baseUrl}/webdesk/${candidate.id}`
+
+                              const emailBody = `Dear ${candidate.name},
+
+Greetings!
+
+We are pleased to inform you that you have been selected for the next round of interviews for the position of ${candidate.jobTitle || 'the role you applied for'}.
+
+As part of our assessment process, we kindly request you to complete a WebDesk technical assessment.
+
+WebDesk Assessment Details:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Link: ${webdeskLink}
+
+Login Credentials:
+Username: ${candidate.assessment_username || 'Not yet generated'}
+Password: ${candidate.assessment_password || 'Not yet generated'}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Instructions:
+1. Click on the WebDesk link above
+2. Enter your username and password
+3. Grant camera and microphone permissions when prompted
+4. Complete all assessment questions
+5. Submit your responses
+
+Please complete this assessment at your earliest convenience. If you have any questions or face any technical difficulties, feel free to reach out.
+
+We look forward to your participation.
+
+Best regards,
+Recruitment Team
+${fromEmail}`
+
+                              const emailHtml = `
+                                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                                  <p>Dear <strong>${candidate.name}</strong>,</p>
+                                  <p>Greetings!</p>
+                                  <p>We are pleased to inform you that you have been selected for the next round of interviews for the position of <strong>${candidate.jobTitle || 'the role you applied for'}</strong>.</p>
+                                  <p>As part of our assessment process, we kindly request you to complete a WebDesk technical assessment.</p>
+
+                                  <div style="background-color: #f0f9ff; border: 2px solid #3b82f6; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                                    <h3 style="color: #1e40af; margin-top: 0;">WebDesk Assessment Details</h3>
+                                    <p><strong>Link:</strong> <a href="${webdeskLink}" style="color: #2563eb;">${webdeskLink}</a></p>
+                                    <div style="background-color: #fef2f2; border: 1px solid #ef4444; border-radius: 4px; padding: 10px; margin-top: 10px;">
+                                      <p style="margin: 5px 0;"><strong>Username:</strong> <code style="background-color: #fee2e2; padding: 2px 6px; border-radius: 3px;">${candidate.assessment_username || 'Not yet generated'}</code></p>
+                                      <p style="margin: 5px 0;"><strong>Password:</strong> <code style="background-color: #fee2e2; padding: 2px 6px; border-radius: 3px;">${candidate.assessment_password || 'Not yet generated'}</code></p>
+                                    </div>
+                                  </div>
+
+                                  <h4>Instructions:</h4>
+                                  <ol>
+                                    <li>Click on the WebDesk link above</li>
+                                    <li>Enter your username and password</li>
+                                    <li>Grant camera and microphone permissions when prompted</li>
+                                    <li>Complete all assessment questions</li>
+                                    <li>Submit your responses</li>
+                                  </ol>
+
+                                  <p>Please complete this assessment at your earliest convenience. If you have any questions or face any technical difficulties, feel free to reach out.</p>
+                                  <p>We look forward to your participation.</p>
+
+                                  <p style="margin-top: 30px;">
+                                    Best regards,<br/>
+                                    <strong>Recruitment Team</strong><br/>
+                                    ${fromEmail}
+                                  </p>
+                                </div>
+                              `
+
+                              try {
+                                const response = await fetch('/api/send-email', {
+                                  method: 'POST',
+                                  headers: {
+                                    'Content-Type': 'application/json',
+                                  },
+                                  body: JSON.stringify({
+                                    to: candidate.email,
+                                    subject,
+                                    text: emailBody,
+                                    html: emailHtml
+                                  })
+                                })
+
+                                const result = await response.json()
+
+                                if (result.success) {
+                                  toast({
+                                    title: result.demo ? "Email Preview" : "Email Sent",
+                                    description: result.demo
+                                      ? `Email content ready but not sent (configure EMAIL_USER and EMAIL_PASSWORD)`
+                                      : `Email sent successfully to ${candidate.email}`,
+                                    variant: "default"
+                                  })
+                                } else {
+                                  toast({
+                                    title: "Email Failed",
+                                    description: result.message || "Failed to send email",
+                                    variant: "destructive"
+                                  })
+                                }
+                              } catch (error) {
+                                console.error('Error sending email:', error)
+                                toast({
+                                  title: "Error",
+                                  description: "Failed to send email",
+                                  variant: "destructive"
+                                })
+                              }
+                            }}
+                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                            title={`Send email to ${candidate.email}`}
                           >
-                            <Clock className="h-3 w-3" />
-                            Start WebDesk Assessment
-                          </a>
-                          {candidate.assessment_username && candidate.assessment_password && (
-                            <div className="bg-red-50 border border-red-200 rounded p-2 text-xs">
-                              <p className="font-semibold text-red-900 mb-1">WebDesk Credentials:</p>
-                              <p className="text-red-700">Username: <span className="font-mono font-bold">{candidate.assessment_username}</span></p>
-                              <p className="text-red-700">Password: <span className="font-mono font-bold">{candidate.assessment_password}</span></p>
-                            </div>
-                          )}
-                          {candidate.assessment_completed && (
-                            <div className="bg-green-50 border border-green-200 rounded p-2 text-xs">
-                              <p className="font-semibold text-green-900">Assessment: Completed</p>
-                              <p className="text-green-700">Score: {candidate.assessment_score}%</p>
-                              {(candidate.assessment_tab_switches ?? 0) > 0 && (
-                                <p className="text-orange-700">Tab Switches: {candidate.assessment_tab_switches}</p>
-                              )}
-                              {candidate.assessment_disqualified && (
-                                <p className="text-red-700 font-bold">Status: DISQUALIFIED</p>
-                              )}
-                            </div>
-                          )}
+                            <Mail className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => handleStartMCPCall(candidate)}
+                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                            title={candidate.phone ?
+                              `Call ${candidate.name} at ${candidate.phone}` :
+                              "No phone number available"
+                            }
+                          >
+                            <Phone className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => handleRemoveFromScreening(candidate.id)}
+                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         </div>
                       </div>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          onClick={() => handleStartMCPCall(candidate)}
-                          className="bg-blue-600 hover:bg-blue-700 text-white"
-                          title={candidate.phone ?
-                            `Call ${candidate.name} at ${candidate.phone}` :
-                            "No phone number available"
-                          }
+                      <p className="text-sm text-gray-600">{candidate.email}</p>
+                      {candidate.jobTitle && (
+                        <p className="text-xs text-blue-600 mt-1">Applied for: {candidate.jobTitle}</p>
+                      )}
+                      <div className="mt-2 space-y-2">
+                        <a
+                          href={`/webdesk/${candidate.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-green-600 hover:text-green-800 hover:underline flex items-center gap-1"
                         >
-                          <Phone className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => handleRemoveFromScreening(candidate.id)}
-                          className="bg-blue-600 hover:bg-blue-700 text-white"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                          <Clock className="h-3 w-3" />
+                          Start WebDesk Assessment
+                        </a>
+                        {candidate.assessment_username && candidate.assessment_password && (
+                          <div className="bg-red-50 border border-red-200 rounded p-2 text-xs">
+                            <p className="font-semibold text-red-900 mb-1">WebDesk Credentials:</p>
+                            <p className="text-red-700">Username: <span className="font-mono font-bold">{candidate.assessment_username}</span></p>
+                            <p className="text-red-700">Password: <span className="font-mono font-bold">{candidate.assessment_password}</span></p>
+                          </div>
+                        )}
+                        {candidate.assessment_completed && (
+                          <div className="bg-green-50 border border-green-200 rounded p-2 text-xs">
+                            <p className="font-semibold text-green-900">Assessment: Completed</p>
+                            <p className="text-green-700">Score: {candidate.assessment_score}%</p>
+                            {(candidate.assessment_tab_switches ?? 0) > 0 && (
+                              <p className="text-orange-700">Tab Switches: {candidate.assessment_tab_switches}</p>
+                            )}
+                            {candidate.assessment_disqualified && (
+                              <p className="text-red-700 font-bold">Status: DISQUALIFIED</p>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -1900,15 +2049,33 @@ export default function ScreeningPage() {
 
                                 return (
                                   <div className="space-y-4">
+                                    {/* Show Call ID if call was initiated */}
+                                    {initiatedCallIds.has(result.candidate.id) && (
+                                      <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                                        <div className="flex items-center justify-between mb-2">
+                                          <div className="flex items-center gap-2">
+                                            <CheckCircle className="h-4 w-4 text-green-600" />
+                                            <span className="text-sm font-medium text-green-800">Call Initiated Successfully</span>
+                                          </div>
+                                        </div>
+                                        <div className="text-xs text-green-700 space-y-1">
+                                          <div>Call ID: <code className="bg-green-100 px-1 py-0.5 rounded">{initiatedCallIds.get(result.candidate.id)}</code></div>
+                                          <div className="text-xs text-green-600 mt-2">
+                                            ⏱️ The call is in progress. Wait a few minutes for it to complete, then click "Fetch Call Data" below to get the recording and transcript.
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+
                                     {/* Manual Call ID Input */}
                                     <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
                                       <div className="flex items-center gap-2 mb-3">
                                         <Phone className="h-4 w-4 text-blue-600" />
-                                        <span className="text-sm font-medium text-blue-800">Load Existing Call Data</span>
+                                        <span className="text-sm font-medium text-blue-800">Fetch Call Recording & Transcript</span>
                                       </div>
                                       <div className="space-y-3">
                                         <Input
-                                          placeholder="Enter Retell AI Call ID..."
+                                          placeholder="Call ID is auto-filled after call initiation..."
                                           value={getCallIdInput(result.candidate.id)}
                                           onChange={(e) => handleCallIdInputChange(result.candidate.id, e.target.value)}
                                           className="text-sm"
@@ -1932,6 +2099,9 @@ export default function ScreeningPage() {
                                             </>
                                           )}
                                         </Button>
+                                        <p className="text-xs text-blue-600">
+                                          💡 Tip: After clicking "Phone" button, wait 5-10 minutes for the call to complete, then click this button to fetch the recording.
+                                        </p>
                                       </div>
                                     </div>
 

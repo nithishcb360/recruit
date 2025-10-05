@@ -12,8 +12,14 @@ class EnhancedRetellAPI {
   private baseUrl = 'https://api.retellai.com/v2'
 
   constructor() {
+    // Try to get from environment variable first, then localStorage
     if (typeof window !== 'undefined') {
       this.apiKey = localStorage.getItem('retell_api_key')
+    }
+
+    // If not in localStorage, try to get from backend via environment
+    if (!this.apiKey && typeof process !== 'undefined' && process.env) {
+      this.apiKey = process.env.RETELL_API_KEY || null
     }
   }
 
@@ -28,35 +34,44 @@ class EnhancedRetellAPI {
     }
   }
 
-  async getCallDetails(callId: string): Promise<EnhancedRetellCallData | null> {
-    if (!this.apiKey) {
-      throw new Error('Retell API key not configured')
-    }
+  // Method to use backend API key from environment
+  private async getApiKey(): Promise<string | null> {
+    // First check if we have it in memory or localStorage
+    if (this.apiKey) return this.apiKey
 
+    // Otherwise, use a backend endpoint to fetch call data
+    // This prevents exposing API key in frontend
+    return null
+  }
+
+  async getCallDetails(callId: string): Promise<EnhancedRetellCallData | null> {
     try {
-      const response = await fetch(`${this.baseUrl}/get-call/${callId}`, {
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json'
-        }
-      })
+      // Use backend API endpoint to fetch call data (keeps API key secure)
+      const response = await fetch(`/api/retell-call/${callId}`)
 
       if (!response.ok) {
-        throw new Error(`Failed to fetch call details: ${response.statusText}`)
+        const errorData = await response.json()
+        console.error('Failed to fetch call details:', errorData)
+        throw new Error(errorData.message || `Failed to fetch call details: ${response.statusText}`)
       }
 
-      const data = await response.json()
+      const result = await response.json()
+
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to fetch call data')
+      }
+
       return {
-        call_id: data.call_id,
-        call_status: data.call_status,
-        recording_url: data.recording_url,
-        transcript: data.transcript,
-        duration_ms: data.duration_ms,
-        metadata: data.metadata
+        call_id: result.data.call_id,
+        call_status: result.data.call_status,
+        recording_url: result.data.recording_url,
+        transcript: result.data.transcript,
+        duration_ms: result.data.duration_ms,
+        metadata: result.data.metadata
       }
     } catch (error) {
       console.error('Error fetching call details:', error)
-      return null
+      throw error
     }
   }
 
