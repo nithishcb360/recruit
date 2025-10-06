@@ -38,6 +38,9 @@ interface Candidate {
   assessment_tab_switches?: number
   assessment_responses?: any
   assessment_recording?: string
+  assessment_video_url?: string
+  assessment_audio_url?: string
+  assessment_screen_url?: string
   assessment_time_taken?: number
   id: number
   first_name: string
@@ -1339,14 +1342,10 @@ export default function ScreeningPage() {
                               const fromEmail = process.env.NEXT_PUBLIC_COMPANY_EMAIL || 'hr@company.com'
                               const subject = `Next Round Interview - WebDesk Assessment`
 
-                              // Get current domain and port for WebDesk link
-                              const hostname = window.location.hostname
-                              const port = window.location.port
-                              const protocol = window.location.protocol
-                              let baseUrl = `${protocol}//${hostname}`
-                              if (port && port !== '80' && port !== '443') {
-                                baseUrl += `:${port}`
-                              }
+                              // Get public URL for WebDesk link (accessible from anywhere)
+                              // Uses NEXT_PUBLIC_WEBDESK_URL from .env.local
+                              // Can be ngrok URL (https://abc123.ngrok.io) or deployed domain
+                              const baseUrl = process.env.NEXT_PUBLIC_WEBDESK_URL || window.location.origin
                               const webdeskLink = `${baseUrl}/webdesk/${candidate.id}`
 
                               const emailBody = `Dear ${candidate.name},
@@ -1982,26 +1981,62 @@ ${fromEmail}`
                               </div>
                             )}
 
-                            {/* WebDesk Assessment Recording */}
-                            {result.candidate.assessment_recording && (
+                            {/* WebDesk Assessment Recordings */}
+                            {(result.candidate.assessment_video_url || result.candidate.assessment_audio_url || result.candidate.assessment_screen_url || result.candidate.assessment_recording) && (
                               <div className="space-y-4 mb-6">
-                                <h4 className="font-semibold text-gray-900">📹 WebDesk Assessment Recording</h4>
-                                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                                  <video
-                                    controls
-                                    className="w-full rounded"
-                                    style={{ maxHeight: '400px' }}
-                                  >
-                                    <source src={`http://localhost:8000${result.candidate.assessment_recording}`} type="video/webm" />
-                                    Your browser does not support the video tag.
-                                  </video>
-                                  <div className="mt-2 text-xs text-gray-600">
-                                    <p>Full assessment video with audio</p>
-                                    {result.candidate.assessment_time_taken && (
-                                      <p>Duration: {Math.floor(result.candidate.assessment_time_taken / 60)}m {result.candidate.assessment_time_taken % 60}s</p>
-                                    )}
-                                  </div>
+                                <h4 className="font-semibold text-gray-900">📹 WebDesk Assessment Recordings</h4>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  {/* Video Recording (Webcam) */}
+                                  {result.candidate.assessment_video_url && (
+                                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                      <h5 className="font-semibold text-sm text-gray-700 mb-2">📷 Webcam Video</h5>
+                                      <video controls className="w-full rounded" style={{ maxHeight: '300px' }}>
+                                        <source src={result.candidate.assessment_video_url} type="video/webm" />
+                                        Your browser does not support the video tag.
+                                      </video>
+                                    </div>
+                                  )}
+
+                                  {/* Screen Recording */}
+                                  {result.candidate.assessment_screen_url && (
+                                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                      <h5 className="font-semibold text-sm text-gray-700 mb-2">🖥️ Screen Recording</h5>
+                                      <video controls className="w-full rounded" style={{ maxHeight: '300px' }}>
+                                        <source src={result.candidate.assessment_screen_url} type="video/webm" />
+                                        Your browser does not support the video tag.
+                                      </video>
+                                    </div>
+                                  )}
+
+                                  {/* Audio Recording */}
+                                  {result.candidate.assessment_audio_url && (
+                                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                      <h5 className="font-semibold text-sm text-gray-700 mb-2">🎤 Audio Recording</h5>
+                                      <audio controls className="w-full">
+                                        <source src={result.candidate.assessment_audio_url} type="audio/webm" />
+                                        Your browser does not support the audio tag.
+                                      </audio>
+                                    </div>
+                                  )}
+
+                                  {/* Legacy Recording (if exists) */}
+                                  {result.candidate.assessment_recording && !result.candidate.assessment_video_url && (
+                                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                      <h5 className="font-semibold text-sm text-gray-700 mb-2">📹 Assessment Recording</h5>
+                                      <video controls className="w-full rounded" style={{ maxHeight: '300px' }}>
+                                        <source src={`http://localhost:8000${result.candidate.assessment_recording}`} type="video/webm" />
+                                        Your browser does not support the video tag.
+                                      </video>
+                                    </div>
+                                  )}
                                 </div>
+
+                                {result.candidate.assessment_time_taken && (
+                                  <div className="mt-2 text-xs text-gray-600">
+                                    <p>Duration: {Math.floor(result.candidate.assessment_time_taken / 60)}m {result.candidate.assessment_time_taken % 60}s</p>
+                                  </div>
+                                )}
                               </div>
                             )}
 
