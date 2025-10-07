@@ -38,6 +38,8 @@ interface Candidate {
   assessment_tab_switches?: number
   assessment_responses?: any
   assessment_recording?: string
+  assessment_video_recording?: string
+  assessment_screen_recording?: string
   assessment_video_url?: string
   assessment_audio_url?: string
   assessment_screen_url?: string
@@ -1982,13 +1984,35 @@ ${fromEmail}`
                             )}
 
                             {/* WebDesk Assessment Recordings */}
-                            {(result.candidate.assessment_video_url || result.candidate.assessment_audio_url || result.candidate.assessment_screen_url || result.candidate.assessment_recording) && (
+                            {(result.candidate.assessment_video_url || result.candidate.assessment_audio_url || result.candidate.assessment_screen_url || result.candidate.assessment_recording || result.candidate.assessment_video_recording || result.candidate.assessment_screen_recording) && (
                               <div className="space-y-4 mb-6">
                                 <h4 className="font-semibold text-gray-900">📹 WebDesk Assessment Recordings</h4>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  {/* Camera Video Recording (File Upload) */}
+                                  {result.candidate.assessment_video_recording && (
+                                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                      <h5 className="font-semibold text-sm text-gray-700 mb-2">📷 Camera Recording</h5>
+                                      <video controls className="w-full rounded" style={{ maxHeight: '300px' }}>
+                                        <source src={`http://localhost:8000${result.candidate.assessment_video_recording}`} type="video/webm" />
+                                        Your browser does not support the video tag.
+                                      </video>
+                                    </div>
+                                  )}
+
+                                  {/* Screen Recording (File Upload) */}
+                                  {result.candidate.assessment_screen_recording && (
+                                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                      <h5 className="font-semibold text-sm text-gray-700 mb-2">🖥️ Screen Recording</h5>
+                                      <video controls className="w-full rounded" style={{ maxHeight: '300px' }}>
+                                        <source src={`http://localhost:8000${result.candidate.assessment_screen_recording}`} type="video/webm" />
+                                        Your browser does not support the video tag.
+                                      </video>
+                                    </div>
+                                  )}
+
                                   {/* Video Recording (Webcam) */}
-                                  {result.candidate.assessment_video_url && (
+                                  {result.candidate.assessment_video_url && !result.candidate.assessment_video_recording && (
                                     <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                                       <h5 className="font-semibold text-sm text-gray-700 mb-2">📷 Webcam Video</h5>
                                       <video controls className="w-full rounded" style={{ maxHeight: '300px' }}>
@@ -1999,7 +2023,7 @@ ${fromEmail}`
                                   )}
 
                                   {/* Screen Recording */}
-                                  {result.candidate.assessment_screen_url && (
+                                  {result.candidate.assessment_screen_url && !result.candidate.assessment_screen_recording && (
                                     <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                                       <h5 className="font-semibold text-sm text-gray-700 mb-2">🖥️ Screen Recording</h5>
                                       <video controls className="w-full rounded" style={{ maxHeight: '300px' }}>
@@ -2021,7 +2045,7 @@ ${fromEmail}`
                                   )}
 
                                   {/* Legacy Recording (if exists) */}
-                                  {result.candidate.assessment_recording && !result.candidate.assessment_video_url && (
+                                  {result.candidate.assessment_recording && !result.candidate.assessment_video_url && !result.candidate.assessment_video_recording && (
                                     <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                                       <h5 className="font-semibold text-sm text-gray-700 mb-2">📹 Assessment Recording</h5>
                                       <video controls className="w-full rounded" style={{ maxHeight: '300px' }}>

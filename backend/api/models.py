@@ -274,6 +274,8 @@ class Candidate(models.Model):
     assessment_tab_switches = models.IntegerField(default=0, help_text='Number of tab switches detected')
     assessment_disqualified = models.BooleanField(default=False, help_text='Whether candidate was disqualified for cheating')
     assessment_recording = models.FileField(upload_to='assessment_recordings/', null=True, blank=True, help_text='Video/audio recording of assessment')
+    assessment_video_recording = models.FileField(upload_to='assessment_videos/', null=True, blank=True, help_text='Camera video recording of assessment')
+    assessment_screen_recording = models.FileField(upload_to='assessment_screens/', null=True, blank=True, help_text='Screen recording of assessment')
     assessment_video_url = models.URLField(blank=True, help_text='Video recording URL from WebDesk assessment')
     assessment_audio_url = models.URLField(blank=True, help_text='Audio recording URL from WebDesk assessment')
     assessment_screen_url = models.URLField(blank=True, help_text='Screen recording URL from WebDesk assessment')

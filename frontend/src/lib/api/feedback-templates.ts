@@ -3,11 +3,12 @@
 export interface Question {
   id: number
   text: string
-  type: "text" | "textarea" | "audio" | "video"
+  type: "text" | "textarea" | "audio" | "video" | "radio" | "program"
   options?: string[]
   required: boolean
   answer?: string // Optional answer field for question-with-answer forms
   ai_generated?: boolean // Flag to indicate if question was AI-generated
+  language?: string // For program type questions (e.g., "javascript", "python")
 }
 
 export type FormType = 'question_only' | 'question_with_answer' | 'ai_question_only' | 'ai_question_with_answer'
@@ -177,7 +178,7 @@ export async function unpublishFeedbackTemplate(id: number): Promise<void> {
 export interface QuestionGenerationRequest {
   topic: string
   num_questions: number
-  question_types?: Array<'text' | 'textarea' | 'audio' | 'video'>
+  question_types?: Array<'text' | 'textarea' | 'audio' | 'video' | 'radio' | 'program'>
   include_answers?: boolean
   custom_prompt?: string
 }

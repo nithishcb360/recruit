@@ -113,9 +113,12 @@ export default function WebDeskAssessment() {
   const [password, setPassword] = useState('')
   const [loginError, setLoginError] = useState('')
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null)
+  const [screenStream, setScreenStream] = useState<MediaStream | null>(null)
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null)
+  const [screenRecorder, setScreenRecorder] = useState<MediaRecorder | null>(null)
   const [isRecording, setIsRecording] = useState(false)
   const [recordedChunks, setRecordedChunks] = useState<Blob[]>([])
+  const [screenChunks, setScreenChunks] = useState<Blob[]>([])
   const videoRef = React.useRef<HTMLVideoElement>(null)
   const [mediaPermissionGranted, setMediaPermissionGranted] = useState(false)
   const [showPermissionError, setShowPermissionError] = useState(false)
@@ -139,6 +142,7 @@ export default function WebDeskAssessment() {
 
   const startMediaRecording = async () => {
     try {
+      // Request camera and microphone access
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           width: { ideal: 1280 },
@@ -157,7 +161,7 @@ export default function WebDeskAssessment() {
         videoRef.current.srcObject = stream
       }
 
-      // Start recording
+      // Start camera/audio recording
       const recorder = new MediaRecorder(stream, {
         mimeType: 'video/webm;codecs=vp9'
       })
@@ -172,15 +176,69 @@ export default function WebDeskAssessment() {
 
       recorder.start(1000) // Collect data every second
       setMediaRecorder(recorder)
-      setIsRecording(true)
 
-      toast({
-        title: "Recording Started",
-        description: "Camera and microphone are now active",
-        variant: "default"
-      })
+      // Request screen capture
+      try {
+        const screenStreamData = await navigator.mediaDevices.getDisplayMedia({
+          video: {
+            displaySurface: 'monitor',
+            logicalSurface: true,
+            cursor: 'always'
+          } as any,
+          audio: false
+        })
 
-      return true
+        setScreenStream(screenStreamData)
+
+        // Start screen recording
+        const screenRec = new MediaRecorder(screenStreamData, {
+          mimeType: 'video/webm;codecs=vp9'
+        })
+
+        const screenChunksLocal: Blob[] = []
+        screenRec.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            screenChunksLocal.push(event.data)
+            setScreenChunks(prev => [...prev, event.data])
+          }
+        }
+
+        screenRec.start(1000)
+        setScreenRecorder(screenRec)
+
+        // Handle screen share stop
+        screenStreamData.getVideoTracks()[0].onended = () => {
+          toast({
+            title: "Screen Sharing Stopped",
+            description: "You stopped sharing your screen. Assessment may be terminated.",
+            variant: "destructive"
+          })
+        }
+
+        setIsRecording(true)
+
+        toast({
+          title: "Recording Started",
+          description: "Camera, microphone, and screen recording are now active",
+          variant: "default"
+        })
+
+        return true
+      } catch (screenError) {
+        console.error('Error starting screen recording:', screenError)
+
+        // Stop camera recording if screen sharing fails
+        recorder.stop()
+        stream.getTracks().forEach(track => track.stop())
+
+        toast({
+          title: "Screen Sharing Required",
+          description: "You must share your screen to take the assessment.",
+          variant: "destructive"
+        })
+
+        return false
+      }
     } catch (error) {
       console.error('Error starting media recording:', error)
       setMediaPermissionGranted(false)
@@ -202,9 +260,18 @@ export default function WebDeskAssessment() {
       setIsRecording(false)
     }
 
+    if (screenRecorder) {
+      screenRecorder.stop()
+    }
+
     if (mediaStream) {
       mediaStream.getTracks().forEach(track => track.stop())
       setMediaStream(null)
+    }
+
+    if (screenStream) {
+      screenStream.getTracks().forEach(track => track.stop())
+      setScreenStream(null)
     }
 
     toast({
@@ -220,8 +287,11 @@ export default function WebDeskAssessment() {
       if (mediaStream) {
         mediaStream.getTracks().forEach(track => track.stop())
       }
+      if (screenStream) {
+        screenStream.getTracks().forEach(track => track.stop())
+      }
     }
-  }, [mediaStream])
+  }, [mediaStream, screenStream])
 
   // Detect tab switching and prevent cheating
   useEffect(() => {
@@ -472,27 +542,79 @@ export default function WebDeskAssessment() {
   }
 
   const uploadRecording = async () => {
-    if (recordedChunks.length === 0) return
+    console.log('Upload recording called', {
+      cameraChunks: recordedChunks.length,
+      screenChunks: screenChunks.length
+    })
+
+    if (recordedChunks.length === 0 && screenChunks.length === 0) {
+      console.warn('No recording chunks to upload')
+      return
+    }
 
     try {
-      // Create blob from recorded chunks
-      const blob = new Blob(recordedChunks, { type: 'video/webm' })
+      // Create blobs from recorded chunks
+      const cameraBlob = recordedChunks.length > 0
+        ? new Blob(recordedChunks, { type: 'video/webm' })
+        : null
+
+      const screenBlob = screenChunks.length > 0
+        ? new Blob(screenChunks, { type: 'video/webm' })
+        : null
+
+      console.log('Created blobs', {
+        cameraSize: cameraBlob?.size,
+        screenSize: screenBlob?.size
+      })
 
       // Create form data
       const formData = new FormData()
-      formData.append('assessment_recording', blob, `assessment_${candidateId}_${Date.now()}.webm`)
 
-      // Upload recording
+      if (cameraBlob) {
+        formData.append('assessment_video_recording', cameraBlob, `camera_${candidateId}_${Date.now()}.webm`)
+        console.log('Added camera blob to FormData')
+      }
+
+      if (screenBlob) {
+        formData.append('assessment_screen_recording', screenBlob, `screen_${candidateId}_${Date.now()}.webm`)
+        console.log('Added screen blob to FormData')
+      }
+
+      // Upload recordings
+      console.log('Uploading recordings...')
       const uploadResponse = await fetch(`http://localhost:8000/api/candidates/${candidateId}/`, {
         method: 'PATCH',
         body: formData
       })
 
+      console.log('Upload response status:', uploadResponse.status)
+
       if (uploadResponse.ok) {
-        console.log('Recording uploaded successfully')
+        const responseData = await uploadResponse.json()
+        console.log('Recordings uploaded successfully', responseData)
+
+        toast({
+          title: "Recordings Uploaded",
+          description: "Assessment recordings have been saved successfully",
+          variant: "default"
+        })
+      } else {
+        const errorText = await uploadResponse.text()
+        console.error('Upload failed', uploadResponse.status, errorText)
+
+        toast({
+          title: "Upload Failed",
+          description: `Failed to upload recordings: ${uploadResponse.status}`,
+          variant: "destructive"
+        })
       }
     } catch (error) {
       console.error('Error uploading recording:', error)
+      toast({
+        title: "Upload Error",
+        description: "An error occurred while uploading recordings",
+        variant: "destructive"
+      })
     }
   }
 
@@ -781,14 +903,14 @@ export default function WebDeskAssessment() {
                 <div className="flex items-start gap-3">
                   <AlertCircle className="h-6 w-6 text-red-600 flex-shrink-0 mt-0.5" />
                   <div>
-                    <h4 className="font-semibold text-red-900 mb-2">Camera and Microphone Access Required</h4>
+                    <h4 className="font-semibold text-red-900 mb-2">Camera, Microphone, and Screen Sharing Required</h4>
                     <p className="text-sm text-red-800 mb-3">
-                      You must grant camera and microphone permissions to take this assessment. This is required for proctoring purposes.
+                      You must grant camera, microphone, and screen sharing permissions to take this assessment. This is required for proctoring purposes.
                     </p>
                     <div className="text-xs text-red-700 space-y-1">
-                      <p><strong>Chrome/Edge:</strong> Click the camera icon in the address bar</p>
-                      <p><strong>Firefox:</strong> Click the permissions icon in the address bar</p>
-                      <p><strong>Safari:</strong> Go to Safari → Settings → Websites → Camera & Microphone</p>
+                      <p><strong>Chrome/Edge:</strong> Click the camera icon in the address bar and allow screen sharing</p>
+                      <p><strong>Firefox:</strong> Click the permissions icon in the address bar and allow screen sharing</p>
+                      <p><strong>Safari:</strong> Go to Safari → Settings → Websites → Camera, Microphone & Screen Recording</p>
                     </div>
                   </div>
                 </div>
