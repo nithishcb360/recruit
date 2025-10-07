@@ -101,6 +101,9 @@ interface Candidate {
   retell_end_timestamp?: number
   retell_public_log_url?: string
   retell_additional_notes?: string
+
+  // Assignment
+  assigned_to?: string
 }
 
 interface ScreeningResult {
@@ -456,6 +459,7 @@ export default function ScreeningPage() {
   const [autoCallInProgress, setAutoCallInProgress] = useState<Set<number>>(new Set())
   const [initiatedCallIds, setInitiatedCallIds] = useState<Map<number, string>>(new Map())
   const [assigneeInputs, setAssigneeInputs] = useState<Map<number, string>>(new Map())
+  const [assessmentEmailInputs, setAssessmentEmailInputs] = useState<Map<number, string>>(new Map())
 
   // Check if current time is within working hours (10 AM - 6 PM)
   const isWithinWorkingHours = (): boolean => {
@@ -1303,6 +1307,268 @@ export default function ScreeningPage() {
     }
   }
 
+  // Handle sending assessment results via email
+  const handleSendAssessmentEmail = async (candidateId: number) => {
+    const emailTo = assessmentEmailInputs.get(candidateId)
+    const candidate = movedCandidatesList.find(c => c.id === candidateId)
+
+    if (!emailTo || emailTo.trim() === '') {
+      toast({
+        title: "Error",
+        description: "Please enter an email address",
+        variant: "destructive"
+      })
+      return
+    }
+
+    if (!candidate) {
+      toast({
+        title: "Error",
+        description: "Candidate not found",
+        variant: "destructive"
+      })
+      return
+    }
+
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(emailTo)) {
+      toast({
+        title: "Error",
+        description: "Please enter a valid email address",
+        variant: "destructive"
+      })
+      return
+    }
+
+    if (!candidate.assessment_completed) {
+      toast({
+        title: "Error",
+        description: "Assessment not yet completed",
+        variant: "destructive"
+      })
+      return
+    }
+
+    try {
+      toast({
+        title: "Processing",
+        description: "Preparing videos for email...",
+        variant: "default"
+      })
+
+      const fromEmail = process.env.NEXT_PUBLIC_COMPANY_EMAIL || 'hr@company.com'
+      const subject = `WebDesk Assessment Results - ${candidate.name}`
+
+      // Get video URLs
+      const videoUrl = candidate.assessment_video_recording
+        ? (candidate.assessment_video_recording.startsWith('http')
+            ? candidate.assessment_video_recording
+            : `http://localhost:8000${candidate.assessment_video_recording}`)
+        : null
+
+      const screenUrl = candidate.assessment_screen_recording
+        ? (candidate.assessment_screen_recording.startsWith('http')
+            ? candidate.assessment_screen_recording
+            : `http://localhost:8000${candidate.assessment_screen_recording}`)
+        : null
+
+      // Prepare attachments array
+      const attachments: any[] = []
+
+      // Fetch and convert video files to base64 for email attachments
+      if (videoUrl) {
+        try {
+          const videoResponse = await fetch(videoUrl)
+          const videoBlob = await videoResponse.blob()
+          const videoBase64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader()
+            reader.onloadend = () => {
+              const base64 = (reader.result as string).split(',')[1]
+              resolve(base64)
+            }
+            reader.readAsDataURL(videoBlob)
+          })
+
+          attachments.push({
+            filename: `camera_recording_${candidate.id}.mp4`,
+            content: videoBase64,
+            encoding: 'base64',
+            contentType: 'video/mp4'
+          })
+        } catch (error) {
+          console.error('Error fetching camera recording:', error)
+        }
+      }
+
+      if (screenUrl) {
+        try {
+          const screenResponse = await fetch(screenUrl)
+          const screenBlob = await screenResponse.blob()
+          const screenBase64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader()
+            reader.onloadend = () => {
+              const base64 = (reader.result as string).split(',')[1]
+              resolve(base64)
+            }
+            reader.readAsDataURL(screenBlob)
+          })
+
+          attachments.push({
+            filename: `screen_recording_${candidate.id}.mp4`,
+            content: screenBase64,
+            encoding: 'base64',
+            contentType: 'video/mp4'
+          })
+        } catch (error) {
+          console.error('Error fetching screen recording:', error)
+        }
+      }
+
+      const emailBody = `Assessment Results for ${candidate.name}
+
+Candidate Information:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Name: ${candidate.name}
+Email: ${candidate.email}
+Phone: ${candidate.phone || 'N/A'}
+
+Assessment Details:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Score: ${candidate.assessment_score}%
+Status: ${candidate.assessment_disqualified ? 'DISQUALIFIED' : 'PASSED'}
+Tab Switches: ${candidate.assessment_tab_switches || 0}
+Time Taken: ${candidate.assessment_time_taken ? Math.round(candidate.assessment_time_taken / 60) : 'N/A'} minutes
+
+Assessment Recordings:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${videoUrl ? `📷 Camera Recording:
+   - Attachment: camera_recording_${candidate.id}.mp4
+   - Link: ${videoUrl}` : '📷 Camera Recording: Not available'}
+
+${screenUrl ? `🖥️ Screen Recording:
+   - Attachment: screen_recording_${candidate.id}.mp4
+   - Link: ${screenUrl}` : '🖥️ Screen Recording: Not available'}
+
+Note: Videos are attached to this email. You can also view them using the links above.
+
+Please review the attached assessment recordings and results.
+
+Best regards,
+Recruitment Team
+${fromEmail}`
+
+      const emailHtml = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #1e40af; border-bottom: 2px solid #3b82f6; padding-bottom: 10px;">Assessment Results for ${candidate.name}</h2>
+
+          <div style="background-color: #f0f9ff; border: 2px solid #3b82f6; border-radius: 8px; padding: 20px; margin: 20px 0;">
+            <h3 style="color: #1e40af; margin-top: 0;">Candidate Information</h3>
+            <p><strong>Name:</strong> ${candidate.name}</p>
+            <p><strong>Email:</strong> ${candidate.email}</p>
+            <p><strong>Phone:</strong> ${candidate.phone || 'N/A'}</p>
+          </div>
+
+          <div style="background-color: ${candidate.assessment_disqualified ? '#fef2f2' : '#f0fdf4'}; border: 2px solid ${candidate.assessment_disqualified ? '#ef4444' : '#22c55e'}; border-radius: 8px; padding: 20px; margin: 20px 0;">
+            <h3 style="color: ${candidate.assessment_disqualified ? '#991b1b' : '#166534'}; margin-top: 0;">Assessment Details</h3>
+            <p><strong>Score:</strong> <span style="font-size: 24px; font-weight: bold; color: ${candidate.assessment_disqualified ? '#dc2626' : '#16a34a'};">${candidate.assessment_score}%</span></p>
+            <p><strong>Status:</strong> <span style="font-weight: bold; color: ${candidate.assessment_disqualified ? '#dc2626' : '#16a34a'};">${candidate.assessment_disqualified ? 'DISQUALIFIED' : 'PASSED'}</span></p>
+            <p><strong>Tab Switches:</strong> ${candidate.assessment_tab_switches || 0}</p>
+            <p><strong>Time Taken:</strong> ${candidate.assessment_time_taken ? Math.round(candidate.assessment_time_taken / 60) : 'N/A'} minutes</p>
+          </div>
+
+          <div style="background-color: #fefce8; border: 2px solid #eab308; border-radius: 8px; padding: 20px; margin: 20px 0;">
+            <h3 style="color: #854d0e; margin-top: 0;">📹 Assessment Recordings</h3>
+
+            ${videoUrl ? `
+              <div style="background-color: #fff; border: 1px solid #d97706; border-radius: 6px; padding: 15px; margin-bottom: 15px;">
+                <p style="margin: 0 0 10px 0;"><strong style="color: #854d0e;">📷 Camera Recording:</strong></p>
+                <p style="margin: 5px 0; font-size: 14px;">
+                  📎 <strong>Attachment:</strong> camera_recording_${candidate.id}.mp4
+                </p>
+                <p style="margin: 5px 0; font-size: 14px;">
+                  🔗 <strong>Direct Link:</strong> <a href="${videoUrl}" style="color: #2563eb; word-break: break-all;">${videoUrl}</a>
+                </p>
+              </div>
+            ` : '<p><strong>📷 Camera Recording:</strong> Not available</p>'}
+
+            ${screenUrl ? `
+              <div style="background-color: #fff; border: 1px solid #d97706; border-radius: 6px; padding: 15px; margin-bottom: 10px;">
+                <p style="margin: 0 0 10px 0;"><strong style="color: #854d0e;">🖥️ Screen Recording:</strong></p>
+                <p style="margin: 5px 0; font-size: 14px;">
+                  📎 <strong>Attachment:</strong> screen_recording_${candidate.id}.mp4
+                </p>
+                <p style="margin: 5px 0; font-size: 14px;">
+                  🔗 <strong>Direct Link:</strong> <a href="${screenUrl}" style="color: #2563eb; word-break: break-all;">${screenUrl}</a>
+                </p>
+              </div>
+            ` : '<p><strong>🖥️ Screen Recording:</strong> Not available</p>'}
+
+            <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 10px; margin-top: 15px;">
+              <p style="margin: 0; color: #78350f; font-size: 13px;">
+                💡 <strong>Tip:</strong> Videos are attached to this email as MP4 files. You can download them directly or use the links above to view them online.
+              </p>
+            </div>
+          </div>
+
+          <p style="margin-top: 30px; color: #6b7280;">Please review the attached assessment recordings and results.</p>
+
+          <p style="margin-top: 30px;">
+            Best regards,<br/>
+            <strong>Recruitment Team</strong><br/>
+            ${fromEmail}
+          </p>
+        </div>
+      `
+
+      const response = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: emailTo,
+          subject,
+          text: emailBody,
+          html: emailHtml,
+          attachments: attachments
+        })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        toast({
+          title: result.demo ? "Email Preview" : "Assessment Results Sent",
+          description: result.demo
+            ? `Email content ready but not sent (configure EMAIL_USER and EMAIL_PASSWORD)`
+            : `Assessment results sent successfully to ${emailTo}`,
+          variant: "default"
+        })
+
+        // Clear the input after successful send
+        setAssessmentEmailInputs(prev => {
+          const newMap = new Map(prev)
+          newMap.delete(candidateId)
+          return newMap
+        })
+      } else {
+        toast({
+          title: "Email Failed",
+          description: result.message || "Failed to send email",
+          variant: "destructive"
+        })
+      }
+    } catch (error) {
+      console.error('Error sending assessment email:', error)
+      toast({
+        title: "Error",
+        description: "Failed to send assessment email",
+        variant: "destructive"
+      })
+    }
+  }
+
   // Handle removing a candidate from screening list
   const handleAssignMember = async (candidateId: number) => {
     const assigneeEmail = assigneeInputs.get(candidateId)
@@ -1332,6 +1598,17 @@ export default function ScreeningPage() {
       if (!candidate) {
         throw new Error('Candidate not found')
       }
+
+      // Update candidate with assigned member
+      const updatedCandidate = {
+        ...candidate,
+        assigned_to: assigneeEmail
+      }
+
+      // Update in local state
+      setMovedCandidatesList(prev =>
+        prev.map(c => c.id === candidateId ? updatedCandidate : c)
+      )
 
       // Here you can add API call to assign the member
       // Example: await fetch(`http://localhost:8000/api/candidates/${candidateId}/assign/`, {...})
@@ -1995,33 +2272,13 @@ ${fromEmail}`
                         </div>
                       )}
 
-                      {/* Assign Member Section */}
-                      <div className="mt-3 bg-orange-50 border border-orange-200 rounded p-3">
-                        <p className="font-semibold text-orange-900 text-xs mb-2">👤 Assign Team Member:</p>
-                        <div className="flex items-center gap-2">
-                          <Input
-                            type="email"
-                            placeholder="Enter member email"
-                            value={assigneeInputs.get(candidate.id) || ''}
-                            onChange={(e) => {
-                              setAssigneeInputs(prev => {
-                                const newMap = new Map(prev)
-                                newMap.set(candidate.id, e.target.value)
-                                return newMap
-                              })
-                            }}
-                            className="flex-1 h-8 text-xs"
-                          />
-                          <Button
-                            size="sm"
-                            onClick={() => handleAssignMember(candidate.id)}
-                            className="bg-orange-600 hover:bg-orange-700 text-white h-8 px-3"
-                          >
-                            <User className="h-3 w-3 mr-1" />
-                            Assign
-                          </Button>
+                      {/* Assigned Member Display */}
+                      {candidate.assigned_to && (
+                        <div className="mt-3 bg-green-50 border border-green-300 rounded p-2">
+                          <p className="font-semibold text-green-900 text-xs mb-1">✅ Assigned To:</p>
+                          <p className="text-sm text-green-700 font-medium">{candidate.assigned_to}</p>
                         </div>
-                      </div>
+                      )}
 
                       <div className="mt-2 space-y-2">
                         <a
@@ -2113,6 +2370,37 @@ ${fromEmail}`
                                       </video>
                                     </div>
                                   )}
+                                </div>
+
+                                {/* Send Assessment Results via Email Section */}
+                                <div className="mt-4 bg-indigo-50 border border-indigo-200 rounded p-3">
+                                  <p className="font-semibold text-indigo-900 text-xs mb-2">📧 Send Assessment Results & Videos:</p>
+                                  <div className="flex items-center gap-2">
+                                    <Input
+                                      type="email"
+                                      placeholder="Enter email to send results"
+                                      value={assessmentEmailInputs.get(candidate.id) || ''}
+                                      onChange={(e) => {
+                                        setAssessmentEmailInputs(prev => {
+                                          const newMap = new Map(prev)
+                                          newMap.set(candidate.id, e.target.value)
+                                          return newMap
+                                        })
+                                      }}
+                                      className="flex-1 h-8 text-xs"
+                                    />
+                                    <Button
+                                      size="sm"
+                                      onClick={() => handleSendAssessmentEmail(candidate.id)}
+                                      className="bg-indigo-600 hover:bg-indigo-700 text-white h-8 px-3"
+                                    >
+                                      <Mail className="h-3 w-3 mr-1" />
+                                      Send
+                                    </Button>
+                                  </div>
+                                  <p className="text-xs text-indigo-600 mt-1">
+                                    Sends webdesk score, camera recording, and screen recording
+                                  </p>
                                 </div>
                               </div>
                             )}

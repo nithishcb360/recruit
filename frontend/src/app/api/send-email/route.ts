@@ -4,7 +4,7 @@ import nodemailer from 'nodemailer';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { to, subject, html, text } = body;
+    const { to, subject, html, text, attachments } = body;
 
     // Validate required fields
     if (!to || !subject || (!html && !text)) {
@@ -55,6 +55,7 @@ export async function POST(request: NextRequest) {
       subject,
       text,
       html,
+      attachments: attachments || [],
     });
 
     console.log('Email sent:', info.messageId);
