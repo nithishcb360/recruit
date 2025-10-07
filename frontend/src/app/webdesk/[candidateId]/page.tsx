@@ -281,17 +281,11 @@ export default function WebDeskAssessment() {
     })
   }
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (mediaStream) {
-        mediaStream.getTracks().forEach(track => track.stop())
-      }
-      if (screenStream) {
-        screenStream.getTracks().forEach(track => track.stop())
-      }
-    }
-  }, [mediaStream, screenStream])
+  // Note: We don't add cleanup useEffect here to avoid stopping camera on state changes
+  // Camera will only stop when:
+  // 1. User submits the assessment (handleSubmit calls stopMediaRecording)
+  // 2. User gets disqualified (auto-submit calls stopMediaRecording)
+  // 3. User clicks exit button (explicitly calls stopMediaRecording)
 
   // Detect tab switching and prevent cheating
   useEffect(() => {

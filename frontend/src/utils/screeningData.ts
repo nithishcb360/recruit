@@ -1,8 +1,28 @@
 /**
  * Utility functions for handling screening candidate data transfer via sessionStorage
+ * Updated: 2025-10-07
  */
 
 export interface ScreeningCandidateData {
+  retell_interview_scheduled: any
+  retell_call_status: any
+  retell_call_summary: any
+  retell_scheduled_date: any
+  retell_scheduled_time: any
+  retell_scheduled_timezone: any
+  retell_scheduled_datetime_iso: any
+  retell_call_outcome: any
+  retell_interest_level: any
+  retell_is_qualified: any
+  retell_call_duration_ms: any
+  retell_technical_skills: boolean
+  retell_questions_asked: boolean
+  retell_user_sentiment: any
+  retell_recording_url: any
+  retell_public_log_url: any
+  retell_availability_preference: any
+  retell_additional_notes: any
+  assessment_responses: any
   id: number
   name: string
   email: string
@@ -26,6 +46,8 @@ export interface ScreeningCandidateData {
   assessment_tab_switches?: number
   assessment_disqualified?: boolean
   assessment_recording_url?: string
+  assessment_video_recording?: any
+  assessment_screen_recording?: any
 }
 
 /**

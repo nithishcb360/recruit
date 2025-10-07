@@ -166,6 +166,21 @@ class CandidateSerializer(serializers.ModelSerializer):
             'assessment_video_recording', 'assessment_screen_recording',
             'assessment_video_url', 'assessment_audio_url', 'assessment_screen_url',
             'assessment_responses',
+            # Retell AI Call fields
+            'retell_call_id', 'retell_call_status', 'retell_call_type', 'retell_recording_url',
+            'retell_transcript', 'retell_transcript_object', 'retell_call_duration_ms',
+            'retell_call_summary', 'retell_call_analysis', 'retell_user_sentiment',
+            'retell_call_successful', 'retell_in_voicemail',
+            # Retell AI - Interview Scheduling
+            'retell_interview_scheduled', 'retell_scheduled_date', 'retell_scheduled_time',
+            'retell_scheduled_timezone', 'retell_scheduled_datetime_iso', 'retell_candidate_timezone',
+            'retell_availability_preference', 'retell_unavailable_dates',
+            # Retell AI - Screening Data
+            'retell_is_qualified', 'retell_interest_level', 'retell_technical_skills',
+            'retell_questions_asked', 'retell_call_outcome', 'retell_rejection_reason',
+            # Retell AI - Metadata
+            'retell_metadata', 'retell_start_timestamp', 'retell_end_timestamp',
+            'retell_public_log_url', 'retell_additional_notes',
             'created_at', 'updated_at'
         ]
 

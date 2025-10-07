@@ -515,6 +515,177 @@ class CandidateViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+    @action(detail=True, methods=['post'])
+    def save_retell_call_data(self, request, pk=None):
+        """
+        Save Retell AI call data to candidate record
+
+        Expected request body:
+        {
+            "call_id": "call_abc123",
+            "call_status": "ended",
+            "call_type": "phone_call",
+            "recording_url": "https://...",
+            "transcript": "Full transcript text...",
+            "transcript_object": [...],
+            "call_analysis": {
+                "call_summary": "...",
+                "user_sentiment": "Positive",
+                "call_successful": true,
+                "in_voicemail": false,
+                "custom_analysis_data": {
+                    "interview_scheduled": true,
+                    "scheduled_date": "2025-10-08",
+                    "scheduled_time": "10:00 AM",
+                    ...
+                }
+            },
+            "duration_ms": 600000,
+            "start_timestamp": 1704067200000,
+            "end_timestamp": 1704067800000,
+            "metadata": {...},
+            "public_log_url": "https://..."
+        }
+        """
+        try:
+            candidate = self.get_object()
+            data = request.data
+
+            # Basic call info - only essentials
+            if 'call_id' in data:
+                candidate.retell_call_id = data['call_id']
+            if 'call_status' in data:
+                candidate.retell_call_status = data['call_status']
+            if 'call_type' in data:
+                candidate.retell_call_type = data['call_type']
+            if 'recording_url' in data:
+                candidate.retell_recording_url = data['recording_url']
+            # DON'T save full transcript - too large, just store URL to access it
+            # if 'transcript' in data:
+            #     candidate.retell_transcript = data['transcript']
+            # DON'T save transcript_object - too large
+            # if 'transcript_object' in data:
+            #     candidate.retell_transcript_object = data['transcript_object']
+            if 'duration_ms' in data:
+                candidate.retell_call_duration_ms = data['duration_ms']
+            if 'start_timestamp' in data:
+                candidate.retell_start_timestamp = data['start_timestamp']
+            if 'end_timestamp' in data:
+                candidate.retell_end_timestamp = data['end_timestamp']
+            # Only save essential metadata (candidate_id, job_id)
+            if 'metadata' in data:
+                candidate.retell_metadata = data['metadata']
+            if 'public_log_url' in data:
+                candidate.retell_public_log_url = data['public_log_url']
+
+            # Extract from Dynamic Variables (retell_llm_dynamic_variables or collected_dynamic_variables)
+            dynamic_vars = data.get('retell_llm_dynamic_variables') or data.get('collected_dynamic_variables') or {}
+
+            # Extract from dynamic variables if available
+            if dynamic_vars:
+                if 'interviewDate' in dynamic_vars or 'interview_date' in dynamic_vars:
+                    interview_date = dynamic_vars.get('interviewDate') or dynamic_vars.get('interview_date')
+                    candidate.retell_scheduled_date = interview_date
+                    candidate.retell_interview_scheduled = True
+
+                if 'interviewTime' in dynamic_vars or 'interview_time' in dynamic_vars:
+                    interview_time = dynamic_vars.get('interviewTime') or dynamic_vars.get('interview_time')
+                    candidate.retell_scheduled_time = interview_time
+
+                if 'interviewTimezone' in dynamic_vars or 'timezone' in dynamic_vars:
+                    timezone_val = dynamic_vars.get('interviewTimezone') or dynamic_vars.get('timezone')
+                    candidate.retell_scheduled_timezone = timezone_val
+                    candidate.retell_candidate_timezone = timezone_val
+
+                if 'candidateName' in dynamic_vars:
+                    # Store in additional notes
+                    candidate.retell_additional_notes = f"Candidate Name from call: {dynamic_vars['candidateName']}"
+
+                if 'candidateEmail' in dynamic_vars:
+                    # Could update candidate email if needed
+                    pass
+
+                if 'jobTitle' in dynamic_vars:
+                    # Store job title in metadata
+                    if not candidate.retell_metadata:
+                        candidate.retell_metadata = {}
+                    candidate.retell_metadata['job_title'] = dynamic_vars['jobTitle']
+
+            # Call analysis data - extract only what we need, don't store full JSON
+            call_analysis = data.get('call_analysis', {})
+            if call_analysis:
+                # DON'T save full call_analysis - too large and redundant
+                # candidate.retell_call_analysis = call_analysis
+
+                # Extract only the essential analysis fields
+                if 'call_summary' in call_analysis:
+                    candidate.retell_call_summary = call_analysis['call_summary']
+                if 'user_sentiment' in call_analysis:
+                    candidate.retell_user_sentiment = call_analysis['user_sentiment']
+                if 'call_successful' in call_analysis:
+                    candidate.retell_call_successful = call_analysis['call_successful']
+                if 'in_voicemail' in call_analysis:
+                    candidate.retell_in_voicemail = call_analysis['in_voicemail']
+
+                # Extract custom analysis data - THIS IS WHAT WE ACTUALLY NEED
+                custom_data = call_analysis.get('custom_analysis_data', {})
+                if custom_data:
+                    # Interview scheduling fields
+                    if 'interview_scheduled' in custom_data:
+                        candidate.retell_interview_scheduled = custom_data['interview_scheduled']
+                    if 'scheduled_date' in custom_data:
+                        candidate.retell_scheduled_date = custom_data['scheduled_date']
+                    if 'scheduled_time' in custom_data:
+                        candidate.retell_scheduled_time = custom_data['scheduled_time']
+                    if 'scheduled_timezone' in custom_data:
+                        candidate.retell_scheduled_timezone = custom_data['scheduled_timezone']
+                    if 'scheduled_datetime_iso' in custom_data:
+                        candidate.retell_scheduled_datetime_iso = custom_data['scheduled_datetime_iso']
+                    if 'candidate_timezone' in custom_data:
+                        candidate.retell_candidate_timezone = custom_data['candidate_timezone']
+                    if 'availability_preference' in custom_data:
+                        candidate.retell_availability_preference = custom_data['availability_preference']
+                    if 'unavailable_dates' in custom_data:
+                        candidate.retell_unavailable_dates = custom_data['unavailable_dates']
+
+                    # Screening fields
+                    if 'is_qualified_candidate' in custom_data:
+                        candidate.retell_is_qualified = custom_data['is_qualified_candidate']
+                    if 'candidate_interest_level' in custom_data or 'interest_level' in custom_data:
+                        candidate.retell_interest_level = custom_data.get('candidate_interest_level') or custom_data.get('interest_level')
+                    if 'technical_skills_mentioned' in custom_data or 'technical_skills' in custom_data:
+                        candidate.retell_technical_skills = custom_data.get('technical_skills_mentioned') or custom_data.get('technical_skills')
+                    if 'questions_asked' in custom_data or 'questions_asked_by_candidate' in custom_data:
+                        candidate.retell_questions_asked = custom_data.get('questions_asked') or custom_data.get('questions_asked_by_candidate')
+                    if 'outcome' in custom_data or 'call_outcome' in custom_data:
+                        candidate.retell_call_outcome = custom_data.get('outcome') or custom_data.get('call_outcome')
+                    if 'rejection_reason' in custom_data:
+                        candidate.retell_rejection_reason = custom_data['rejection_reason']
+                    if 'additional_notes' in custom_data:
+                        candidate.retell_additional_notes = custom_data['additional_notes']
+
+                    # Update candidate status based on call outcome
+                    if candidate.retell_interview_scheduled:
+                        candidate.status = 'interviewing'
+                    elif candidate.retell_call_outcome == 'Not Interested':
+                        candidate.status = 'rejected'
+
+            candidate.save()
+
+            serializer = self.get_serializer(candidate)
+            return Response({
+                'success': True,
+                'message': 'Retell call data saved successfully',
+                'candidate': serializer.data
+            })
+
+        except Exception as e:
+            logger.error(f"Error saving Retell call data: {e}")
+            return Response(
+                {'success': False, 'error': f'Failed to save Retell call data: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 
 @csrf_exempt
 @api_view(['POST'])

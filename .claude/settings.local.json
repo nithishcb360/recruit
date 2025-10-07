@@ -47,7 +47,8 @@
       "Read(//d/**)",
       "Bash(git -C \"D:/recruit\" status)",
       "Bash(git -C \"D:/recruit\" diff \"frontend/src/app/screening/page.tsx\")",
-      "Bash(where ngrok)"
+      "Bash(where ngrok)",
+      "Bash(timeout:*)"
     ]
   }
 }

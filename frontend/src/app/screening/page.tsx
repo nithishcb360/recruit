@@ -16,6 +16,8 @@ import { getJobs } from "@/lib/api/jobs"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { getScreeningCandidateData, getScreeningCandidatesList, removeFromScreeningList, clearScreeningCandidateData, ScreeningCandidateData } from "@/utils/screeningData"
 import { enhancedRetellAPI, EnhancedRetellCallData } from "@/lib/api/retell-enhanced"
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 
 interface Job {
   id: number
@@ -60,6 +62,45 @@ interface Candidate {
   salary_expectation: number | null
   location: string
   current_position: string
+
+  // Retell AI Call fields
+  retell_call_id?: string
+  retell_call_status?: string
+  retell_call_type?: string
+  retell_recording_url?: string
+  retell_transcript?: string
+  retell_transcript_object?: any[]
+  retell_call_duration_ms?: number
+  retell_call_summary?: string
+  retell_call_analysis?: any
+  retell_user_sentiment?: string
+  retell_call_successful?: boolean
+  retell_in_voicemail?: boolean
+
+  // Retell AI - Interview Scheduling
+  retell_interview_scheduled?: boolean
+  retell_scheduled_date?: string
+  retell_scheduled_time?: string
+  retell_scheduled_timezone?: string
+  retell_scheduled_datetime_iso?: string
+  retell_candidate_timezone?: string
+  retell_availability_preference?: string
+  retell_unavailable_dates?: string
+
+  // Retell AI - Screening Data
+  retell_is_qualified?: boolean
+  retell_interest_level?: string
+  retell_technical_skills?: string[]
+  retell_questions_asked?: string[]
+  retell_call_outcome?: string
+  retell_rejection_reason?: string
+
+  // Retell AI - Metadata
+  retell_metadata?: any
+  retell_start_timestamp?: number
+  retell_end_timestamp?: number
+  retell_public_log_url?: string
+  retell_additional_notes?: string
 }
 
 interface ScreeningResult {
@@ -188,6 +229,214 @@ const extractCurrentRole = (position: string): string => {
     : 'Position Not Available'
 }
 
+// PDF Generation Function
+const generateAssessmentPDF = (candidate: Candidate, assessmentResponses: any) => {
+  const doc = new jsPDF()
+
+  // Title
+  doc.setFontSize(20)
+  doc.setTextColor(40, 60, 120)
+  doc.text('Assessment Report', 105, 20, { align: 'center' })
+
+  // Candidate Information
+  doc.setFontSize(12)
+  doc.setTextColor(0, 0, 0)
+  doc.text(`Candidate: ${candidate.first_name} ${candidate.last_name}`, 14, 35)
+  doc.text(`Email: ${candidate.email}`, 14, 42)
+
+  if (candidate.assessment_completed) {
+    doc.text(`Status: Completed`, 14, 49)
+  }
+
+  if (candidate.assessment_time_taken) {
+    const minutes = Math.floor(candidate.assessment_time_taken / 60)
+    const seconds = candidate.assessment_time_taken % 60
+    doc.text(`Time Taken: ${minutes}m ${seconds}s`, 14, 56)
+  }
+
+  if (candidate.assessment_tab_switches !== undefined) {
+    doc.text(`Tab Switches: ${candidate.assessment_tab_switches}`, 14, 63)
+  }
+
+  // Score Summary
+  if (assessmentResponses.percentage !== undefined) {
+    doc.setFontSize(14)
+    doc.setTextColor(40, 120, 40)
+    doc.text(`Total Score: ${assessmentResponses.percentage}% (${assessmentResponses.totalScore}/${assessmentResponses.maxScore} points)`, 14, 75)
+  }
+
+  // Add a line separator
+  doc.setDrawColor(200, 200, 200)
+  doc.line(14, 80, 196, 80)
+
+  let yPosition = 90
+
+  // Questions and Answers
+  doc.setFontSize(14)
+  doc.setTextColor(0, 0, 0)
+  doc.text('Assessment Responses', 14, yPosition)
+  yPosition += 10
+
+  assessmentResponses.questions.forEach((response: any, index: number) => {
+    // Check if we need a new page
+    if (yPosition > 270) {
+      doc.addPage()
+      yPosition = 20
+    }
+
+    // Question Header
+    doc.setFontSize(11)
+    doc.setTextColor(60, 60, 60)
+    doc.setFont('helvetica', 'bold')
+    doc.text(`Question ${index + 1} (${response.type.toUpperCase()}) - ${response.points} points`, 14, yPosition)
+    yPosition += 7
+
+    // Question Text
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(0, 0, 0)
+    const questionLines = doc.splitTextToSize(response.question, 180)
+    doc.text(questionLines, 14, yPosition)
+    yPosition += questionLines.length * 5 + 3
+
+    // Options for MCQ
+    if (response.type === 'mcq' && response.options) {
+      doc.setFontSize(10)
+      response.options.forEach((option: string, optIndex: number) => {
+        if (yPosition > 275) {
+          doc.addPage()
+          yPosition = 20
+        }
+        const isCorrect = response.correctAnswer === optIndex
+        const isSelected = response.candidateAnswer === optIndex
+
+        if (isSelected && isCorrect) {
+          doc.setTextColor(0, 150, 0) // Green for correct answer
+          doc.text(`✓ ${option}`, 20, yPosition)
+        } else if (isSelected && !isCorrect) {
+          doc.setTextColor(200, 0, 0) // Red for wrong answer
+          doc.text(`✗ ${option}`, 20, yPosition)
+        } else if (isCorrect) {
+          doc.setTextColor(0, 100, 0) // Dark green for correct option
+          doc.text(`✓ ${option} (Correct)`, 20, yPosition)
+        } else {
+          doc.setTextColor(100, 100, 100) // Gray for other options
+          doc.text(`  ${option}`, 20, yPosition)
+        }
+        yPosition += 5
+      })
+      doc.setTextColor(0, 0, 0)
+      yPosition += 3
+    }
+
+    // Candidate's Answer for Text/Coding
+    if ((response.type === 'text' || response.type === 'coding') && response.candidateAnswer) {
+      if (yPosition > 250) {
+        doc.addPage()
+        yPosition = 20
+      }
+      doc.setFontSize(10)
+      doc.setFont('helvetica', 'bold')
+      doc.text('Answer:', 14, yPosition)
+      yPosition += 6
+
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(9)
+      const answerLines = doc.splitTextToSize(String(response.candidateAnswer), 180)
+
+      // Handle long answers
+      answerLines.forEach((line: string) => {
+        if (yPosition > 280) {
+          doc.addPage()
+          yPosition = 20
+        }
+        doc.text(line, 14, yPosition)
+        yPosition += 4
+      })
+      yPosition += 5
+    }
+
+    // Correctness indicator
+    if (response.isCorrect !== null) {
+      if (yPosition > 275) {
+        doc.addPage()
+        yPosition = 20
+      }
+      doc.setFontSize(10)
+      if (response.isCorrect) {
+        doc.setTextColor(0, 150, 0)
+        doc.text('✓ Correct', 14, yPosition)
+      } else {
+        doc.setTextColor(200, 0, 0)
+        doc.text('✗ Incorrect', 14, yPosition)
+      }
+      doc.setTextColor(0, 0, 0)
+      yPosition += 3
+    }
+
+    // Separator line
+    if (yPosition > 275) {
+      doc.addPage()
+      yPosition = 20
+    }
+    doc.setDrawColor(220, 220, 220)
+    doc.line(14, yPosition, 196, yPosition)
+    yPosition += 8
+  })
+
+  // Recording Links
+  if (candidate.assessment_video_recording || candidate.assessment_screen_recording) {
+    if (yPosition > 260) {
+      doc.addPage()
+      yPosition = 20
+    }
+
+    doc.setFontSize(12)
+    doc.setTextColor(40, 60, 120)
+    doc.text('Assessment Recordings', 14, yPosition)
+    yPosition += 8
+
+    doc.setFontSize(10)
+    doc.setTextColor(0, 0, 0)
+
+    if (candidate.assessment_video_recording) {
+      doc.text('📷 Camera Recording:', 14, yPosition)
+      yPosition += 5
+      doc.setTextColor(0, 0, 200)
+      const videoUrl = candidate.assessment_video_recording.startsWith('http')
+        ? candidate.assessment_video_recording
+        : `http://localhost:8000${candidate.assessment_video_recording}`
+      doc.textWithLink('View Camera Recording', 20, yPosition, { url: videoUrl })
+      doc.setTextColor(0, 0, 0)
+      yPosition += 8
+    }
+
+    if (candidate.assessment_screen_recording) {
+      doc.text('🖥️ Screen Recording:', 14, yPosition)
+      yPosition += 5
+      doc.setTextColor(0, 0, 200)
+      const screenUrl = candidate.assessment_screen_recording.startsWith('http')
+        ? candidate.assessment_screen_recording
+        : `http://localhost:8000${candidate.assessment_screen_recording}`
+      doc.textWithLink('View Screen Recording', 20, yPosition, { url: screenUrl })
+      doc.setTextColor(0, 0, 0)
+      yPosition += 8
+    }
+  }
+
+  // Footer
+  const pageCount = doc.getNumberOfPages()
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i)
+    doc.setFontSize(8)
+    doc.setTextColor(150, 150, 150)
+    doc.text(`Page ${i} of ${pageCount}`, 105, 290, { align: 'center' })
+    doc.text(`Generated on ${new Date().toLocaleString()}`, 105, 285, { align: 'center' })
+  }
+
+  // Save the PDF
+  doc.save(`Assessment_${candidate.first_name}_${candidate.last_name}_${Date.now()}.pdf`)
+}
+
 export default function ScreeningPage() {
   const { toast } = useToast()
   const [jobs, setJobs] = useState<Job[]>([])
@@ -206,6 +455,7 @@ export default function ScreeningPage() {
   const [autoCallScheduled, setAutoCallScheduled] = useState<Set<number>>(new Set())
   const [autoCallInProgress, setAutoCallInProgress] = useState<Set<number>>(new Set())
   const [initiatedCallIds, setInitiatedCallIds] = useState<Map<number, string>>(new Map())
+  const [assigneeInputs, setAssigneeInputs] = useState<Map<number, string>>(new Map())
 
   // Check if current time is within working hours (10 AM - 6 PM)
   const isWithinWorkingHours = (): boolean => {
@@ -412,7 +662,11 @@ export default function ScreeningPage() {
                 assessment_completed: freshData.assessment_completed,
                 assessment_score: freshData.assessment_score,
                 assessment_tab_switches: freshData.assessment_tab_switches,
-                assessment_disqualified: freshData.assessment_disqualified
+                assessment_disqualified: freshData.assessment_disqualified,
+                assessment_video_recording: freshData.assessment_video_recording,
+                assessment_screen_recording: freshData.assessment_screen_recording,
+                assessment_audio_url: freshData.assessment_audio_url,
+                assessment_recording: freshData.assessment_recording
               }
             }
             return candidate
@@ -816,7 +1070,7 @@ export default function ScreeningPage() {
     return 'text-red-600'
   }
 
-  // Function to manually fetch call data by call ID
+  // Function to manually fetch call data by call ID and save to database
   const fetchCallDataByCallId = async (candidateId: number, callId: string) => {
     if (!callId.trim()) {
       toast({
@@ -831,30 +1085,47 @@ export default function ScreeningPage() {
     setLoadingCallData(prev => new Set(prev).add(candidateId))
 
     try {
-      console.log(`Fetching call data for candidate ${candidateId} with call ID: ${callId}`)
+      console.log(`Fetching and saving call data for candidate ${candidateId} with call ID: ${callId}`)
 
-      const callData = await enhancedRetellAPI.getCallDetails(callId.trim())
+      // Use the new method that both fetches AND saves to backend
+      const result = await enhancedRetellAPI.getCallDetailsAndSave(callId.trim(), candidateId)
 
-      if (callData) {
-        // Store call data for this candidate
+      if (result && result.success) {
+        // Store call data for this candidate (for UI display)
+        const callData = {
+          call_id: result.candidate.retell_call_id,
+          call_status: result.candidate.retell_call_status,
+          recording_url: result.candidate.retell_recording_url,
+          transcript: result.candidate.retell_transcript,
+          duration_ms: result.candidate.retell_call_duration_ms,
+          metadata: result.candidate.retell_metadata
+        }
+
         setCandidateCallData(prev => {
           const newMap = new Map(prev)
           newMap.set(candidateId, callData)
           return newMap
         })
 
+        // Show success with more detail
+        const hasSchedule = result.candidate.retell_interview_scheduled
+        const scheduleInfo = hasSchedule
+          ? `\n✓ Interview: ${result.candidate.retell_scheduled_date} at ${result.candidate.retell_scheduled_time}`
+          : ''
+
         toast({
-          title: "Call Data Retrieved",
-          description: `Successfully loaded call recording and transcript for the candidate`,
+          title: "✅ Call Data Saved",
+          description: `Recording, transcript, and analysis saved to database${scheduleInfo}`,
           variant: "default"
         })
 
-        console.log('Call data retrieved:', {
-          callId: callData.call_id,
-          hasRecording: !!callData.recording_url,
-          hasTranscript: !!callData.transcript,
-          status: callData.call_status,
-          duration: callData.duration_ms
+        console.log('✅ Call data retrieved and saved:', {
+          callId: result.candidate.retell_call_id,
+          hasRecording: !!result.candidate.retell_recording_url,
+          hasTranscript: !!result.candidate.retell_transcript,
+          interview_scheduled: result.candidate.retell_interview_scheduled,
+          scheduled_date: result.candidate.retell_scheduled_date,
+          scheduled_time: result.candidate.retell_scheduled_time
         })
       } else {
         toast({
@@ -864,7 +1135,7 @@ export default function ScreeningPage() {
         })
       }
     } catch (error) {
-      console.error('Error fetching call data:', error)
+      console.error('Error fetching/saving call data:', error)
       const errorMessage = error instanceof Error ? error.message : 'Failed to fetch call data from Retell AI'
       toast({
         title: "Error",
@@ -1033,6 +1304,61 @@ export default function ScreeningPage() {
   }
 
   // Handle removing a candidate from screening list
+  const handleAssignMember = async (candidateId: number) => {
+    const assigneeEmail = assigneeInputs.get(candidateId)
+
+    if (!assigneeEmail || assigneeEmail.trim() === '') {
+      toast({
+        title: "Error",
+        description: "Please enter an assignee email address",
+        variant: "destructive"
+      })
+      return
+    }
+
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(assigneeEmail)) {
+      toast({
+        title: "Error",
+        description: "Please enter a valid email address",
+        variant: "destructive"
+      })
+      return
+    }
+
+    try {
+      const candidate = movedCandidatesList.find(c => c.id === candidateId)
+      if (!candidate) {
+        throw new Error('Candidate not found')
+      }
+
+      // Here you can add API call to assign the member
+      // Example: await fetch(`http://localhost:8000/api/candidates/${candidateId}/assign/`, {...})
+
+      toast({
+        title: "Member Assigned",
+        description: `Candidate ${candidate.name} has been assigned to ${assigneeEmail}`,
+        variant: "default"
+      })
+
+      // Clear the input after successful assignment
+      setAssigneeInputs(prev => {
+        const newMap = new Map(prev)
+        newMap.delete(candidateId)
+        return newMap
+      })
+
+    } catch (error) {
+      console.error('Error assigning member:', error)
+      toast({
+        title: "Error",
+        description: "Failed to assign member",
+        variant: "destructive"
+      })
+    }
+  }
+
   const handleRemoveFromScreening = async (candidateId: number) => {
     const candidateToRemove = movedCandidatesList.find(c => c.id === candidateId)
     if (!candidateToRemove) {
@@ -1260,7 +1586,9 @@ export default function ScreeningPage() {
                 name: "Test Candidate",
                 email: "test@example.com",
                 phone: "1234567890",
-                jobTitle: "Test Position"
+                jobTitle: "Test Position",
+                assessment_screen_recording: undefined,
+                assessment_video_recording: undefined
               })}
               className="bg-blue-600 hover:bg-blue-700 text-white"
             >
@@ -1275,7 +1603,7 @@ export default function ScreeningPage() {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
             <Input
               type="text"
-              placeholder="Search candidates by name, email, or phone..."
+              placeholder="Search candidates by name, email, phone, or ID..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10 w-full"
@@ -1320,6 +1648,7 @@ export default function ScreeningPage() {
                     if (!searchTerm) return true
                     const search = searchTerm.toLowerCase()
                     return (
+                      candidate.id?.toString().includes(search) ||
                       candidate.name?.toLowerCase().includes(search) ||
                       candidate.email?.toLowerCase().includes(search) ||
                       candidate.phone?.toLowerCase().includes(search)
@@ -1487,6 +1816,213 @@ ${fromEmail}`
                       {candidate.jobTitle && (
                         <p className="text-xs text-blue-600 mt-1">Applied for: {candidate.jobTitle}</p>
                       )}
+
+                      {/* Retell Call Analysis and Interview Schedule */}
+                      {(candidate.retell_interview_scheduled || candidate.retell_call_status || candidate.retell_call_summary) && (
+                        <div className="mt-2 bg-purple-50 border border-purple-200 rounded p-3 space-y-2">
+                          <p className="font-semibold text-purple-900 text-xs mb-2">📞 Retell Call Analysis:</p>
+
+                          {/* Interview Schedule */}
+                          {candidate.retell_interview_scheduled && (
+                            <div className="bg-green-50 border border-green-300 rounded p-2">
+                              <p className="text-xs font-semibold text-green-900 mb-1">✅ Interview Scheduled</p>
+                              {candidate.retell_scheduled_date && (
+                                <p className="text-xs text-green-800">
+                                  <strong>Date:</strong> {new Date(candidate.retell_scheduled_date).toLocaleDateString('en-US', {
+                                    weekday: 'long',
+                                    year: 'numeric',
+                                    month: 'long',
+                                    day: 'numeric'
+                                  })}
+                                </p>
+                              )}
+                              {candidate.retell_scheduled_time && (
+                                <p className="text-xs text-green-800">
+                                  <strong>Time:</strong> {candidate.retell_scheduled_time}
+                                </p>
+                              )}
+                              {candidate.retell_scheduled_timezone && (
+                                <p className="text-xs text-green-700">
+                                  <strong>Timezone:</strong> {candidate.retell_scheduled_timezone}
+                                </p>
+                              )}
+                              {candidate.retell_scheduled_datetime_iso && (
+                                <p className="text-xs text-green-700 mt-1">
+                                  <strong>Full DateTime:</strong> {new Date(candidate.retell_scheduled_datetime_iso).toLocaleString()}
+                                </p>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Call Status */}
+                          {candidate.retell_call_status && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-purple-700">
+                                <strong>Status:</strong>
+                              </span>
+                              <Badge
+                                variant={
+                                  candidate.retell_call_status === 'ended' ? 'default' :
+                                  candidate.retell_call_status === 'ongoing' ? 'secondary' :
+                                  candidate.retell_call_status === 'error' ? 'destructive' : 'secondary'
+                                }
+                                className="text-xs"
+                              >
+                                {candidate.retell_call_status}
+                              </Badge>
+                            </div>
+                          )}
+
+                          {/* Call Outcome */}
+                          {candidate.retell_call_outcome && (
+                            <p className="text-xs text-purple-700">
+                              <strong>Outcome:</strong> {candidate.retell_call_outcome}
+                            </p>
+                          )}
+
+                          {/* Interest Level */}
+                          {candidate.retell_interest_level && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-purple-700">
+                                <strong>Interest:</strong>
+                              </span>
+                              <Badge
+                                variant={
+                                  candidate.retell_interest_level === 'High' ? 'default' :
+                                  candidate.retell_interest_level === 'Medium' ? 'secondary' :
+                                  'destructive'
+                                }
+                                className="text-xs"
+                              >
+                                {candidate.retell_interest_level}
+                              </Badge>
+                            </div>
+                          )}
+
+                          {/* Qualification Status */}
+                          {candidate.retell_is_qualified && (
+                            <p className="text-xs text-green-700 font-semibold">
+                              ✓ Meets Basic Qualifications
+                            </p>
+                          )}
+
+                          {/* Call Duration */}
+                          {candidate.retell_call_duration_ms && (
+                            <p className="text-xs text-purple-700">
+                              <strong>Duration:</strong> {Math.floor(candidate.retell_call_duration_ms / 60000)}m {Math.floor((candidate.retell_call_duration_ms % 60000) / 1000)}s
+                            </p>
+                          )}
+
+                          {/* Call Summary */}
+                          {candidate.retell_call_summary && (
+                            <div className="bg-white border border-purple-200 rounded p-2 mt-2">
+                              <p className="text-xs font-semibold text-purple-900 mb-1">Summary:</p>
+                              <p className="text-xs text-gray-700 whitespace-pre-wrap">{candidate.retell_call_summary}</p>
+                            </div>
+                          )}
+
+                          {/* Technical Skills */}
+                          {candidate.retell_technical_skills && candidate.retell_technical_skills.length > 0 && (
+                            <div>
+                              <p className="text-xs font-semibold text-purple-900 mb-1">Technical Skills:</p>
+                              <div className="flex flex-wrap gap-1">
+                                {candidate.retell_technical_skills.map((skill: string, idx: number) => (
+                                  <Badge key={idx} variant="outline" className="text-xs">
+                                    {skill}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Questions Asked by Candidate */}
+                          {candidate.retell_questions_asked && candidate.retell_questions_asked.length > 0 && (
+                            <div className="bg-white border border-purple-200 rounded p-2">
+                              <p className="text-xs font-semibold text-purple-900 mb-1">Questions Asked:</p>
+                              <ul className="text-xs text-gray-700 list-disc list-inside space-y-1">
+                                {candidate.retell_questions_asked.map((question: string, idx: number) => (
+                                  <li key={idx}>{question}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {/* Sentiment */}
+                          {candidate.retell_user_sentiment && (
+                            <p className="text-xs text-purple-700">
+                              <strong>Sentiment:</strong> {candidate.retell_user_sentiment}
+                            </p>
+                          )}
+
+                          {/* Recording URL */}
+                          {candidate.retell_recording_url && (
+                            <a
+                              href={candidate.retell_recording_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+                            >
+                              🎙️ Listen to Call Recording
+                            </a>
+                          )}
+
+                          {/* Public Log URL */}
+                          {candidate.retell_public_log_url && (
+                            <a
+                              href={candidate.retell_public_log_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+                            >
+                              📋 View Call Logs
+                            </a>
+                          )}
+
+                          {/* Availability Preference */}
+                          {candidate.retell_availability_preference && (
+                            <p className="text-xs text-purple-700">
+                              <strong>Availability:</strong> {candidate.retell_availability_preference}
+                            </p>
+                          )}
+
+                          {/* Additional Notes */}
+                          {candidate.retell_additional_notes && (
+                            <div className="bg-yellow-50 border border-yellow-200 rounded p-2">
+                              <p className="text-xs font-semibold text-yellow-900 mb-1">📝 Notes:</p>
+                              <p className="text-xs text-gray-700 whitespace-pre-wrap">{candidate.retell_additional_notes}</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Assign Member Section */}
+                      <div className="mt-3 bg-orange-50 border border-orange-200 rounded p-3">
+                        <p className="font-semibold text-orange-900 text-xs mb-2">👤 Assign Team Member:</p>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="email"
+                            placeholder="Enter member email"
+                            value={assigneeInputs.get(candidate.id) || ''}
+                            onChange={(e) => {
+                              setAssigneeInputs(prev => {
+                                const newMap = new Map(prev)
+                                newMap.set(candidate.id, e.target.value)
+                                return newMap
+                              })
+                            }}
+                            className="flex-1 h-8 text-xs"
+                          />
+                          <Button
+                            size="sm"
+                            onClick={() => handleAssignMember(candidate.id)}
+                            className="bg-orange-600 hover:bg-orange-700 text-white h-8 px-3"
+                          >
+                            <User className="h-3 w-3 mr-1" />
+                            Assign
+                          </Button>
+                        </div>
+                      </div>
+
                       <div className="mt-2 space-y-2">
                         <a
                           href={`/webdesk/${candidate.id}`}
@@ -1505,167 +2041,200 @@ ${fromEmail}`
                           </div>
                         )}
                         {candidate.assessment_completed && (
-                          <div className="bg-green-50 border border-green-200 rounded p-2 text-xs">
-                            <p className="font-semibold text-green-900">Assessment: Completed</p>
-                            <p className="text-green-700">Score: {candidate.assessment_score}%</p>
+                          <div className={`border rounded p-2 text-xs ${
+                            candidate.assessment_disqualified
+                              ? 'bg-red-50 border-red-200'
+                              : 'bg-green-50 border-green-200'
+                          }`}>
+                            <p className={`font-semibold mb-1 ${
+                              candidate.assessment_disqualified ? 'text-red-900' : 'text-green-900'
+                            }`}>
+                              ✅ Assessment: {candidate.assessment_disqualified ? 'DISQUALIFIED' : 'Completed'}
+                            </p>
+                            <p className={candidate.assessment_disqualified ? 'text-red-700' : 'text-green-700'}>
+                              Score: {candidate.assessment_score}%
+                            </p>
                             {(candidate.assessment_tab_switches ?? 0) > 0 && (
-                              <p className="text-orange-700">Tab Switches: {candidate.assessment_tab_switches}</p>
+                              <p className="text-orange-700">⚠️ Tab Switches: {candidate.assessment_tab_switches}</p>
                             )}
-                            {candidate.assessment_disqualified && (
-                              <p className="text-red-700 font-bold">Status: DISQUALIFIED</p>
+
+
+                            
+
+                            {/* Video Players */}
+                            {(candidate.assessment_video_recording || candidate.assessment_screen_recording) && (
+                              <div className="mt-3 space-y-2">
+                                <p className="font-semibold text-gray-700 mb-2">📹 Assessment Recordings:</p>
+                                <div className="grid grid-cols-1 gap-2">
+                                  {/* Camera Recording */}
+                                  {candidate.assessment_video_recording && (
+                                    <div className="bg-white border border-gray-300 rounded overflow-hidden">
+                                      <div className="bg-gray-800 text-white text-xs px-2 py-1 font-semibold">
+                                        📷 Camera Recording
+                                      </div>
+                                      <video
+                                        controls
+                                        className="w-full"
+                                        style={{ maxHeight: '150px' }}
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <source
+                                          src={candidate.assessment_video_recording.startsWith('http')
+                                            ? candidate.assessment_video_recording
+                                            : `http://localhost:8000${candidate.assessment_video_recording}`
+                                          }
+                                          type="video/webm"
+                                        />
+                                        Your browser does not support the video tag.
+                                      </video>
+                                    </div>
+                                  )}
+
+                                  {/* Screen Recording */}
+                                  {candidate.assessment_screen_recording && (
+                                    <div className="bg-white border border-gray-300 rounded overflow-hidden">
+                                      <div className="bg-gray-800 text-white text-xs px-2 py-1 font-semibold">
+                                        🖥️ Screen Recording
+                                      </div>
+                                      <video
+                                        controls
+                                        className="w-full"
+                                        style={{ maxHeight: '150px' }}
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <source
+                                          src={candidate.assessment_screen_recording.startsWith('http')
+                                            ? candidate.assessment_screen_recording
+                                            : `http://localhost:8000${candidate.assessment_screen_recording}`
+                                          }
+                                          type="video/webm"
+                                        />
+                                        Your browser does not support the video tag.
+                                      </video>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Assessment Responses Section */}
+                            {candidate.assessment_responses && candidate.assessment_responses.questions && (
+                              <div className="mt-4 border-t border-gray-200 pt-3">
+                                <p className="font-semibold text-gray-700 mb-3">📝 Assessment Responses:</p>
+                                <div className="space-y-3">
+                                  {candidate.assessment_responses.questions.map((q: any, index: number) => (
+                                    <div key={q.questionId || index} className="bg-gray-50 border border-gray-200 rounded p-3">
+                                      <div className="flex items-start justify-between mb-2">
+                                        <p className="text-xs font-semibold text-gray-800">
+                                          Q{index + 1}. {q.question}
+                                        </p>
+                                        <Badge
+                                          variant={q.isCorrect === true ? "default" : q.isCorrect === false ? "destructive" : "secondary"}
+                                          className="ml-2 text-xs"
+                                        >
+                                          {q.points} pts
+                                        </Badge>
+                                      </div>
+
+                                      {/* MCQ Type */}
+                                      {q.type === 'mcq' && q.options && (
+                                        <div className="mt-2 space-y-1">
+                                          {q.options.map((option: string, optIndex: number) => {
+                                            const isCorrect = optIndex === q.correctAnswer
+                                            const isCandidate = optIndex === q.candidateAnswer
+                                            return (
+                                              <div
+                                                key={optIndex}
+                                                className={`text-xs px-2 py-1 rounded flex items-center gap-2 ${
+                                                  isCorrect && isCandidate
+                                                    ? 'bg-green-100 border border-green-300 text-green-800 font-semibold'
+                                                    : isCorrect
+                                                    ? 'bg-green-50 border border-green-200 text-green-700'
+                                                    : isCandidate
+                                                    ? 'bg-red-100 border border-red-300 text-red-800 font-semibold'
+                                                    : 'bg-white border border-gray-200 text-gray-600'
+                                                }`}
+                                              >
+                                                {isCorrect && <CheckCircle className="h-3 w-3 text-green-600" />}
+                                                {isCandidate && !isCorrect && <XCircle className="h-3 w-3 text-red-600" />}
+                                                <span>{option}</span>
+                                                {isCandidate && <span className="ml-auto text-xs">(Selected)</span>}
+                                                {isCorrect && !isCandidate && <span className="ml-auto text-xs">(Correct)</span>}
+                                              </div>
+                                            )
+                                          })}
+                                          {q.candidateAnswer === null && (
+                                            <p className="text-xs text-orange-600 mt-1 italic">⚠️ Not answered</p>
+                                          )}
+                                        </div>
+                                      )}
+
+                                      {/* Text/Coding Type */}
+                                      {(q.type === 'text' || q.type === 'coding') && (
+                                        <div className="mt-2">
+                                          {q.candidateAnswer ? (
+                                            <div className="bg-white border border-gray-300 rounded p-2">
+                                              <pre className="text-xs text-gray-700 whitespace-pre-wrap font-mono">
+                                                {q.candidateAnswer}
+                                              </pre>
+                                            </div>
+                                          ) : (
+                                            <p className="text-xs text-orange-600 italic">⚠️ Not answered</p>
+                                          )}
+                                        </div>
+                                      )}
+
+                                      {/* Result indicator */}
+                                      <div className="mt-2 flex items-center gap-2">
+                                        {q.isCorrect === true && (
+                                          <span className="text-xs text-green-600 font-semibold flex items-center gap-1">
+                                            <CheckCircle className="h-3 w-3" /> Correct
+                                          </span>
+                                        )}
+                                        {q.isCorrect === false && (
+                                          <span className="text-xs text-red-600 font-semibold flex items-center gap-1">
+                                            <XCircle className="h-3 w-3" /> Incorrect
+                                          </span>
+                                        )}
+                                        {q.isCorrect === null && (
+                                          <span className="text-xs text-gray-500 italic">
+                                            Requires manual review
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+
+                                {/* Overall Score Summary */}
+                                {candidate.assessment_score !== null && (
+                                  <div className="mt-3 bg-blue-50 border border-blue-200 rounded p-2">
+                                    <p className="text-xs font-semibold text-blue-900">
+                                      Total Score: {candidate.assessment_score}%
+                                      {candidate.assessment_responses.questions && (
+                                        <span className="ml-2 text-blue-700 font-normal">
+                                          ({candidate.assessment_responses.questions.filter((q: any) => q.isCorrect).length}/
+                                          {candidate.assessment_responses.questions.length} correct)
+                                        </span>
+                                      )}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </div>
                         )}
                       </div>
                     </div>
-
-                    {/* Call Recording and Transcript Section */}
-                    {(() => {
-                      const callData = getCallDataForCandidate(candidate.id)
-                      if (callData && callData.recording_url) {
-                        return (
-                          <div className="mt-4 pt-4 border-t border-slate-200">
-                            <h5 className="text-sm font-semibold text-gray-900 mb-2">Screening Call Recording</h5>
-                            <AudioPlayer
-                              url={callData.recording_url}
-                              candidateName={candidate.name}
-                              transcript={callData.transcript}
-                              className="w-full"
-                            />
-                            {callData.call_status && (
-                              <div className="mt-2 text-xs text-gray-600">
-                                Status: {callData.call_status} {callData.duration_ms && `• Duration: ${Math.round(callData.duration_ms / 1000)}s`}
-                              </div>
-                            )}
-                          </div>
-                        )
-                      }
-                      return null
-                    })()}
                   </div>
-                ))}
+                  ))}
               </div>
             </CardContent>
           </Card>
         )}
 
-{/*        
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Target className="h-5 w-5" />
-              Select Job Position
-            </CardTitle>
-            <CardDescription>
-              Choose a job to screen candidates against
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Select value={selectedJobId} onValueChange={handleJobSelection}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select a job position to screen candidates..." />
-              </SelectTrigger>
-              <SelectContent>
-                {jobs.map((job) => (
-                  <SelectItem key={job.id} value={job.id.toString()}>
-                    <div className="flex flex-col items-start">
-                      <span className="font-medium">{job.title}</span>
-                      <span className="text-sm text-gray-500">{job.department.name} • {job.experience_level}</span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </CardContent>
-        </Card> */}
-
-      
-        {/* {selectedJobId && (
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex flex-wrap items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <Search className="h-4 w-4 text-gray-500" />
-                  <Input
-                    placeholder="Search candidates..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-64"
-                  />
-                </div>
-                
-                <div className="flex items-center gap-2">
-                  <Filter className="h-4 w-4 text-gray-500" />
-                  <Select value={minScore.toString()} onValueChange={(value) => setMinScore(parseInt(value))}>
-                    <SelectTrigger className="w-32">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="0">All Scores</SelectItem>
-                      <SelectItem value="50">50%+</SelectItem>
-                      <SelectItem value="60">60%+</SelectItem>
-                      <SelectItem value="70">70%+</SelectItem>
-                      <SelectItem value="80">80%+</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <Users className="h-4 w-4" />
-                  {filteredResults.length} candidate{filteredResults.length !== 1 ? 's' : ''} found
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )} */}
-
-       
-        {/* {isLoading && (
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-center py-8">
-                <div className="text-center">
-                  <Brain className="h-8 w-8 animate-pulse text-blue-500 mx-auto mb-2" />
-                  <p className="text-gray-600">AI is analyzing candidates...</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )} */}
-
-{/*       
-        {!selectedJobId && !isLoading && (
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-center py-12">
-                <Target className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-base font-medium text-gray-900 mb-2">Select a Job Position</h3>
-                <p className="text-gray-600">Choose a job position from the dropdown above to start screening candidates.</p>
-              </div>
-            </CardContent>
-          </Card>
-        )} */}
-
-        
-        {/* {selectedJobId && !isLoading && filteredResults.length === 0 && (
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-center py-12">
-                <Users className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-base font-medium text-gray-900 mb-2">No Candidates Found</h3>
-                <p className="text-gray-600">
-                  {searchTerm ? 
-                    'No candidates match your search criteria. Try adjusting your filters.' :
-                    'No candidates meet the minimum score requirement or all candidates are already in later stages.'
-                  }
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        )} */}
-
-     
-        {selectedJobId && !isLoading && filteredResults.length > 0 && (
+        {/* Screening Results Section */}
+        { !isLoading && filteredResults.length > 0 && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold text-gray-900">Screening Results</h2>
@@ -1674,514 +2243,7 @@ ${fromEmail}`
               </div>
             </div>
 
-            {filteredResults.map((result) => {
-              const isExpanded = expandedCards.has(result.candidate.id)
-              return (
-                <Card key={result.candidate.id} className="hover:shadow-md transition-shadow">
-                  <Collapsible>
-                    <CollapsibleTrigger asChild>
-                      <CardHeader className="cursor-pointer hover:bg-gray-50" onClick={() => toggleCardExpansion(result.candidate.id)}>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-4">
-                            <div className="h-12 w-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold">
-                              {result.candidate.first_name[0]}{result.candidate.last_name[0]}
-                            </div>
-                            <div>
-                              <CardTitle className="text-base">
-                                {result.candidate.first_name} {result.candidate.last_name}
-                              </CardTitle>
-                              <CardDescription className="flex items-center gap-4">
-                                <span>{result.candidate.email}</span>
-                                {result.candidate.experience_years && (
-                                  <span className="flex items-center gap-1">
-                                    <Briefcase className="h-3 w-3" />
-                                    {result.candidate.experience_years} years
-                                  </span>
-                                )}
-                                {result.candidate.location && (
-                                  <span className="flex items-center gap-1">
-                                    <MapPin className="h-3 w-3" />
-                                    {result.candidate.location}
-                                  </span>
-                                )}
-                              </CardDescription>
-
-                              {/* WebDesk Credentials */}
-                              {result.candidate.assessment_username && result.candidate.assessment_password && (
-                                <div className="mt-2 bg-red-50 border border-red-200 rounded p-2 text-xs max-w-md">
-                                  <p className="font-semibold text-red-900 mb-1">🔐 WebDesk Login:</p>
-                                  <div className="flex gap-4">
-                                    <span className="text-red-700">User: <span className="font-mono font-bold">{result.candidate.assessment_username}</span></span>
-                                    <span className="text-red-700">Pass: <span className="font-mono font-bold">{result.candidate.assessment_password}</span></span>
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Assessment Status */}
-                              {result.candidate.assessment_completed && (
-                                <div className={`mt-2 border rounded p-2 text-xs max-w-md ${
-                                  result.candidate.assessment_disqualified
-                                    ? 'bg-red-50 border-red-200'
-                                    : 'bg-green-50 border-green-200'
-                                }`}>
-                                  <p className={`font-semibold mb-1 ${
-                                    result.candidate.assessment_disqualified ? 'text-red-900' : 'text-green-900'
-                                  }`}>
-                                    ✅ Assessment: {result.candidate.assessment_disqualified ? 'DISQUALIFIED' : 'Completed'}
-                                  </p>
-                                  <p className={result.candidate.assessment_disqualified ? 'text-red-700' : 'text-green-700'}>
-                                    Score: {result.candidate.assessment_score}%
-                                  </p>
-                                  {(result.candidate.assessment_tab_switches ?? 0) > 0 && (
-                                    <p className="text-orange-700">⚠️ Tab Switches: {result.candidate.assessment_tab_switches}</p>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-4">
-                            <div className="text-right">
-                              <div className={`text-lg font-bold ${getScoreColor(result.totalScore)}`}>
-                                {result.totalScore}%
-                              </div>
-                              <Badge className={`${getRecommendationColor(result.recommendation)} border-0`}>
-                                {result.recommendation.replace('_', ' ')}
-                              </Badge>
-                            </div>
-                            <Button
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleDeleteCandidate(result.candidate.id)
-                              }}
-                              className="bg-blue-600 hover:bg-blue-700 text-white"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                            {isExpanded ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
-                          </div>
-                        </div>
-
-                    
-                        <div className="grid grid-cols-4 gap-4 mt-4">
-                          <div className="text-center">
-                            <div className={`text-base font-semibold ${getScoreColor(result.breakdown.jobTitleScore)}`}>
-                              {result.breakdown.jobTitleScore}%
-                            </div>
-                            <div className="text-xs text-gray-500">Job Title</div>
-                          </div>
-                          <div className="text-center">
-                            <div className={`text-base font-semibold ${getScoreColor(result.breakdown.departmentScore)}`}>
-                              {result.breakdown.departmentScore}%
-                            </div>
-                            <div className="text-xs text-gray-500">Department</div>
-                          </div>
-                          <div className="text-center">
-                            <div className={`text-base font-semibold ${getScoreColor(result.experienceScore)}`}>
-                              {result.experienceScore}%
-                            </div>
-                            <div className="text-xs text-gray-500">Experience</div>
-                          </div>
-                          <div className="text-center">
-                            <div className={`text-base font-semibold ${getScoreColor(result.breakdown.locationScore)}`}>
-                              {result.breakdown.locationScore}%
-                            </div>
-                            <div className="text-xs text-gray-500">Location</div>
-                          </div>
-                        </div>
-                      </CardHeader>
-                    </CollapsibleTrigger>
-
-                    <CollapsibleContent>
-                      <CardContent>
-                        <div className="space-y-6">
-                          {/* Main Content Grid */}
-                          <div className="grid md:grid-cols-2 gap-6">
-
-                            <div className="space-y-4">
-                              <h4 className="font-semibold text-gray-900">Detailed Analysis</h4>
-
-                              <div className="space-y-3">
-                                <div>
-                                  <div className="flex justify-between items-center mb-1">
-                                    <span className="text-sm font-medium">Required Skills Match</span>
-                                    <span className="text-sm font-semibold">{result.breakdown.requiredSkillsMatch}%</span>
-                                  </div>
-                                  <Progress value={result.breakdown.requiredSkillsMatch} className="h-2" />
-                                </div>
-
-                                <div>
-                                  <div className="flex justify-between items-center mb-1">
-                                    <span className="text-sm font-medium">Experience Level Fit</span>
-                                    <span className="text-sm font-semibold">{result.breakdown.experienceLevelMatch}%</span>
-                                  </div>
-                                  <Progress value={result.breakdown.experienceLevelMatch} className="h-2" />
-                                </div>
-
-                                <div>
-                                  <div className="flex justify-between items-center mb-1">
-                                    <span className="text-sm font-medium">Keyword Relevance</span>
-                                    <span className="text-sm font-semibold">{result.keywordScore}%</span>
-                                  </div>
-                                  <Progress value={result.keywordScore} className="h-2" />
-                                </div>
-
-                                <div>
-                                  <div className="flex justify-between items-center mb-1">
-                                    <span className="text-sm font-medium">Salary Expectation</span>
-                                    <Badge variant={result.breakdown.salaryFit === 'good' ? 'default' : 'secondary'}>
-                                      {result.breakdown.salaryFit}
-                                    </Badge>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="space-y-4">
-                              <h4 className="font-semibold text-gray-900">Candidate Profile</h4>
-                            
-                            <div className="space-y-3 text-sm">
-                              
-                              {result.candidate.current_position && (
-                                <div>
-                                  <span className="font-medium text-gray-600">Current Position:</span>
-                                  <div className="text-gray-900" title={result.candidate.current_position}>
-                                    {extractCurrentRole(result.candidate.current_position)}
-                                  </div>
-                                </div>
-                              )}
-
-                              {result.candidate.skills && result.candidate.skills.length > 0 && (
-                                <div>
-                                  <span className="font-medium text-gray-600">Skills:</span>
-                                  <div className="flex flex-wrap gap-1 mt-1">
-                                    {result.candidate.skills.slice(0, 10).map((skill, index) => (
-                                      <Badge key={index} variant="outline" className="text-xs">
-                                        {skill}
-                                      </Badge>
-                                    ))}
-                                    {result.candidate.skills.length > 10 && (
-                                      <Badge variant="secondary" className="text-xs">
-                                        +{result.candidate.skills.length - 10} more
-                                      </Badge>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-
-                              {result.breakdown.keywordMatches.length > 0 && (
-                                <div>
-                                  <span className="font-medium text-gray-600">Matched Keywords:</span>
-                                  <div className="flex flex-wrap gap-1 mt-1">
-                                    {result.breakdown.keywordMatches.slice(0, 8).map((keyword, index) => (
-                                      <Badge key={index} variant="secondary" className="text-xs">
-                                        {keyword}
-                                      </Badge>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Media Content Grid */}
-                          <div className="grid lg:grid-cols-2 gap-6">
-                            {/* Resume PDF Viewer */}
-                            <div className="space-y-4">
-                              <h4 className="font-semibold text-gray-900">Resume</h4>
-                              {result.candidate.resume_file ? (
-                                <PDFViewer
-                                  url={result.candidate.resume_file}
-                                  candidateName={`${result.candidate.first_name}_${result.candidate.last_name}`}
-                                  className="w-full"
-                                />
-                              ) : (
-                                <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-gray-300 rounded-lg">
-                                  <User className="h-12 w-12 text-gray-400 mb-4" />
-                                  <p className="text-gray-600 text-center">No resume file available</p>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* WebDesk Assessment Responses */}
-                            {result.candidate.assessment_responses && result.candidate.assessment_responses.questions && (
-                              <div className="space-y-4 mb-6">
-                                <h4 className="font-semibold text-gray-900">📝 Assessment Responses</h4>
-                                <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-4">
-                                  {result.candidate.assessment_responses.questions.map((response: any, index: number) => (
-                                    <div key={response.questionId} className="border-b border-gray-200 pb-4 last:border-b-0 last:pb-0">
-                                      <div className="flex items-start justify-between mb-2">
-                                        <h5 className="font-semibold text-sm text-gray-900">
-                                          Question {index + 1} ({response.type.toUpperCase()})
-                                        </h5>
-                                        <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                                          {response.points} points
-                                        </span>
-                                      </div>
-                                      <p className="text-sm text-gray-700 mb-3">{response.question}</p>
-
-                                      {/* MCQ Response */}
-                                      {response.type === 'mcq' && response.options && (
-                                        <div className="space-y-2">
-                                          {response.options.map((option: string, optIndex: number) => {
-                                            const isCorrect = optIndex === response.correctAnswer
-                                            const isSelected = optIndex === response.candidateAnswer
-                                            return (
-                                              <div
-                                                key={optIndex}
-                                                className={`text-sm p-2 rounded ${
-                                                  isSelected && isCorrect
-                                                    ? 'bg-green-100 border border-green-300'
-                                                    : isSelected && !isCorrect
-                                                    ? 'bg-red-100 border border-red-300'
-                                                    : isCorrect
-                                                    ? 'bg-green-50 border border-green-200'
-                                                    : 'bg-gray-50 border border-gray-200'
-                                                }`}
-                                              >
-                                                <span className="font-medium">{String.fromCharCode(65 + optIndex)}.</span> {option}
-                                                {isSelected && <span className="ml-2 text-xs font-bold">(Selected)</span>}
-                                                {isCorrect && <span className="ml-2 text-xs text-green-700 font-bold">✓ Correct</span>}
-                                              </div>
-                                            )
-                                          })}
-                                        </div>
-                                      )}
-
-                                      {/* Text/Coding Response */}
-                                      {(response.type === 'text' || response.type === 'coding') && (
-                                        <div className="mt-2">
-                                          <p className="text-xs text-gray-600 mb-1 font-medium">Candidate Answer:</p>
-                                          <div className="bg-gray-50 border border-gray-200 rounded p-3">
-                                            <pre className={`text-sm whitespace-pre-wrap ${response.type === 'coding' ? 'font-mono' : ''}`}>
-                                              {response.candidateAnswer || <span className="text-gray-400 italic">No answer provided</span>}
-                                            </pre>
-                                          </div>
-                                        </div>
-                                      )}
-
-                                      {/* Result indicator */}
-                                      {response.isCorrect !== null && (
-                                        <div className={`mt-2 text-xs font-semibold ${response.isCorrect ? 'text-green-600' : 'text-red-600'}`}>
-                                          {response.isCorrect ? '✓ Correct' : '✗ Incorrect'}
-                                        </div>
-                                      )}
-                                    </div>
-                                  ))}
-
-                                  {/* Score Summary */}
-                                  <div className="mt-4 pt-4 border-t border-gray-300">
-                                    <div className="flex justify-between items-center">
-                                      <span className="font-bold text-gray-900">Total Score:</span>
-                                      <span className="text-lg font-bold text-blue-600">
-                                        {result.candidate.assessment_responses.percentage}% ({result.candidate.assessment_responses.totalScore}/{result.candidate.assessment_responses.maxScore} points)
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* WebDesk Assessment Recordings */}
-                            {(result.candidate.assessment_video_url || result.candidate.assessment_audio_url || result.candidate.assessment_screen_url || result.candidate.assessment_recording || result.candidate.assessment_video_recording || result.candidate.assessment_screen_recording) && (
-                              <div className="space-y-4 mb-6">
-                                <h4 className="font-semibold text-gray-900">📹 WebDesk Assessment Recordings</h4>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                  {/* Camera Video Recording (File Upload) */}
-                                  {result.candidate.assessment_video_recording && (
-                                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                                      <h5 className="font-semibold text-sm text-gray-700 mb-2">📷 Camera Recording</h5>
-                                      <video controls className="w-full rounded" style={{ maxHeight: '300px' }}>
-                                        <source src={`http://localhost:8000${result.candidate.assessment_video_recording}`} type="video/webm" />
-                                        Your browser does not support the video tag.
-                                      </video>
-                                    </div>
-                                  )}
-
-                                  {/* Screen Recording (File Upload) */}
-                                  {result.candidate.assessment_screen_recording && (
-                                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                                      <h5 className="font-semibold text-sm text-gray-700 mb-2">🖥️ Screen Recording</h5>
-                                      <video controls className="w-full rounded" style={{ maxHeight: '300px' }}>
-                                        <source src={`http://localhost:8000${result.candidate.assessment_screen_recording}`} type="video/webm" />
-                                        Your browser does not support the video tag.
-                                      </video>
-                                    </div>
-                                  )}
-
-                                  {/* Video Recording (Webcam) */}
-                                  {result.candidate.assessment_video_url && !result.candidate.assessment_video_recording && (
-                                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                                      <h5 className="font-semibold text-sm text-gray-700 mb-2">📷 Webcam Video</h5>
-                                      <video controls className="w-full rounded" style={{ maxHeight: '300px' }}>
-                                        <source src={result.candidate.assessment_video_url} type="video/webm" />
-                                        Your browser does not support the video tag.
-                                      </video>
-                                    </div>
-                                  )}
-
-                                  {/* Screen Recording */}
-                                  {result.candidate.assessment_screen_url && !result.candidate.assessment_screen_recording && (
-                                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                                      <h5 className="font-semibold text-sm text-gray-700 mb-2">🖥️ Screen Recording</h5>
-                                      <video controls className="w-full rounded" style={{ maxHeight: '300px' }}>
-                                        <source src={result.candidate.assessment_screen_url} type="video/webm" />
-                                        Your browser does not support the video tag.
-                                      </video>
-                                    </div>
-                                  )}
-
-                                  {/* Audio Recording */}
-                                  {result.candidate.assessment_audio_url && (
-                                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                                      <h5 className="font-semibold text-sm text-gray-700 mb-2">🎤 Audio Recording</h5>
-                                      <audio controls className="w-full">
-                                        <source src={result.candidate.assessment_audio_url} type="audio/webm" />
-                                        Your browser does not support the audio tag.
-                                      </audio>
-                                    </div>
-                                  )}
-
-                                  {/* Legacy Recording (if exists) */}
-                                  {result.candidate.assessment_recording && !result.candidate.assessment_video_url && !result.candidate.assessment_video_recording && (
-                                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                                      <h5 className="font-semibold text-sm text-gray-700 mb-2">📹 Assessment Recording</h5>
-                                      <video controls className="w-full rounded" style={{ maxHeight: '300px' }}>
-                                        <source src={`http://localhost:8000${result.candidate.assessment_recording}`} type="video/webm" />
-                                        Your browser does not support the video tag.
-                                      </video>
-                                    </div>
-                                  )}
-                                </div>
-
-                                {result.candidate.assessment_time_taken && (
-                                  <div className="mt-2 text-xs text-gray-600">
-                                    <p>Duration: {Math.floor(result.candidate.assessment_time_taken / 60)}m {result.candidate.assessment_time_taken % 60}s</p>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-
-                            {/* Call Audio Player */}
-                            <div className="space-y-4">
-                              <h4 className="font-semibold text-gray-900">Screening Call</h4>
-                              {(() => {
-                                const callData = getCallDataForCandidate(result.candidate.id)
-                                const isLoadingCallData = loadingCallData.has(result.candidate.id)
-
-                                if (callData) {
-                                  return (
-                                    <div className="space-y-4">
-                                      {/* Call Information */}
-                                      <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                                        <div className="flex items-center gap-2 mb-2">
-                                          <CheckCircle className="h-4 w-4 text-green-600" />
-                                          <span className="text-sm font-medium text-green-800">Call Data Retrieved</span>
-                                        </div>
-                                        <div className="text-xs text-green-700 space-y-1">
-                                          <div>Call ID: {callData.call_id}</div>
-                                          <div>Status: {callData.call_status}</div>
-                                          {callData.duration_ms && (
-                                            <div>Duration: {Math.round(callData.duration_ms / 1000)}s</div>
-                                          )}
-                                        </div>
-                                      </div>
-
-                                      {/* Audio Player */}
-                                      {callData.recording_url ? (
-                                        <AudioPlayer
-                                          url={callData.recording_url}
-                                          candidateName={`${result.candidate.first_name}_${result.candidate.last_name}`}
-                                          transcript={callData.transcript}
-                                          className="w-full"
-                                        />
-                                      ) : (
-                                        <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                                          <p className="text-yellow-800 text-sm">Call data found but no recording URL available</p>
-                                        </div>
-                                      )}
-                                    </div>
-                                  )
-                                }
-
-                                return (
-                                  <div className="space-y-4">
-                                    {/* Show Call ID if call was initiated */}
-                                    {initiatedCallIds.has(result.candidate.id) && (
-                                      <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                                        <div className="flex items-center justify-between mb-2">
-                                          <div className="flex items-center gap-2">
-                                            <CheckCircle className="h-4 w-4 text-green-600" />
-                                            <span className="text-sm font-medium text-green-800">Call Initiated Successfully</span>
-                                          </div>
-                                        </div>
-                                        <div className="text-xs text-green-700 space-y-1">
-                                          <div>Call ID: <code className="bg-green-100 px-1 py-0.5 rounded">{initiatedCallIds.get(result.candidate.id)}</code></div>
-                                          <div className="text-xs text-green-600 mt-2">
-                                            ⏱️ The call is in progress. Wait a few minutes for it to complete, then click "Fetch Call Data" below to get the recording and transcript.
-                                          </div>
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    {/* Manual Call ID Input */}
-                                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                                      <div className="flex items-center gap-2 mb-3">
-                                        <Phone className="h-4 w-4 text-blue-600" />
-                                        <span className="text-sm font-medium text-blue-800">Fetch Call Recording & Transcript</span>
-                                      </div>
-                                      <div className="space-y-3">
-                                        <Input
-                                          placeholder="Call ID is auto-filled after call initiation..."
-                                          value={getCallIdInput(result.candidate.id)}
-                                          onChange={(e) => handleCallIdInputChange(result.candidate.id, e.target.value)}
-                                          className="text-sm"
-                                          disabled={isLoadingCallData}
-                                        />
-                                        <Button
-                                          onClick={() => fetchCallDataByCallId(result.candidate.id, getCallIdInput(result.candidate.id))}
-                                          disabled={isLoadingCallData || !getCallIdInput(result.candidate.id).trim()}
-                                          size="sm"
-                                          className="w-full bg-blue-600 hover:bg-blue-700 text-white border-blue-600"
-                                        >
-                                          {isLoadingCallData ? (
-                                            <>
-                                              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-2"></div>
-                                              Loading...
-                                            </>
-                                          ) : (
-                                            <>
-                                              <Download className="h-3 w-3 mr-2" />
-                                              Fetch Call Data
-                                            </>
-                                          )}
-                                        </Button>
-                                        <p className="text-xs text-blue-600">
-                                          💡 Tip: After clicking "Phone" button, wait 5-10 minutes for the call to complete, then click this button to fetch the recording.
-                                        </p>
-                                      </div>
-                                    </div>
-
-                                    {/* No Call Data Placeholder */}
-                                    <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-gray-300 rounded-lg">
-                                      <Phone className="h-12 w-12 text-gray-400 mb-4" />
-                                      <p className="text-gray-600 text-center">No call recording available</p>
-                                      <p className="text-gray-500 text-sm mt-1">Enter a call ID above to load existing call data</p>
-                                    </div>
-                                  </div>
-                                )
-                              })()}
-                            </div>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </CollapsibleContent>
-                  </Collapsible>
-                </Card>
-              )
-            })}
+          
           </div>
         )}
       </div>
