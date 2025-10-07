@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useMemo, ReactNode } from 'react'
+import React, { useState, useEffect, useMemo, ReactNode, useRef } from 'react'
 import { Search, Filter, Users, Target, Brain, ChevronDown, ChevronRight, Star, CheckCircle, XCircle, User, Briefcase, MapPin, Clock, Download, Trash2, Phone, Mail } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -29,6 +29,15 @@ interface Job {
   requirements?: string
   description?: string
   status?: string
+  interview_stages?: Array<{
+    id: string
+    name: string
+    interviewerType: 'human' | 'ai' | 'hybrid'
+    feedbackFormId: string
+    feedbackFormName?: string
+    assignee?: string
+    assigneeName?: string
+  }>
 }
 
 interface Candidate {
@@ -452,6 +461,7 @@ export default function ScreeningPage() {
   const [screeningResults, setScreeningResults] = useState<ScreeningResult[]>([])
   const [expandedCards, setExpandedCards] = useState<Set<number>>(new Set())
   const [movedCandidatesList, setMovedCandidatesList] = useState<ScreeningCandidateData[]>([])
+  const movedCandidatesRef = useRef<ScreeningCandidateData[]>([])
   const [candidateCallData, setCandidateCallData] = useState<Map<number, EnhancedRetellCallData>>(new Map())
   const [loadingCallData, setLoadingCallData] = useState<Set<number>>(new Set())
   const [callIdInputs, setCallIdInputs] = useState<Map<number, string>>(new Map())
@@ -460,6 +470,100 @@ export default function ScreeningPage() {
   const [initiatedCallIds, setInitiatedCallIds] = useState<Map<number, string>>(new Map())
   const [assigneeInputs, setAssigneeInputs] = useState<Map<number, string>>(new Map())
   const [assessmentEmailInputs, setAssessmentEmailInputs] = useState<Map<number, string>>(new Map())
+
+  // Helper function to get WebDesk stage info from job's interview stages
+  const getWebDeskStageInfo = (jobTitle: string): { assigneeEmail: string | null, feedbackFormId: string | null } => {
+    // Find the job by title
+    const job = jobs.find(j => j.title.toLowerCase() === jobTitle.toLowerCase())
+    if (!job || !job.interview_stages) return { assigneeEmail: null, feedbackFormId: null }
+
+    // Find the WebDesk/Technical Assignment stage
+    const webdeskStage = job.interview_stages.find(stage =>
+      stage.name.toLowerCase().includes('webdesk') ||
+      stage.name.toLowerCase().includes('technical assignment') ||
+      stage.name.toLowerCase().includes('technical assessment')
+    )
+
+    if (!webdeskStage) return { assigneeEmail: null, feedbackFormId: null }
+
+    // Get assignee email from the assignees list
+    let assigneeEmail: string | null = null
+    if (webdeskStage.assignee) {
+      // Map assignee ID to email
+      const assigneeMap: Record<string, string> = {
+        'jaikar': 'jaikar.s@cloudberry360.com',
+        'yadhendra': 'yadhendra.kannan@cloudberry360.com'
+      }
+      assigneeEmail = assigneeMap[webdeskStage.assignee] || null
+    }
+
+    return {
+      assigneeEmail,
+      feedbackFormId: webdeskStage.feedbackFormId || null
+    }
+  }
+
+  // Auto-populate assessment email and store feedback form ID when assessment is completed
+  useEffect(() => {
+    movedCandidatesList.forEach(candidate => {
+      if (candidate.jobTitle) {
+        const { assigneeEmail, feedbackFormId } = getWebDeskStageInfo(candidate.jobTitle)
+
+        // Auto-fill email when assessment is completed
+        if (candidate.assessment_completed && assigneeEmail && !assessmentEmailInputs.has(candidate.id)) {
+          setAssessmentEmailInputs(prev => {
+            const newMap = new Map(prev)
+            newMap.set(candidate.id, assigneeEmail)
+            return newMap
+          })
+        }
+
+        // Store feedback form ID if not already stored
+        if (feedbackFormId && candidate.webdesk_feedback_form_id !== feedbackFormId) {
+          setMovedCandidatesList(prev =>
+            prev.map(c => c.id === candidate.id
+              ? { ...c, webdesk_feedback_form_id: feedbackFormId }
+              : c
+            )
+          )
+        }
+      }
+    })
+  }, [movedCandidatesList, jobs])
+
+  // Update ref whenever movedCandidatesList changes
+  useEffect(() => {
+    movedCandidatesRef.current = movedCandidatesList
+  }, [movedCandidatesList])
+
+  // Save movedCandidatesList to sessionStorage whenever it changes
+  useEffect(() => {
+    if (movedCandidatesList.length > 0) {
+      sessionStorage.setItem('screeningCandidatesList', JSON.stringify(movedCandidatesList))
+      console.log('Saved candidates to sessionStorage:', movedCandidatesList.length)
+    }
+  }, [movedCandidatesList])
+
+  // Auto-refresh candidates data every 5 seconds to detect assessment completion
+  useEffect(() => {
+    if (movedCandidatesList.length === 0) return
+
+    console.log('Starting auto-refresh polling for assessment updates...')
+
+    const pollInterval = setInterval(() => {
+      console.log('Polling for assessment updates...')
+      // Use ref to get the latest candidates list
+      if (movedCandidatesRef.current.length > 0) {
+        refreshMovedCandidatesData(movedCandidatesRef.current)
+      }
+    }, 5000) // Poll every 5 seconds for faster updates
+
+    // Cleanup on unmount
+    return () => {
+      console.log('Stopping auto-refresh polling')
+      clearInterval(pollInterval)
+    }
+  }, [movedCandidatesList.length]) // Only depend on length to avoid re-creating interval
 
   // Check if current time is within working hours (10 AM - 6 PM)
   const isWithinWorkingHours = (): boolean => {
@@ -1306,6 +1410,7 @@ export default function ScreeningPage() {
       })
     }
   }
+
 
   // Handle sending assessment results via email
   const handleSendAssessmentEmail = async (candidateId: number) => {
@@ -2281,15 +2386,45 @@ ${fromEmail}`
                       )}
 
                       <div className="mt-2 space-y-2">
-                        <a
-                          href={`/webdesk/${candidate.id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-green-600 hover:text-green-800 hover:underline flex items-center gap-1"
-                        >
-                          <Clock className="h-3 w-3" />
-                          Start WebDesk Assessment
-                        </a>
+                        {(() => {
+                          const webdeskInfo = candidate.jobTitle ? getWebDeskStageInfo(candidate.jobTitle) : { assigneeEmail: null, feedbackFormId: null }
+
+                          // Build URL parameters
+                          const params = new URLSearchParams()
+                          const formId = candidate.webdesk_feedback_form_id || webdeskInfo.feedbackFormId
+                          if (formId) {
+                            params.append('formId', formId)
+                          }
+                          if (webdeskInfo.assigneeEmail) {
+                            params.append('assigneeEmail', webdeskInfo.assigneeEmail)
+                          }
+
+                          const webdeskUrl = `/webdesk/${candidate.id}${params.toString() ? `?${params.toString()}` : ''}`
+
+                          return (
+                            <>
+                              <a
+                                href={webdeskUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-green-600 hover:text-green-800 hover:underline flex items-center gap-1"
+                              >
+                                <Clock className="h-3 w-3" />
+                                Start WebDesk Assessment
+                              </a>
+                              {webdeskInfo.assigneeEmail && (
+                                <div className="text-xs text-blue-600 bg-blue-50 p-1 rounded">
+                                  📧 Auto-send to: {webdeskInfo.assigneeEmail}
+                                </div>
+                              )}
+                              {!webdeskInfo.assigneeEmail && candidate.jobTitle && (
+                                <div className="text-xs text-red-600 bg-red-50 p-1 rounded">
+                                  ⚠️ No assignee configured for this job
+                                </div>
+                              )}
+                            </>
+                          )
+                        })()}
                         {candidate.assessment_username && candidate.assessment_password && (
                           <div className="bg-red-50 border border-red-200 rounded p-2 text-xs">
                             <p className="font-semibold text-red-900 mb-1">WebDesk Credentials:</p>

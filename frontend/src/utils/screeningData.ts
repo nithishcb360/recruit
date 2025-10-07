@@ -48,6 +48,7 @@ export interface ScreeningCandidateData {
   assessment_recording_url?: string
   assessment_video_recording?: any
   assessment_screen_recording?: any
+  webdesk_feedback_form_id?: string
 }
 
 /**

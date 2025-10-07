@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -12,6 +12,7 @@ import { Progress } from "@/components/ui/progress"
 import { CodeEditor } from "@/components/ui/code-editor"
 import { useToast } from "@/hooks/use-toast"
 import { Clock, CheckCircle, AlertCircle, X } from 'lucide-react'
+import { getFeedbackTemplates, type FeedbackTemplate, type Question as FeedbackQuestion } from '@/lib/api/feedback-templates'
 
 interface Question {
   id: number
@@ -29,6 +30,41 @@ interface Candidate {
   email: string
   assessment_username?: string
   assessment_password?: string
+}
+
+// Convert feedback form questions to assessment questions
+function convertFeedbackQuestionsToAssessment(feedbackQuestions: FeedbackQuestion[]): Question[] {
+  return feedbackQuestions.map((fq, index) => {
+    let type: 'mcq' | 'coding' | 'text' = 'text'
+    let options: string[] | undefined
+    let correctAnswer: number | undefined
+
+    // Map feedback question types to assessment types
+    if (fq.type === 'radio' && fq.options && fq.options.length > 0) {
+      type = 'mcq'
+      options = fq.options
+      // If there's an answer field, try to find the correct answer index
+      if (fq.answer && fq.options.includes(fq.answer)) {
+        correctAnswer = fq.options.indexOf(fq.answer)
+      }
+    } else if (fq.type === 'program') {
+      type = 'coding'
+    } else {
+      type = 'text'
+    }
+
+    // Calculate points based on question type
+    const points = type === 'coding' ? 25 : type === 'mcq' ? 10 : 20
+
+    return {
+      id: index + 1,
+      question: fq.text,
+      type,
+      options,
+      correctAnswer,
+      points
+    }
+  })
 }
 
 const assessmentQuestions: Question[] = [
@@ -97,11 +133,16 @@ const assessmentQuestions: Question[] = [
 export default function WebDeskAssessment() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { toast } = useToast()
   const candidateId = params.candidateId as string
+  const formId = searchParams.get('formId')
+  const assigneeEmail = searchParams.get('assigneeEmail')
 
   const [candidate, setCandidate] = useState<Candidate | null>(null)
   const [loading, setLoading] = useState(true)
+  const [questions, setQuestions] = useState<Question[]>(assessmentQuestions)
+  const [loadingQuestions, setLoadingQuestions] = useState(!!formId)
   const [currentQuestion, setCurrentQuestion] = useState(0)
   const [answers, setAnswers] = useState<Record<number, string | number>>({})
   const [timeRemaining, setTimeRemaining] = useState(3600) // 60 minutes in seconds
@@ -124,6 +165,65 @@ export default function WebDeskAssessment() {
   const [showPermissionError, setShowPermissionError] = useState(false)
   const [tabSwitchCount, setTabSwitchCount] = useState(0)
   const [showTabSwitchWarning, setShowTabSwitchWarning] = useState(false)
+
+  // Debug log for URL parameters (client-side only)
+  useEffect(() => {
+    console.log('🔍 WebDesk URL Parameters:', {
+      candidateId,
+      formId,
+      assigneeEmail,
+      fullUrl: typeof window !== 'undefined' ? window.location.href : 'N/A'
+    })
+  }, [candidateId, formId, assigneeEmail])
+
+  // Load feedback form questions if formId is provided
+  useEffect(() => {
+    const loadFeedbackFormQuestions = async () => {
+      if (!formId) {
+        setLoadingQuestions(false)
+        return
+      }
+
+      try {
+        setLoadingQuestions(true)
+
+        // First try localStorage (for forms created in current session)
+        const localForms = localStorage.getItem('feedbackForms')
+        if (localForms) {
+          const forms: FeedbackTemplate[] = JSON.parse(localForms)
+          const form = forms.find(f => f.id.toString() === formId)
+
+          if (form && form.questions && form.questions.length > 0) {
+            const convertedQuestions = convertFeedbackQuestionsToAssessment(form.questions)
+            setQuestions(convertedQuestions)
+            setLoadingQuestions(false)
+            return
+          }
+        }
+
+        // If not found in localStorage, try API
+        const response = await getFeedbackTemplates()
+        const forms = response.results
+        const form = forms.find(f => f.id.toString() === formId)
+
+        if (form && form.questions && form.questions.length > 0) {
+          const convertedQuestions = convertFeedbackQuestionsToAssessment(form.questions)
+          setQuestions(convertedQuestions)
+        } else {
+          console.warn(`No questions found for feedback form ${formId}, using default questions`)
+          setQuestions(assessmentQuestions)
+        }
+      } catch (error) {
+        console.error('Error loading feedback form questions:', error)
+        console.warn('Using default questions')
+        setQuestions(assessmentQuestions)
+      } finally {
+        setLoadingQuestions(false)
+      }
+    }
+
+    loadFeedbackFormQuestions()
+  }, [formId])
 
   useEffect(() => {
     fetchCandidate()
@@ -518,7 +618,7 @@ export default function WebDeskAssessment() {
     let score = 0
     let maxScore = 0
 
-    assessmentQuestions.forEach(q => {
+    questions.forEach(q => {
       maxScore += q.points
       if (q.type === 'mcq' && q.correctAnswer !== undefined) {
         if (answers[q.id] === q.correctAnswer) {
@@ -612,6 +712,227 @@ export default function WebDeskAssessment() {
     }
   }
 
+  // Function to send assessment email to assignee
+  const sendAssessmentEmailToAssignee = async (score: number, timeTaken: number) => {
+    console.log('sendAssessmentEmailToAssignee called with:', { score, timeTaken, assigneeEmail, candidateId })
+
+    if (!candidate || !assigneeEmail) {
+      console.error('Missing candidate or assigneeEmail:', { candidate: !!candidate, assigneeEmail })
+      return
+    }
+
+    try {
+      console.log('Fetching updated candidate data...')
+      // Get video URLs from candidate data (after recordings are uploaded)
+      const updatedCandidateResponse = await fetch(`http://localhost:8000/api/candidates/${candidateId}/`)
+
+      if (!updatedCandidateResponse.ok) {
+        throw new Error(`Failed to fetch candidate data: ${updatedCandidateResponse.status}`)
+      }
+
+      const updatedCandidate = await updatedCandidateResponse.json()
+      console.log('Updated candidate data received:', {
+        hasVideoRecording: !!updatedCandidate.assessment_video_recording,
+        hasScreenRecording: !!updatedCandidate.assessment_screen_recording
+      })
+
+      const videoUrl = updatedCandidate.assessment_video_recording
+        ? (updatedCandidate.assessment_video_recording.startsWith('http')
+            ? updatedCandidate.assessment_video_recording
+            : `http://localhost:8000${updatedCandidate.assessment_video_recording}`)
+        : null
+
+      const screenUrl = updatedCandidate.assessment_screen_recording
+        ? (updatedCandidate.assessment_screen_recording.startsWith('http')
+            ? updatedCandidate.assessment_screen_recording
+            : `http://localhost:8000${updatedCandidate.assessment_screen_recording}`)
+        : null
+
+      const fromEmail = process.env.NEXT_PUBLIC_COMPANY_EMAIL || 'hr@company.com'
+      const subject = `WebDesk Assessment Results - ${candidate.first_name} ${candidate.last_name}`
+      const candidateName = `${candidate.first_name} ${candidate.last_name}`
+
+      const emailBody = `Assessment Results for ${candidateName}
+
+Candidate Information:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Name: ${candidateName}
+Email: ${candidate.email}
+
+Assessment Details:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Score: ${score}%
+Status: ${score < 60 ? 'DISQUALIFIED' : 'PASSED'}
+Tab Switches: ${tabSwitchCount || 0}
+Time Taken: ${Math.round(timeTaken / 60)} minutes
+
+Assessment Recordings:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${videoUrl ? `📷 Camera Recording:
+   - Attachment: camera_recording_${candidateId}.mp4
+   - Link: ${videoUrl}` : '📷 Camera Recording: Not available'}
+
+${screenUrl ? `🖥️ Screen Recording:
+   - Attachment: screen_recording_${candidateId}.mp4
+   - Link: ${screenUrl}` : '🖥️ Screen Recording: Not available'}
+
+Note: Videos are attached to this email. You can also view them using the links above.
+
+Please review the attached assessment recordings and results.
+
+Best regards,
+Recruitment Team
+${fromEmail}`
+
+      const emailHtml = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #1e40af; border-bottom: 2px solid #3b82f6; padding-bottom: 10px;">Assessment Results for ${candidateName}</h2>
+
+          <div style="background-color: #f0f9ff; border: 2px solid #3b82f6; border-radius: 8px; padding: 20px; margin: 20px 0;">
+            <h3 style="color: #1e40af; margin-top: 0;">Candidate Information</h3>
+            <p><strong>Name:</strong> ${candidateName}</p>
+            <p><strong>Email:</strong> ${candidate.email}</p>
+          </div>
+
+          <div style="background-color: ${score < 60 ? '#fef2f2' : '#f0fdf4'}; border: 2px solid ${score < 60 ? '#ef4444' : '#22c55e'}; border-radius: 8px; padding: 20px; margin: 20px 0;">
+            <h3 style="color: ${score < 60 ? '#991b1b' : '#166534'}; margin-top: 0;">Assessment Details</h3>
+            <p><strong>Score:</strong> <span style="font-size: 24px; font-weight: bold; color: ${score < 60 ? '#dc2626' : '#16a34a'};">${score}%</span></p>
+            <p><strong>Status:</strong> <span style="font-weight: bold; color: ${score < 60 ? '#dc2626' : '#16a34a'};">${score < 60 ? 'DISQUALIFIED' : 'PASSED'}</span></p>
+            <p><strong>Tab Switches:</strong> ${tabSwitchCount || 0}</p>
+            <p><strong>Time Taken:</strong> ${Math.round(timeTaken / 60)} minutes</p>
+          </div>
+
+          <div style="background-color: #fefce8; border: 2px solid #eab308; border-radius: 8px; padding: 20px; margin: 20px 0;">
+            <h3 style="color: #854d0e; margin-top: 0;">📹 Assessment Recordings</h3>
+
+            ${videoUrl ? `
+              <div style="background-color: #fff; border: 1px solid #d97706; border-radius: 6px; padding: 15px; margin-bottom: 15px;">
+                <p style="margin: 0 0 10px 0;"><strong style="color: #854d0e;">📷 Camera Recording:</strong></p>
+                <p style="margin: 5px 0; font-size: 14px;">
+                  📎 <strong>Attachment:</strong> camera_recording_${candidateId}.mp4
+                </p>
+                <p style="margin: 5px 0; font-size: 14px;">
+                  🔗 <strong>Direct Link:</strong> <a href="${videoUrl}" style="color: #2563eb; word-break: break-all;">${videoUrl}</a>
+                </p>
+              </div>
+            ` : '<p><strong>📷 Camera Recording:</strong> Not available</p>'}
+
+            ${screenUrl ? `
+              <div style="background-color: #fff; border: 1px solid #d97706; border-radius: 6px; padding: 15px; margin-bottom: 10px;">
+                <p style="margin: 0 0 10px 0;"><strong style="color: #854d0e;">🖥️ Screen Recording:</strong></p>
+                <p style="margin: 5px 0; font-size: 14px;">
+                  📎 <strong>Attachment:</strong> screen_recording_${candidateId}.mp4
+                </p>
+                <p style="margin: 5px 0; font-size: 14px;">
+                  🔗 <strong>Direct Link:</strong> <a href="${screenUrl}" style="color: #2563eb; word-break: break-all;">${screenUrl}</a>
+                </p>
+              </div>
+            ` : '<p><strong>🖥️ Screen Recording:</strong> Not available</p>'}
+
+            <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 10px; margin-top: 15px;">
+              <p style="margin: 0; color: #78350f; font-size: 13px;">
+                💡 <strong>Tip:</strong> Videos are attached to this email as MP4 files. You can download them directly or use the links above to view them online.
+              </p>
+            </div>
+          </div>
+
+          <p style="margin-top: 30px; color: #6b7280;">Please review the attached assessment recordings and results.</p>
+
+          <p style="margin-top: 30px;">
+            Best regards,<br/>
+            <strong>Recruitment Team</strong><br/>
+            ${fromEmail}
+          </p>
+        </div>
+      `
+
+      // Prepare attachments
+      const attachments: any[] = []
+
+      if (videoUrl) {
+        try {
+          const videoResponse = await fetch(videoUrl)
+          const videoBlob = await videoResponse.blob()
+          const videoBase64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader()
+            reader.onloadend = () => {
+              const base64 = (reader.result as string).split(',')[1]
+              resolve(base64)
+            }
+            reader.readAsDataURL(videoBlob)
+          })
+
+          attachments.push({
+            filename: `camera_recording_${candidateId}.mp4`,
+            content: videoBase64,
+            encoding: 'base64',
+            contentType: 'video/mp4'
+          })
+        } catch (error) {
+          console.error('Error fetching camera recording:', error)
+        }
+      }
+
+      if (screenUrl) {
+        try {
+          const screenResponse = await fetch(screenUrl)
+          const screenBlob = await screenResponse.blob()
+          const screenBase64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader()
+            reader.onloadend = () => {
+              const base64 = (reader.result as string).split(',')[1]
+              resolve(base64)
+            }
+            reader.readAsDataURL(screenBlob)
+          })
+
+          attachments.push({
+            filename: `screen_recording_${candidateId}.mp4`,
+            content: screenBase64,
+            encoding: 'base64',
+            contentType: 'video/mp4'
+          })
+        } catch (error) {
+          console.error('Error fetching screen recording:', error)
+        }
+      }
+
+      // Send email
+      console.log(`Sending email to ${assigneeEmail} with ${attachments.length} attachments...`)
+
+      const emailResponse = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: assigneeEmail,
+          subject,
+          text: emailBody,
+          html: emailHtml,
+          attachments: attachments
+        })
+      })
+
+      if (!emailResponse.ok) {
+        throw new Error(`Email API returned status: ${emailResponse.status}`)
+      }
+
+      const result = await emailResponse.json()
+      console.log('Email API response:', result)
+
+      if (result.success) {
+        console.log(`✅ Assessment results sent successfully to ${assigneeEmail}`)
+      } else {
+        console.error('❌ Failed to send email:', result.message)
+        throw new Error(result.message || 'Email sending failed')
+      }
+    } catch (error) {
+      console.error('Error in sendAssessmentEmailToAssignee:', error)
+      throw error
+    }
+  }
+
   const handleSubmit = async () => {
     setIsSubmitting(true)
     stopMediaRecording()
@@ -620,7 +941,7 @@ export default function WebDeskAssessment() {
     const timeTaken = 3600 - timeRemaining
 
     // Prepare full responses with questions and answers
-    const fullResponses = assessmentQuestions.map(question => ({
+    const fullResponses = questions.map(question => ({
       questionId: question.id,
       question: question.question,
       type: question.type,
@@ -660,11 +981,39 @@ export default function WebDeskAssessment() {
 
       if (response.ok) {
         setAssessmentCompleted(true)
-        toast({
-          title: "Assessment Submitted Successfully",
-          description: "Thank you for completing the assessment. You may now close this window.",
-          variant: "default"
-        })
+
+        // Automatically send email to assignee if email is provided
+        if (assigneeEmail && assigneeEmail.trim() !== '' && assigneeEmail !== 'null' && assigneeEmail !== 'undefined') {
+          console.log(`Attempting to send email to assignee: ${assigneeEmail}`)
+
+          // Add a small delay to ensure videos are fully saved
+          await new Promise(resolve => setTimeout(resolve, 2000))
+
+          try {
+            await sendAssessmentEmailToAssignee(result.percentage, timeTaken)
+            console.log('Email sent successfully to assignee')
+
+            toast({
+              title: "Assessment Submitted Successfully",
+              description: `Assessment results have been sent to ${assigneeEmail}. You may now close this window.`,
+              variant: "default"
+            })
+          } catch (emailError) {
+            console.error('Error sending email to assignee:', emailError)
+            toast({
+              title: "Assessment Submitted",
+              description: "Assessment submitted but email sending failed. Please contact HR.",
+              variant: "default"
+            })
+          }
+        } else {
+          console.log('No assignee email provided, skipping auto-send')
+          toast({
+            title: "Assessment Submitted Successfully",
+            description: "Thank you for completing the assessment. You may now close this window.",
+            variant: "default"
+          })
+        }
       }
     } catch (error) {
       console.error('Error submitting assessment:', error)
@@ -678,8 +1027,8 @@ export default function WebDeskAssessment() {
     }
   }
 
-  const progress = ((currentQuestion + 1) / assessmentQuestions.length) * 100
-  const question = assessmentQuestions[currentQuestion]
+  const progress = ((currentQuestion + 1) / questions.length) * 100
+  const question = questions[currentQuestion]
   const answeredCount = Object.keys(answers).length
 
   if (loading) {
@@ -811,7 +1160,7 @@ export default function WebDeskAssessment() {
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-black font-medium">Questions Answered:</span>
-                  <span className="font-bold text-black">{answeredCount} / {assessmentQuestions.length}</span>
+                  <span className="font-bold text-black">{answeredCount} / {questions.length}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-black font-medium">Time Taken:</span>
@@ -861,9 +1210,9 @@ export default function WebDeskAssessment() {
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <h3 className="font-semibold text-blue-900 mb-3">Assessment Instructions</h3>
               <ul className="space-y-2 text-sm text-blue-800">
-                <li>• Total Questions: {assessmentQuestions.length}</li>
+                <li>• Total Questions: {questions.length}</li>
                 <li>• Time Limit: 60 minutes</li>
-                <li>• Total Points: {assessmentQuestions.reduce((sum, q) => sum + q.points, 0)}</li>
+                <li>• Total Points: {questions.reduce((sum, q) => sum + q.points, 0)}</li>
                 <li>• You can navigate between questions</li>
                 <li>• Assessment will auto-submit when time expires</li>
                 <li>• Make sure to answer all questions</li>
@@ -995,13 +1344,13 @@ export default function WebDeskAssessment() {
             <div className="flex justify-between text-sm">
               <span className="text-black font-medium">Progress</span>
               <span className="font-semibold text-black">
-                Question {currentQuestion + 1} of {assessmentQuestions.length}
+                Question {currentQuestion + 1} of {questions.length}
               </span>
             </div>
             <Progress value={progress} className="h-2" />
             <div className="flex justify-between text-xs text-gray-800">
               <span>Answered: {answeredCount}</span>
-              <span>Remaining: {assessmentQuestions.length - answeredCount}</span>
+              <span>Remaining: {questions.length - answeredCount}</span>
             </div>
           </div>
         </CardContent>
@@ -1081,14 +1430,14 @@ export default function WebDeskAssessment() {
             </Button>
 
             <div className="flex gap-2">
-              {assessmentQuestions.map((_, index) => (
+              {questions.map((_, index) => (
                 <button
                   key={index}
                   onClick={() => setCurrentQuestion(index)}
                   className={`w-8 h-8 rounded-full text-sm font-bold transition-colors ${
                     currentQuestion === index
                       ? 'bg-blue-600 text-white'
-                      : answers[assessmentQuestions[index].id] !== undefined
+                      : answers[questions[index].id] !== undefined
                       ? 'bg-green-500 text-white'
                       : 'bg-gray-300 text-black hover:bg-gray-400'
                   }`}
@@ -1098,7 +1447,7 @@ export default function WebDeskAssessment() {
               ))}
             </div>
 
-            {currentQuestion === assessmentQuestions.length - 1 ? (
+            {currentQuestion === questions.length - 1 ? (
               <Button
                 onClick={handleSubmit}
                 disabled={isSubmitting}
@@ -1108,7 +1457,7 @@ export default function WebDeskAssessment() {
               </Button>
             ) : (
               <Button
-                onClick={() => setCurrentQuestion(prev => Math.min(assessmentQuestions.length - 1, prev + 1))}
+                onClick={() => setCurrentQuestion(prev => Math.min(questions.length - 1, prev + 1))}
                 className="bg-blue-600 hover:bg-blue-700 text-white font-semibold"
               >
                 Next
