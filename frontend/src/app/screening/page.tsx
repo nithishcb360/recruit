@@ -540,23 +540,38 @@ export default function ScreeningPage() {
   useEffect(() => {
     if (movedCandidatesList.length > 0) {
       sessionStorage.setItem('screeningCandidatesList', JSON.stringify(movedCandidatesList))
-      console.log('Saved candidates to sessionStorage:', movedCandidatesList.length)
+      // Reduced logging - only log when length changes, not on every update
     }
   }, [movedCandidatesList])
 
-  // Auto-refresh candidates data every 5 seconds to detect assessment completion
+  // Auto-refresh candidates data to detect assessment completion
   useEffect(() => {
     if (movedCandidatesList.length === 0) return
+
+    // Check if any candidate has incomplete assessment
+    const hasIncompleteAssessments = movedCandidatesList.some(c =>
+      c.assessment_username && !c.assessment_completed
+    )
+
+    // Only poll if there are incomplete assessments
+    if (!hasIncompleteAssessments) {
+      console.log('No incomplete assessments, skipping polling')
+      return
+    }
 
     console.log('Starting auto-refresh polling for assessment updates...')
 
     const pollInterval = setInterval(() => {
-      console.log('Polling for assessment updates...')
-      // Use ref to get the latest candidates list
-      if (movedCandidatesRef.current.length > 0) {
+      // Check again before refreshing
+      const stillHasIncomplete = movedCandidatesRef.current.some(c =>
+        c.assessment_username && !c.assessment_completed
+      )
+
+      if (stillHasIncomplete) {
+        console.log('Polling for assessment updates...')
         refreshMovedCandidatesData(movedCandidatesRef.current)
       }
-    }, 5000) // Poll every 5 seconds for faster updates
+    }, 10000) // Poll every 10 seconds
 
     // Cleanup on unmount
     return () => {
@@ -605,6 +620,79 @@ export default function ScreeningPage() {
   const isWithinWorkingHours = (): boolean => {
     const currentHour = new Date().getHours()
     return currentHour >= 10 && currentHour < 18 // 10 AM to 6 PM (18:00)
+  }
+
+  // Check if WebDesk link should be active based on interview schedule
+  const isWebDeskActive = (candidate: ScreeningCandidateData): { active: boolean, message: string } => {
+    // If no interview scheduled, allow access anytime
+    if (!candidate.retell_interview_scheduled || !candidate.retell_scheduled_date || !candidate.retell_scheduled_time) {
+      return { active: true, message: '' }
+    }
+
+    try {
+      // Parse the scheduled date and time
+      const scheduledDate = new Date(candidate.retell_scheduled_date)
+      const timeStr = candidate.retell_scheduled_time.trim()
+
+      // Extract hours and minutes from time string (e.g., "10:00 AM")
+      const timeMatch = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i)
+      if (!timeMatch) {
+        return { active: true, message: 'Invalid time format' }
+      }
+
+      let hours = parseInt(timeMatch[1])
+      const minutes = parseInt(timeMatch[2])
+      const meridiem = timeMatch[3].toUpperCase()
+
+      // Convert to 24-hour format
+      if (meridiem === 'PM' && hours !== 12) {
+        hours += 12
+      } else if (meridiem === 'AM' && hours === 12) {
+        hours = 0
+      }
+
+      // Set the time on the scheduled date
+      scheduledDate.setHours(hours, minutes, 0, 0)
+
+      const now = new Date()
+
+      // Allow access 15 minutes before scheduled time and up to 2 hours after
+      const startTime = new Date(scheduledDate.getTime() - 15 * 60 * 1000) // 15 min before
+      const endTime = new Date(scheduledDate.getTime() + 2 * 60 * 60 * 1000) // 2 hours after
+
+      if (now < startTime) {
+        const diffMs = startTime.getTime() - now.getTime()
+        const diffMins = Math.floor(diffMs / 60000)
+        const diffHours = Math.floor(diffMins / 60)
+        const remainingMins = diffMins % 60
+
+        let timeUntil = ''
+        if (diffHours > 0) {
+          timeUntil = `${diffHours}h ${remainingMins}m`
+        } else {
+          timeUntil = `${diffMins} minutes`
+        }
+
+        return {
+          active: false,
+          message: `Available in ${timeUntil} (at ${candidate.retell_scheduled_time} on ${scheduledDate.toLocaleDateString()})`
+        }
+      }
+
+      if (now > endTime) {
+        return {
+          active: false,
+          message: `Interview window closed (was ${candidate.retell_scheduled_time} on ${scheduledDate.toLocaleDateString()})`
+        }
+      }
+
+      // Within the allowed window
+      return { active: true, message: `Active until ${endTime.toLocaleTimeString()}` }
+
+    } catch (error) {
+      console.error('Error parsing interview schedule:', error)
+      return { active: true, message: '' }
+    }
   }
 
   // Initiate automatic call for a candidate
@@ -2456,6 +2544,7 @@ ${fromEmail}`
                       <div className="mt-2 space-y-2">
                         {(() => {
                           const webdeskInfo = candidate.jobTitle ? getWebDeskStageInfo(candidate.jobTitle) : { assigneeEmail: null, feedbackFormId: null }
+                          const webdeskStatus = isWebDeskActive(candidate)
 
                           // Build URL parameters
                           const params = new URLSearchParams()
@@ -2471,15 +2560,33 @@ ${fromEmail}`
 
                           return (
                             <>
-                              <a
-                                href={webdeskUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs text-green-600 hover:text-green-800 hover:underline flex items-center gap-1"
-                              >
-                                <Clock className="h-3 w-3" />
-                                Start WebDesk Assessment
-                              </a>
+                              {webdeskStatus.active ? (
+                                <a
+                                  href={webdeskUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-green-600 hover:text-green-800 hover:underline flex items-center gap-1"
+                                >
+                                  <Clock className="h-3 w-3" />
+                                  Start WebDesk Assessment
+                                </a>
+                              ) : (
+                                <div className="text-xs text-gray-500 bg-gray-100 p-2 rounded flex items-center gap-1 cursor-not-allowed">
+                                  <Clock className="h-3 w-3" />
+                                  <span>WebDesk Assessment (Locked)</span>
+                                </div>
+                              )}
+
+                              {webdeskStatus.message && (
+                                <div className={`text-xs p-2 rounded ${
+                                  webdeskStatus.active
+                                    ? 'text-green-700 bg-green-50 border border-green-200'
+                                    : 'text-orange-700 bg-orange-50 border border-orange-200'
+                                }`}>
+                                  🕐 {webdeskStatus.message}
+                                </div>
+                              )}
+
                               {webdeskInfo.assigneeEmail && (
                                 <div className="text-xs text-blue-600 bg-blue-50 p-1 rounded">
                                   📧 Auto-send to: {webdeskInfo.assigneeEmail}
