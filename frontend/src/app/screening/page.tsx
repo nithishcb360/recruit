@@ -565,6 +565,42 @@ export default function ScreeningPage() {
     }
   }, [movedCandidatesList.length]) // Only depend on length to avoid re-creating interval
 
+  // Auto-fetch Retell call data after call ends
+  useEffect(() => {
+    if (initiatedCallIds.size === 0) return
+
+    const checkAndFetchCallData = async () => {
+      for (const [candidateId, callId] of initiatedCallIds.entries()) {
+        try {
+          // Check if we already have the call data
+          const candidate = movedCandidatesList.find(c => c.id === candidateId)
+          if (!candidate) continue
+
+          // Skip if we already have the interview schedule data
+          if (candidate.retell_interview_scheduled && candidate.retell_scheduled_date) {
+            console.log(`Already have call data for ${candidate.name}, skipping`)
+            continue
+          }
+
+          console.log(`Checking Retell call status for ${candidate.name} (Call ID: ${callId})`)
+
+          // Fetch call data from Retell and save to backend (silent mode - no toasts)
+          await fetchCallDataByCallId(candidateId, callId, true)
+        } catch (error) {
+          console.error(`Error auto-fetching call data for candidate ${candidateId}:`, error)
+        }
+      }
+    }
+
+    // Check every 30 seconds for completed calls
+    const interval = setInterval(checkAndFetchCallData, 30000)
+
+    // Also check immediately
+    checkAndFetchCallData()
+
+    return () => clearInterval(interval)
+  }, [initiatedCallIds, movedCandidatesList])
+
   // Check if current time is within working hours (10 AM - 6 PM)
   const isWithinWorkingHours = (): boolean => {
     const currentHour = new Date().getHours()
@@ -774,7 +810,28 @@ export default function ScreeningPage() {
                 assessment_video_recording: freshData.assessment_video_recording,
                 assessment_screen_recording: freshData.assessment_screen_recording,
                 assessment_audio_url: freshData.assessment_audio_url,
-                assessment_recording: freshData.assessment_recording
+                assessment_recording: freshData.assessment_recording,
+                assessment_responses: freshData.assessment_responses,
+                // Retell AI call data
+                retell_call_id: freshData.retell_call_id,
+                retell_call_status: freshData.retell_call_status,
+                retell_call_summary: freshData.retell_call_summary,
+                retell_interview_scheduled: freshData.retell_interview_scheduled,
+                retell_scheduled_date: freshData.retell_scheduled_date,
+                retell_scheduled_time: freshData.retell_scheduled_time,
+                retell_scheduled_timezone: freshData.retell_scheduled_timezone,
+                retell_scheduled_datetime_iso: freshData.retell_scheduled_datetime_iso,
+                retell_call_outcome: freshData.retell_call_outcome,
+                retell_interest_level: freshData.retell_interest_level,
+                retell_is_qualified: freshData.retell_is_qualified,
+                retell_technical_skills: freshData.retell_technical_skills,
+                retell_questions_asked: freshData.retell_questions_asked,
+                retell_user_sentiment: freshData.retell_user_sentiment,
+                retell_recording_url: freshData.retell_recording_url,
+                retell_public_log_url: freshData.retell_public_log_url,
+                retell_availability_preference: freshData.retell_availability_preference,
+                retell_additional_notes: freshData.retell_additional_notes,
+                retell_call_duration_ms: freshData.retell_call_duration_ms
               }
             }
             return candidate
@@ -1179,13 +1236,15 @@ export default function ScreeningPage() {
   }
 
   // Function to manually fetch call data by call ID and save to database
-  const fetchCallDataByCallId = async (candidateId: number, callId: string) => {
+  const fetchCallDataByCallId = async (candidateId: number, callId: string, silent: boolean = false) => {
     if (!callId.trim()) {
-      toast({
-        title: "Error",
-        description: "Please enter a valid call ID",
-        variant: "destructive"
-      })
+      if (!silent) {
+        toast({
+          title: "Error",
+          description: "Please enter a valid call ID",
+          variant: "destructive"
+        })
+      }
       return
     }
 
@@ -1221,11 +1280,13 @@ export default function ScreeningPage() {
           ? `\n✓ Interview: ${result.candidate.retell_scheduled_date} at ${result.candidate.retell_scheduled_time}`
           : ''
 
-        toast({
-          title: "✅ Call Data Saved",
-          description: `Recording, transcript, and analysis saved to database${scheduleInfo}`,
-          variant: "default"
-        })
+        if (!silent) {
+          toast({
+            title: "✅ Call Data Saved",
+            description: `Recording, transcript, and analysis saved to database${scheduleInfo}`,
+            variant: "default"
+          })
+        }
 
         console.log('✅ Call data retrieved and saved:', {
           callId: result.candidate.retell_call_id,
@@ -1235,21 +1296,28 @@ export default function ScreeningPage() {
           scheduled_date: result.candidate.retell_scheduled_date,
           scheduled_time: result.candidate.retell_scheduled_time
         })
+
+        // Refresh the candidate data to show updated schedule info
+        refreshMovedCandidatesData(movedCandidatesRef.current)
       } else {
-        toast({
-          title: "Call Not Found",
-          description: "Could not find call data with the provided call ID",
-          variant: "destructive"
-        })
+        if (!silent) {
+          toast({
+            title: "Call Not Found",
+            description: "Could not find call data with the provided call ID",
+            variant: "destructive"
+          })
+        }
       }
     } catch (error) {
       console.error('Error fetching/saving call data:', error)
-      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch call data from Retell AI'
-      toast({
-        title: "Error",
-        description: errorMessage,
-        variant: "destructive"
-      })
+      if (!silent) {
+        const errorMessage = error instanceof Error ? error.message : 'Failed to fetch call data from Retell AI'
+        toast({
+          title: "Error",
+          description: errorMessage,
+          variant: "destructive"
+        })
+      }
     } finally {
       // Remove from loading state
       setLoadingCallData(prev => {

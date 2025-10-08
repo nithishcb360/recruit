@@ -551,6 +551,12 @@ class CandidateViewSet(viewsets.ModelViewSet):
             candidate = self.get_object()
             data = request.data
 
+            # Debug logging
+            logger.info(f"Received Retell data for candidate {pk}")
+            logger.info(f"Has call_analysis: {bool(data.get('call_analysis'))}")
+            if data.get('call_analysis'):
+                logger.info(f"Custom analysis data: {data.get('call_analysis', {}).get('custom_analysis_data')}")
+
             # Basic call info - only essentials
             if 'call_id' in data:
                 candidate.retell_call_id = data['call_id']
@@ -630,13 +636,25 @@ class CandidateViewSet(viewsets.ModelViewSet):
                 # Extract custom analysis data - THIS IS WHAT WE ACTUALLY NEED
                 custom_data = call_analysis.get('custom_analysis_data', {})
                 if custom_data:
-                    # Interview scheduling fields
+                    logger.info(f"Processing custom_data keys: {list(custom_data.keys())}")
+
+                    # Interview scheduling fields (check multiple possible field names)
                     if 'interview_scheduled' in custom_data:
                         candidate.retell_interview_scheduled = custom_data['interview_scheduled']
+
+                    # Check for scheduled_date
                     if 'scheduled_date' in custom_data:
                         candidate.retell_scheduled_date = custom_data['scheduled_date']
+                        logger.info(f"Set scheduled_date: {custom_data['scheduled_date']}")
+
+                    # Check for scheduled_time or retell_scheduled_time
                     if 'scheduled_time' in custom_data:
                         candidate.retell_scheduled_time = custom_data['scheduled_time']
+                        logger.info(f"Set scheduled_time: {custom_data['scheduled_time']}")
+                    elif 'retell_scheduled_time' in custom_data:
+                        candidate.retell_scheduled_time = custom_data['retell_scheduled_time']
+                        logger.info(f"Set retell_scheduled_time: {custom_data['retell_scheduled_time']}")
+
                     if 'scheduled_timezone' in custom_data:
                         candidate.retell_scheduled_timezone = custom_data['scheduled_timezone']
                     if 'scheduled_datetime_iso' in custom_data:

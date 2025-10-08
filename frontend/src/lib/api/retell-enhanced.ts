@@ -102,7 +102,8 @@ class EnhancedRetellAPI {
       console.log('📞 Fetched call data from Retell:', {
         call_id: fullCallData.call_id,
         has_analysis: !!fullCallData.call_analysis,
-        has_custom_data: !!(fullCallData.call_analysis?.custom_analysis_data)
+        has_custom_data: !!(fullCallData.call_analysis?.custom_analysis_data),
+        full_call_analysis: fullCallData.call_analysis
       })
 
       // Step 2: Extract only essential data to save (not full transcript/recording)
@@ -129,6 +130,7 @@ class EnhancedRetellAPI {
       console.log('💾 Sending essential data to backend (excluding transcript):', {
         call_id: essentialData.call_id,
         has_custom_data: !!essentialData.call_analysis?.custom_analysis_data,
+        custom_analysis_data: essentialData.call_analysis?.custom_analysis_data,
         data_size: JSON.stringify(essentialData).length + ' bytes'
       })
 
