@@ -35,7 +35,7 @@ export default function Sidebar({ isOpen = false, onToggle }: SidebarProps) {
     { label: "Jobs", icon: Briefcase, href: "/jobs", active: pathname === "/jobs" },
     { label: "Candidates", icon: Users, href: "/candidates", active: pathname === "/candidates" },
     { label: "AI/HR Screening", icon: Brain, href: "/screening", active: pathname === "/screening" },
-    { label: "Interviews", icon: CalendarClock, href: "#" },
+    { label: "Interviews", icon: CalendarClock, href: "/interviews", active: pathname === "/interviews" },
     { label: "Integrations", icon: Plug, href: "#" },
     { label: "Analytics", icon: BarChart3, href: "#" },
     { label: "Settings", icon: SettingsIcon, href: "/settings", active: pathname === "/settings" },

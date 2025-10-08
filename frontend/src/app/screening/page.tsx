@@ -503,6 +503,31 @@ export default function ScreeningPage() {
     }
   }
 
+  // Get job interview stages - always include Telephonic/AI Call as first stage
+  const getJobInterviewStages = (jobTitle: string): Array<{ name: string, type: string }> => {
+    const job = jobs.find(j => j.title.toLowerCase() === jobTitle.toLowerCase())
+
+    // Always start with Telephonic/AI Call as first stage
+    const stages = [{ name: 'Telephonic/AI Call', type: 'ai' }]
+
+    if (job && job.interview_stages && job.interview_stages.length > 0) {
+      // Add all job stages after the telephonic round
+      const jobStages = job.interview_stages.map((stage: any) => ({
+        name: stage.name,
+        type: stage.interviewerType || 'human'
+      }))
+      stages.push(...jobStages)
+    } else {
+      // Default stages if job not found
+      stages.push(
+        { name: 'Technical Round', type: 'human' },
+        { name: 'Final Round', type: 'human' }
+      )
+    }
+
+    return stages
+  }
+
   // Auto-populate assessment email and store feedback form ID when assessment is completed
   useEffect(() => {
     movedCandidatesList.forEach(candidate => {
@@ -2018,6 +2043,82 @@ ${fromEmail}`
     }
   }
 
+  // Handle Select Candidate - Move to Interviews
+  const handleSelectCandidate = async (candidateId: number) => {
+    try {
+      const candidate = movedCandidatesList.find(c => c.id === candidateId)
+      if (!candidate) return
+
+      // Update status to 'interviewing' to show in Interviews page
+      const response = await fetch(`http://localhost:8000/api/candidates/${candidateId}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'interviewing' })
+      })
+
+      if (response.ok) {
+        // Remove from screening list
+        setMovedCandidatesList(prev => prev.filter(c => c.id !== candidateId))
+
+        // Update sessionStorage
+        const updatedList = movedCandidatesList.filter(c => c.id !== candidateId)
+        if (updatedList.length > 0) {
+          sessionStorage.setItem('screeningCandidatesList', JSON.stringify(updatedList))
+        } else {
+          sessionStorage.removeItem('screeningCandidatesList')
+        }
+
+        toast({
+          title: "Candidate Selected",
+          description: `${candidate.name} moved to Interviews. You can view them in the Interviews page.`,
+          variant: "default"
+        })
+      }
+    } catch (error) {
+      console.error('Error selecting candidate:', error)
+      toast({
+        title: "Error",
+        description: "Failed to select candidate",
+        variant: "destructive"
+      })
+    }
+  }
+
+  // Handle Reject Candidate
+  const handleRejectCandidate = async (candidateId: number) => {
+    try {
+      const candidate = movedCandidatesList.find(c => c.id === candidateId)
+      if (!candidate) return
+
+      // Update status to 'rejected'
+      const response = await fetch(`http://localhost:8000/api/candidates/${candidateId}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'rejected' })
+      })
+
+      if (response.ok) {
+        // Update local state to show rejected status
+        setMovedCandidatesList(prev => prev.map(c =>
+          c.id === candidateId ? { ...c, status: 'rejected' } : c
+        ))
+
+        toast({
+          title: "Candidate Rejected",
+          description: `${candidate.name} has been rejected.`,
+          variant: "default"
+        })
+      }
+    } catch (error) {
+      console.error('Error rejecting candidate:', error)
+      toast({
+        title: "Error",
+        description: "Failed to reject candidate",
+        variant: "destructive"
+      })
+    }
+  }
+
   // Handle MCP server call with candidate
   const handleStartMCPCall = async (candidate: ScreeningCandidateData) => {
     // Check if candidate has a phone number
@@ -2351,6 +2452,98 @@ ${fromEmail}`
                         </div>
                       </div>
                       <p className="text-sm text-gray-600">{candidate.email}</p>
+
+                      {/* Interview Stages Progress */}
+                      {(() => {
+                        // Get job interview stages - first stage is always Telephonic/AI Call
+                        const stages = candidate.jobTitle ? getJobInterviewStages(candidate.jobTitle) : [
+                          { name: 'Telephonic/AI Call', type: 'ai' },
+                          { name: 'Technical Round', type: 'human' },
+                          { name: 'Final Round', type: 'human' }
+                        ];
+
+                        // Track which stages are completed to show all completed ones as green
+                        let isFirstStageCompleted = false;
+                        let isSecondStageCompleted = false;
+
+                        return (
+                          <div className="mt-3 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg p-3">
+                            <p className="text-xs font-semibold text-gray-700 mb-2">Interview Stages Progress:</p>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {stages.map((stage, index) => {
+                                let statusIcon = '○';
+                                let statusClass = 'bg-gray-100 text-gray-600 border border-gray-300';
+                                let additionalInfo = '';
+
+                                // Stage 1: ALWAYS Telephonic/AI Call (index 0)
+                                if (index === 0) {
+                                  if (candidate.retell_call_status === 'ended' && candidate.retell_interview_scheduled) {
+                                    statusIcon = '✓';
+                                    statusClass = 'bg-green-100 text-green-800 border border-green-300';
+                                    isFirstStageCompleted = true;
+                                  } else if (candidate.retell_call_status === 'ended') {
+                                    statusIcon = '⚠';
+                                    statusClass = 'bg-yellow-100 text-yellow-800 border border-yellow-300';
+                                  } else if (initiatedCallIds.has(candidate.id)) {
+                                    statusIcon = '⏳';
+                                    statusClass = 'bg-blue-100 text-blue-800 border border-blue-300';
+                                  }
+                                }
+                                // Other stages: Check by name for WebDesk/Technical/Assessment
+                                else if (stage.name.toLowerCase().includes('webdesk') || stage.name.toLowerCase().includes('technical') || stage.name.toLowerCase().includes('assessment')) {
+                                  // Only show progress if previous stage completed
+                                  if (isFirstStageCompleted) {
+                                    if (candidate.assessment_completed) {
+                                      if (candidate.assessment_disqualified) {
+                                        statusIcon = '✗';
+                                        statusClass = 'bg-red-100 text-red-800 border border-red-300';
+                                      } else {
+                                        statusIcon = '✓';
+                                        statusClass = 'bg-green-100 text-green-800 border border-green-300';
+                                        isSecondStageCompleted = true;
+                                      }
+                                      if (candidate.assessment_score !== null) {
+                                        additionalInfo = `(${candidate.assessment_score}%)`;
+                                      }
+                                    } else if (candidate.assessment_username) {
+                                      statusIcon = '⏳';
+                                      statusClass = 'bg-blue-100 text-blue-800 border border-blue-300';
+                                    }
+                                  }
+                                }
+                                // All other stages after WebDesk
+                                else if (index > 1) {
+                                  // Show as completed if candidate moved to interviewing status and assessment passed
+                                  if (isSecondStageCompleted && candidate.status === 'interviewing') {
+                                    statusIcon = '✓';
+                                    statusClass = 'bg-green-100 text-green-800 border border-green-300';
+                                  } else if (candidate.status === 'rejected') {
+                                    statusIcon = '✗';
+                                    statusClass = 'bg-red-100 text-red-800 border border-red-300';
+                                  } else if (isSecondStageCompleted) {
+                                    // Show as pending if previous stages completed
+                                    statusIcon = '⏳';
+                                    statusClass = 'bg-blue-100 text-blue-800 border border-blue-300';
+                                  }
+                                }
+
+                                return (
+                                  <React.Fragment key={index}>
+                                    <div className={`flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium ${statusClass}`}>
+                                      <span>{statusIcon}</span>
+                                      <span>{stage.name}</span>
+                                      {additionalInfo && <span className="ml-1 font-bold">{additionalInfo}</span>}
+                                    </div>
+                                    {index < stages.length - 1 && (
+                                      <span className="text-gray-400">→</span>
+                                    )}
+                                  </React.Fragment>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()}
                       {candidate.jobTitle && (
                         <p className="text-xs text-blue-600 mt-1">Applied for: {candidate.jobTitle}</p>
                       )}
@@ -2822,6 +3015,33 @@ ${fromEmail}`
                             )}
                           </div>
                         )}
+
+                        {/* Select/Reject Buttons */}
+                        <div className="mt-4 pt-4 border-t border-gray-200 flex items-center gap-2">
+                          {candidate.status === 'rejected' ? (
+                            <Badge className="bg-red-100 text-red-800 border-red-300">
+                              ❌ Rejected
+                            </Badge>
+                          ) : (
+                            <>
+                              <Button
+                                size="sm"
+                                onClick={() => handleSelectCandidate(candidate.id)}
+                                className="bg-blue-600 hover:bg-blue-700 text-white text-xs"
+                                title="Move to Interviews page"
+                              >
+                                ✓ Select for Interview
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={() => handleRejectCandidate(candidate.id)}
+                                className="bg-blue-600 hover:bg-blue-700 text-white text-xs"
+                              >
+                                ✗ Reject
+                              </Button>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
