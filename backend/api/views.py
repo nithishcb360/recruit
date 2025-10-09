@@ -57,59 +57,6 @@ import datetime
 logger = logging.getLogger(__name__)
 
 
-def send_selection_email(candidate):
-    """
-    Send initial selection email when candidate is moved to screening
-    Notifies them they've been selected and interview details will follow
-    """
-    try:
-        # Check if candidate has email
-        if not candidate.email:
-            logger.warning(f"Candidate {candidate.id} has no email address")
-            return False
-
-        # Email subject and body
-        subject = f"Congratulations! Next Round of Interview - {candidate.first_name}"
-        message = f"""Dear {candidate.first_name},
-
-Greetings!
-
-We are pleased to inform you that you have been selected for the next round of interviews for the position you applied for.
-
-Our team will be contacting you shortly via phone to discuss the interview details and schedule a convenient time.
-
-📞 What to Expect:
-- You will receive a call from our recruitment team
-- We will confirm your availability
-- Interview date and time will be finalized
-- Further instructions will be sent via email
-
-Please ensure your phone is reachable, and keep an eye on your email for further communication.
-
-We appreciate your patience and look forward to speaking with you soon!
-
-Best regards,
-Recruitment Team
-{settings.DEFAULT_FROM_EMAIL}
-"""
-
-        # Send email
-        send_mail(
-            subject=subject,
-            message=message,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[candidate.email],
-            fail_silently=False,
-        )
-
-        logger.info(f"✅ Selection email sent to {candidate.email} (Candidate ID: {candidate.id})")
-        return True
-
-    except Exception as e:
-        logger.error(f"❌ Failed to send selection email to candidate {candidate.id}: {e}")
-        return False
-
-
 def send_webdesk_email(candidate):
     """
     Send WebDesk assessment email to candidate after call ends
@@ -665,38 +612,6 @@ class CandidateViewSet(viewsets.ModelViewSet):
             logger.error(f"Error generating credentials: {e}")
             return Response(
                 {'error': f'Failed to generate credentials: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-    @action(detail=True, methods=['post'])
-    def send_selection_notification(self, request, pk=None):
-        """
-        Send initial selection email to candidate
-        Called when candidate is moved to screening page
-        """
-        try:
-            candidate = self.get_object()
-
-            logger.info(f"Sending selection notification email to candidate {candidate.id}")
-            email_sent = send_selection_email(candidate)
-
-            if email_sent:
-                return Response({
-                    'success': True,
-                    'message': f'Selection email sent to {candidate.email}',
-                    'email_sent': True
-                })
-            else:
-                return Response({
-                    'success': False,
-                    'message': 'Failed to send selection email',
-                    'email_sent': False
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        except Exception as e:
-            logger.error(f"Error sending selection notification: {e}")
-            return Response(
-                {'success': False, 'error': f'Failed to send selection notification: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 

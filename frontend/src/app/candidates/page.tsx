@@ -1066,27 +1066,6 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
       // Add candidate to screening list using utility function
       addToScreeningList(candidateData)
 
-      // Send selection notification email
-      try {
-        console.log(`Sending selection notification email to candidate ${candidate.id}`)
-        const emailResponse = await fetch(`http://localhost:8000/api/candidates/${candidate.id}/send_selection_notification/`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          }
-        })
-
-        if (emailResponse.ok) {
-          const emailResult = await emailResponse.json()
-          console.log('✅ Selection email sent:', emailResult)
-        } else {
-          console.warn('⚠️ Failed to send selection email, but continuing...')
-        }
-      } catch (emailError) {
-        console.error('❌ Error sending selection email:', emailError)
-        // Don't block the flow if email fails
-      }
-
       // Update candidate status to 'screening' but keep them in the list
       setCandidates(prev =>
         prev.map(c =>
@@ -1101,7 +1080,7 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
 
       toast({
         title: "Moved to Screening",
-        description: `${candidate.name} has been moved to screening for ${jobMatch.jobTitle}. Selection email sent!`,
+        description: `${candidate.name} has been moved to screening for ${jobMatch.jobTitle}. Status updated to 'screening'.`,
         variant: "default"
       })
 

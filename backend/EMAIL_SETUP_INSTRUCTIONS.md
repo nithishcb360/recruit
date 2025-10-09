@@ -1,25 +1,16 @@
-# Email Setup Instructions for Automatic Candidate Emails
+# Email Setup Instructions for Automatic WebDesk Emails
 
 ## Overview
-The system sends **TWO automated emails** to candidates during the recruitment process:
+After a Retell AI call ends and an interview is scheduled, the system **automatically sends ONE email** to the candidate with:
 
-### 📧 Email #1: Initial Selection Notification
-**Trigger:** Candidate is moved to screening page (selected for interview)
+**Trigger:** Retell call status = 'ended' AND interview is scheduled
 
-**Contains:**
-- Congratulations message
-- Notification that they've been selected for next round
-- "We will contact you shortly" message
-- What to expect next (phone call, interview scheduling)
-
-### 📧 Email #2: Interview Schedule & WebDesk Details
-**Trigger:** After Retell AI call ends with scheduled interview time
-
-**Contains:**
+**Email Contains:**
 - Scheduled interview date and time
 - WebDesk assessment link
 - Login credentials (username & password)
 - Time-based access instructions (15 min before → 2 hours after)
+- Important note about assessment requirements
 
 ## Setup Steps
 
