@@ -48,7 +48,8 @@
       "Bash(git -C \"D:/recruit\" status)",
       "Bash(git -C \"D:/recruit\" diff \"frontend/src/app/screening/page.tsx\")",
       "Bash(where ngrok)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "Bash(pip show:*)"
     ]
   }
 }

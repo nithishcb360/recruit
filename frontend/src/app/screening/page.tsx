@@ -462,6 +462,7 @@ export default function ScreeningPage() {
   const [expandedCards, setExpandedCards] = useState<Set<number>>(new Set())
   const [movedCandidatesList, setMovedCandidatesList] = useState<ScreeningCandidateData[]>([])
   const movedCandidatesRef = useRef<ScreeningCandidateData[]>([])
+  const processedCandidateIdsRef = useRef<Set<number>>(new Set()) // Track which candidates have been auto-called
   const [candidateCallData, setCandidateCallData] = useState<Map<number, EnhancedRetellCallData>>(new Map())
   const [loadingCallData, setLoadingCallData] = useState<Set<number>>(new Set())
   const [callIdInputs, setCallIdInputs] = useState<Map<number, string>>(new Map())
@@ -470,6 +471,8 @@ export default function ScreeningPage() {
   const [initiatedCallIds, setInitiatedCallIds] = useState<Map<number, string>>(new Map())
   const [assigneeInputs, setAssigneeInputs] = useState<Map<number, string>>(new Map())
   const [assessmentEmailInputs, setAssessmentEmailInputs] = useState<Map<number, string>>(new Map())
+  const [callRetryCount, setCallRetryCount] = useState<Map<number, number>>(new Map())
+  const [pendingRetries, setPendingRetries] = useState<Map<number, NodeJS.Timeout>>(new Map())
 
   // Helper function to get WebDesk stage info from job's interview stages
   const getWebDeskStageInfo = (jobTitle: string): { assigneeEmail: string | null, feedbackFormId: string | null } => {
@@ -641,6 +644,16 @@ export default function ScreeningPage() {
     return () => clearInterval(interval)
   }, [initiatedCallIds, movedCandidatesList])
 
+  // Cleanup pending retry timers on unmount
+  useEffect(() => {
+    return () => {
+      // Clear all pending retry timers when component unmounts
+      pendingRetries.forEach((timeoutId) => {
+        clearTimeout(timeoutId)
+      })
+    }
+  }, [])
+
   // Check if current time is within working hours (10 AM - 6 PM)
   const isWithinWorkingHours = (): boolean => {
     const currentHour = new Date().getHours()
@@ -718,6 +731,117 @@ export default function ScreeningPage() {
       console.error('Error parsing interview schedule:', error)
       return { active: true, message: '' }
     }
+  }
+
+  // Check if call summary indicates need for retry
+  const shouldRetryCall = (summary: string | undefined, callOutcome: string | undefined): boolean => {
+    if (!summary) return false
+
+    const lowerSummary = summary.toLowerCase()
+
+    // Keywords indicating no response, confusion, or disconnection
+    const retryKeywords = [
+      'did not respond',
+      'no response',
+      'not respond clearly',
+      'confusion',
+      'disconnection',
+      'disconnected',
+      'no clear response',
+      'unclear response',
+      'possible confusion',
+      'call dropped',
+      'poor connection',
+      'unable to hear',
+      'could not hear',
+      'line dropped',
+      'hung up immediately',
+      'answered but silent',
+      'no answer from candidate'
+    ]
+
+    // Check if summary contains any retry keywords
+    const hasRetryKeyword = retryKeywords.some(keyword => lowerSummary.includes(keyword))
+
+    // Also check call outcome if available
+    const shouldRetryBasedOnOutcome = callOutcome && (
+      callOutcome.toLowerCase().includes('no response') ||
+      callOutcome.toLowerCase().includes('disconnected') ||
+      callOutcome.toLowerCase().includes('unclear')
+    )
+
+    return hasRetryKeyword || shouldRetryBasedOnOutcome || false
+  }
+
+  // Schedule retry call after delay
+  const scheduleRetryCall = (candidate: ScreeningCandidateData, delayMinutes: number = 5) => {
+    const maxRetries = 3
+    const currentRetries = callRetryCount.get(candidate.id) || 0
+
+    if (currentRetries >= maxRetries) {
+      console.log(`Max retries (${maxRetries}) reached for ${candidate.name}. Not scheduling retry.`)
+      toast({
+        title: "Max Retries Reached",
+        description: `Unable to connect with ${candidate.name} after ${maxRetries} attempts. Please try calling manually.`,
+        variant: "destructive"
+      })
+      return
+    }
+
+    // Cancel any existing pending retry
+    const existingTimeout = pendingRetries.get(candidate.id)
+    if (existingTimeout) {
+      clearTimeout(existingTimeout)
+    }
+
+    console.log(`Scheduling retry call for ${candidate.name} in ${delayMinutes} minutes (Attempt ${currentRetries + 1}/${maxRetries})`)
+
+    toast({
+      title: "Call Retry Scheduled",
+      description: `Will retry calling ${candidate.name} in ${delayMinutes} minutes (Attempt ${currentRetries + 1}/${maxRetries})`,
+      variant: "default"
+    })
+
+    const timeoutId = setTimeout(async () => {
+      console.log(`Retrying call for ${candidate.name}...`)
+
+      // Increment retry count
+      setCallRetryCount(prev => {
+        const newMap = new Map(prev)
+        newMap.set(candidate.id, currentRetries + 1)
+        return newMap
+      })
+
+      // Remove from pending retries
+      setPendingRetries(prev => {
+        const newMap = new Map(prev)
+        newMap.delete(candidate.id)
+        return newMap
+      })
+
+      // Reset call states to allow new call
+      setAutoCallScheduled(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(candidate.id)
+        return newSet
+      })
+
+      setAutoCallInProgress(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(candidate.id)
+        return newSet
+      })
+
+      // Initiate the retry call
+      await initiateAutomaticCall(candidate)
+    }, delayMinutes * 60 * 1000) // Convert minutes to milliseconds
+
+    // Store timeout ID
+    setPendingRetries(prev => {
+      const newMap = new Map(prev)
+      newMap.set(candidate.id, timeoutId)
+      return newMap
+    })
   }
 
   // Initiate automatic call for a candidate
@@ -834,7 +958,7 @@ export default function ScreeningPage() {
     }, 30000) // Poll every 30 seconds
   }
 
-  // Automatic call scheduling effect - runs only once when candidates are added
+  // Automatic call scheduling effect - runs only once when NEW candidates are added
   useEffect(() => {
     // Only proceed if we have candidates in the screening list
     if (movedCandidatesList.length === 0) return
@@ -848,28 +972,49 @@ export default function ScreeningPage() {
     // Check localStorage to see if calls were already made for these candidates
     const callsAlreadyMade = JSON.parse(localStorage.getItem('screening_calls_made') || '[]')
 
-    // Iterate through candidates and initiate calls
+    // Iterate through candidates and initiate calls ONLY for new ones
     movedCandidatesList.forEach(candidate => {
-      // Skip if call was already made for this candidate
+      // FIRST CHECK: Skip if we already processed this candidate in this session
+      if (processedCandidateIdsRef.current.has(candidate.id)) {
+        return // Already processed, don't log (avoid spam)
+      }
+
+      // Mark as processed immediately to prevent duplicate calls
+      processedCandidateIdsRef.current.add(candidate.id)
+
+      // Skip if call was already made for this candidate (persisted across sessions)
       if (callsAlreadyMade.includes(candidate.id)) {
-        console.log(`Call already made for ${candidate.name}, skipping.`)
+        console.log(`Call already made for ${candidate.name} (found in localStorage), skipping.`)
         return
       }
 
-      // Only initiate if not already scheduled or in progress
-      if (!autoCallScheduled.has(candidate.id) && !autoCallInProgress.has(candidate.id)) {
-        // Add a small delay to stagger calls
-        const delay = Math.random() * 5000 // Random delay up to 5 seconds
-        setTimeout(() => {
-          initiateAutomaticCall(candidate)
-          // Mark call as made in localStorage
-          const updatedCalls = JSON.parse(localStorage.getItem('screening_calls_made') || '[]')
+      // Skip if call is already scheduled or in progress (current session)
+      if (autoCallScheduled.has(candidate.id) || autoCallInProgress.has(candidate.id)) {
+        console.log(`Call already scheduled/in progress for ${candidate.name}, skipping.`)
+        return
+      }
+
+      // Skip if we already have a call ID for this candidate (call was already initiated)
+      if (initiatedCallIds.has(candidate.id)) {
+        console.log(`Call already initiated for ${candidate.name} (has call ID), skipping.`)
+        return
+      }
+
+      console.log(`✅ Initiating automatic call for NEW candidate: ${candidate.name}`)
+
+      // Add a small delay to stagger calls
+      const delay = Math.random() * 5000 // Random delay up to 5 seconds
+      setTimeout(() => {
+        initiateAutomaticCall(candidate)
+        // Mark call as made in localStorage
+        const updatedCalls = JSON.parse(localStorage.getItem('screening_calls_made') || '[]')
+        if (!updatedCalls.includes(candidate.id)) {
           updatedCalls.push(candidate.id)
           localStorage.setItem('screening_calls_made', JSON.stringify(updatedCalls))
-        }, delay)
-      }
+        }
+      }, delay)
     })
-  }, [movedCandidatesList])
+  }, [movedCandidatesList]) // Trigger when list changes, but ref prevents duplicates
 
   // Load jobs and applications on component mount
   useEffect(() => {
@@ -1417,6 +1562,22 @@ export default function ScreeningPage() {
           scheduled_date: result.candidate.retell_scheduled_date,
           scheduled_time: result.candidate.retell_scheduled_time
         })
+
+        // Check if call needs retry based on summary
+        const needsRetry = shouldRetryCall(
+          result.candidate.retell_call_summary,
+          result.candidate.retell_call_outcome
+        )
+
+        if (needsRetry && !result.candidate.retell_interview_scheduled) {
+          console.log(`Call summary indicates retry needed for candidate ${candidateId}`)
+
+          // Find the candidate object
+          const candidate = movedCandidatesList.find(c => c.id === candidateId)
+          if (candidate) {
+            scheduleRetryCall(candidate, 5) // Retry in 5 minutes
+          }
+        }
 
         // Refresh the candidate data to show updated schedule info
         refreshMovedCandidatesData(movedCandidatesRef.current)
@@ -2192,19 +2353,27 @@ ${fromEmail}`
           variant: "default"
         })
       } else {
+        // Show error toast
         toast({
           title: "Call Failed",
           description: result.message || "Failed to initiate call",
           variant: "destructive"
         })
+        // Throw error so automatic call flow knows it failed
+        throw new Error(result.message || "Failed to initiate call")
       }
     } catch (error) {
       console.error('Error starting call:', error)
-      toast({
-        title: "Error",
-        description: "Failed to start call",
-        variant: "destructive"
-      })
+      // Only show toast if it's a network/fetch error (not already shown above)
+      if (error instanceof TypeError || (error instanceof Error && !error.message.includes('Failed to initiate call'))) {
+        toast({
+          title: "Error",
+          description: "Failed to start call - network error",
+          variant: "destructive"
+        })
+      }
+      // Re-throw so automatic call flow can handle it
+      throw error
     }
   }
 
@@ -2637,6 +2806,26 @@ ${fromEmail}`
                       {(candidate.retell_interview_scheduled || candidate.retell_call_status || candidate.retell_call_summary) && (
                         <div className="mt-2 bg-purple-50 border border-purple-200 rounded p-3 space-y-2">
                           <p className="font-semibold text-purple-900 text-xs mb-2">📞 Retell Call Analysis:</p>
+
+                          {/* Retry Status */}
+                          {pendingRetries.has(candidate.id) && (
+                            <div className="bg-yellow-50 border border-yellow-300 rounded p-2">
+                              <p className="text-xs font-semibold text-yellow-900 mb-1">⏱️ Retry Scheduled</p>
+                              <p className="text-xs text-yellow-800">
+                                Will retry call in 5 minutes (Attempt {(callRetryCount.get(candidate.id) || 0) + 1}/3)
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Max Retries Reached */}
+                          {!pendingRetries.has(candidate.id) && (callRetryCount.get(candidate.id) || 0) >= 3 && !candidate.retell_interview_scheduled && (
+                            <div className="bg-red-50 border border-red-300 rounded p-2">
+                              <p className="text-xs font-semibold text-red-900 mb-1">⚠️ Max Retries Reached</p>
+                              <p className="text-xs text-red-800">
+                                Unable to connect after 3 attempts. Please call manually.
+                              </p>
+                            </div>
+                          )}
 
 
 
