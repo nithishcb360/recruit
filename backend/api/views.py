@@ -597,6 +597,7 @@ class CandidateViewSet(viewsets.ModelViewSet):
                 if 'interviewTime' in dynamic_vars or 'interview_time' in dynamic_vars:
                     interview_time = dynamic_vars.get('interviewTime') or dynamic_vars.get('interview_time')
                     candidate.retell_scheduled_time = interview_time
+                    candidate.retell_interview_scheduled = True
 
                 if 'interviewTimezone' in dynamic_vars or 'timezone' in dynamic_vars:
                     timezone_val = dynamic_vars.get('interviewTimezone') or dynamic_vars.get('timezone')
@@ -646,14 +647,20 @@ class CandidateViewSet(viewsets.ModelViewSet):
                     if 'scheduled_date' in custom_data:
                         candidate.retell_scheduled_date = custom_data['scheduled_date']
                         logger.info(f"Set scheduled_date: {custom_data['scheduled_date']}")
+                        # Auto-set interview_scheduled to True if we have a date
+                        candidate.retell_interview_scheduled = True
 
                     # Check for scheduled_time or retell_scheduled_time
                     if 'scheduled_time' in custom_data:
                         candidate.retell_scheduled_time = custom_data['scheduled_time']
                         logger.info(f"Set scheduled_time: {custom_data['scheduled_time']}")
+                        # Auto-set interview_scheduled to True if we have a time
+                        candidate.retell_interview_scheduled = True
                     elif 'retell_scheduled_time' in custom_data:
                         candidate.retell_scheduled_time = custom_data['retell_scheduled_time']
                         logger.info(f"Set retell_scheduled_time: {custom_data['retell_scheduled_time']}")
+                        # Auto-set interview_scheduled to True if we have a time
+                        candidate.retell_interview_scheduled = True
 
                     if 'scheduled_timezone' in custom_data:
                         candidate.retell_scheduled_timezone = custom_data['scheduled_timezone']

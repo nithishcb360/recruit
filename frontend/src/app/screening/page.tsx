@@ -955,6 +955,14 @@ export default function ScreeningPage() {
         })
       )
       setMovedCandidatesList(updatedCandidates)
+      movedCandidatesRef.current = updatedCandidates // Update ref as well
+
+      // Debug log to check if date/time is in the data
+      updatedCandidates.forEach(c => {
+        if (c.retell_interview_scheduled) {
+          console.log(`Candidate ${c.name} - Scheduled Date: ${c.retell_scheduled_date}, Time: ${c.retell_scheduled_time}`)
+        }
+      })
     } catch (error) {
       console.error('Error refreshing candidate data:', error)
     }
@@ -2227,7 +2235,28 @@ ${fromEmail}`
                 phone: "1234567890",
                 jobTitle: "Test Position",
                 assessment_screen_recording: undefined,
-                assessment_video_recording: undefined
+                assessment_video_recording: undefined,
+                assessment_time_taken: undefined,
+                assigned_to: undefined,
+                retell_interview_scheduled: undefined,
+                retell_call_status: undefined,
+                retell_call_summary: undefined,
+                retell_scheduled_date: undefined,
+                retell_scheduled_time: undefined,
+                retell_scheduled_timezone: undefined,
+                retell_scheduled_datetime_iso: undefined,
+                retell_call_outcome: undefined,
+                retell_interest_level: undefined,
+                retell_is_qualified: undefined,
+                retell_call_duration_ms: undefined,
+                retell_technical_skills: false,
+                retell_questions_asked: false,
+                retell_user_sentiment: undefined,
+                retell_recording_url: undefined,
+                retell_public_log_url: undefined,
+                retell_availability_preference: undefined,
+                retell_additional_notes: undefined,
+                assessment_responses: undefined
               })}
               className="bg-blue-600 hover:bg-blue-700 text-white"
             >
@@ -2553,6 +2582,31 @@ ${fromEmail}`
                         <div className="mt-2 bg-purple-50 border border-purple-200 rounded p-3 space-y-2">
                           <p className="font-semibold text-purple-900 text-xs mb-2">📞 Retell Call Analysis:</p>
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
                           {/* Interview Schedule */}
                           {candidate.retell_interview_scheduled && (
                             <div className="bg-green-50 border border-green-300 rounded p-2">
@@ -2582,6 +2636,10 @@ ${fromEmail}`
                                   <strong>Full DateTime:</strong> {new Date(candidate.retell_scheduled_datetime_iso).toLocaleString()}
                                 </p>
                               )}
+                              {/* Debug info */}
+                              <p className="text-xs text-gray-500 mt-2 font-mono">
+                                Debug: date={String(candidate.retell_scheduled_date)}, time={String(candidate.retell_scheduled_time)}
+                              </p>
                             </div>
                           )}
 

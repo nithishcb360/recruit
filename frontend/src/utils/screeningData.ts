@@ -4,6 +4,8 @@
  */
 
 export interface ScreeningCandidateData {
+  assessment_time_taken: any
+  assigned_to: any
   retell_interview_scheduled: any
   retell_call_status: any
   retell_call_summary: any
