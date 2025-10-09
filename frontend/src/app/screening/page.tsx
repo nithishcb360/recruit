@@ -2347,6 +2347,33 @@ ${fromEmail}`
                               const baseUrl = process.env.NEXT_PUBLIC_WEBDESK_URL || window.location.origin
                               const webdeskLink = `${baseUrl}/webdesk/${candidate.id}`
 
+                              // Format scheduled date and time if available
+                              let scheduleInfo = ''
+                              if (candidate.retell_interview_scheduled && candidate.retell_scheduled_date && candidate.retell_scheduled_time) {
+                                try {
+                                  const scheduledDate = new Date(candidate.retell_scheduled_date)
+                                  const dateStr = scheduledDate.toLocaleDateString('en-US', {
+                                    weekday: 'long',
+                                    year: 'numeric',
+                                    month: 'long',
+                                    day: 'numeric'
+                                  })
+                                  scheduleInfo = `
+Interview Schedule:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Date: ${dateStr}
+Time: ${candidate.retell_scheduled_time}
+Timezone: ${candidate.retell_scheduled_timezone || 'Local Time'}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+IMPORTANT: The assessment link will only be active 15 minutes before your scheduled time until 2 hours after.
+
+`
+                                } catch (error) {
+                                  console.error('Error formatting schedule:', error)
+                                }
+                              }
+
                               const emailBody = `Dear ${candidate.name},
 
 Greetings!
@@ -2355,7 +2382,7 @@ We are pleased to inform you that you have been selected for the next round of i
 
 As part of our assessment process, we kindly request you to complete a WebDesk technical assessment.
 
-WebDesk Assessment Details:
+${scheduleInfo}WebDesk Assessment Details:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Link: ${webdeskLink}
 
@@ -2379,12 +2406,41 @@ Best regards,
 Recruitment Team
 ${fromEmail}`
 
+                              // HTML schedule info
+                              let scheduleHtml = ''
+                              if (candidate.retell_interview_scheduled && candidate.retell_scheduled_date && candidate.retell_scheduled_time) {
+                                try {
+                                  const scheduledDate = new Date(candidate.retell_scheduled_date)
+                                  const dateStr = scheduledDate.toLocaleDateString('en-US', {
+                                    weekday: 'long',
+                                    year: 'numeric',
+                                    month: 'long',
+                                    day: 'numeric'
+                                  })
+                                  scheduleHtml = `
+                                  <div style="background-color: #f0fdf4; border: 2px solid #22c55e; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                                    <h3 style="color: #15803d; margin-top: 0;">📅 Interview Schedule</h3>
+                                    <p style="margin: 5px 0;"><strong>Date:</strong> ${dateStr}</p>
+                                    <p style="margin: 5px 0;"><strong>Time:</strong> ${candidate.retell_scheduled_time}</p>
+                                    <p style="margin: 5px 0;"><strong>Timezone:</strong> ${candidate.retell_scheduled_timezone || 'Local Time'}</p>
+                                    <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 10px; margin-top: 15px;">
+                                      <p style="margin: 0; color: #92400e;"><strong>⚠️ IMPORTANT:</strong> The assessment link will only be active 15 minutes before your scheduled time until 2 hours after.</p>
+                                    </div>
+                                  </div>
+                                  `
+                                } catch (error) {
+                                  console.error('Error formatting HTML schedule:', error)
+                                }
+                              }
+
                               const emailHtml = `
                                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
                                   <p>Dear <strong>${candidate.name}</strong>,</p>
                                   <p>Greetings!</p>
                                   <p>We are pleased to inform you that you have been selected for the next round of interviews for the position of <strong>${candidate.jobTitle || 'the role you applied for'}</strong>.</p>
                                   <p>As part of our assessment process, we kindly request you to complete a WebDesk technical assessment.</p>
+
+                                  ${scheduleHtml}
 
                                   <div style="background-color: #f0f9ff; border: 2px solid #3b82f6; border-radius: 8px; padding: 20px; margin: 20px 0;">
                                     <h3 style="color: #1e40af; margin-top: 0;">WebDesk Assessment Details</h3>

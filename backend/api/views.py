@@ -22,6 +22,8 @@ from .serializers import (
 )
 from .utils.enhanced_resume_parser import EnhancedResumeParser
 from .utils.resume_parser import ResumeParser
+from django.core.mail import send_mail
+from django.conf import settings
 import logging
 
 logger = logging.getLogger(__name__)
@@ -53,6 +55,104 @@ from django.core.files.storage import default_storage
 import datetime
 
 logger = logging.getLogger(__name__)
+
+
+def send_webdesk_email(candidate):
+    """
+    Send WebDesk assessment email to candidate after call ends
+    Email includes credentials and scheduled interview time
+    """
+    try:
+        # Check if candidate has email
+        if not candidate.email:
+            logger.warning(f"Candidate {candidate.id} has no email address")
+            return False
+
+        # Generate credentials if not already generated
+        if not candidate.assessment_username or not candidate.assessment_password:
+            import random
+            import string
+            first_name = candidate.first_name.lower().replace(' ', '')
+            random_suffix = ''.join(random.choices(string.digits, k=4))
+            candidate.assessment_username = f"{first_name}{random_suffix}"
+            password_chars = string.ascii_letters + string.digits + '@#$%'
+            candidate.assessment_password = ''.join(random.choices(password_chars, k=8))
+            candidate.save()
+
+        # Build WebDesk URL
+        webdesk_url = f"http://localhost:3003/?candidate_id={candidate.id}"
+
+        # Format scheduled date/time if available
+        schedule_info = ""
+        if candidate.retell_interview_scheduled and candidate.retell_scheduled_date and candidate.retell_scheduled_time:
+            from datetime import datetime
+            try:
+                scheduled_date = datetime.strptime(candidate.retell_scheduled_date, '%Y-%m-%d')
+                date_str = scheduled_date.strftime('%A, %B %d, %Y')
+                schedule_info = f"""
+Interview Schedule:
+Date: {date_str}
+Time: {candidate.retell_scheduled_time}
+Timezone: {candidate.retell_scheduled_timezone or 'Local Time'}
+
+IMPORTANT: The assessment link will only be active 15 minutes before your scheduled time until 2 hours after.
+"""
+            except:
+                schedule_info = f"""
+Interview Schedule:
+Date: {candidate.retell_scheduled_date}
+Time: {candidate.retell_scheduled_time}
+
+IMPORTANT: The assessment link will only be active 15 minutes before your scheduled time until 2 hours after.
+"""
+
+        # Email subject and body
+        subject = f"Technical Assessment - {candidate.first_name}"
+        message = f"""Dear {candidate.first_name},
+
+Thank you for your interest in our position. We are pleased to invite you to complete a technical assessment as the next step in the interview process.
+
+{schedule_info}
+
+Assessment Details:
+-----------------
+Link: {webdesk_url}
+Username: {candidate.assessment_username}
+Password: {candidate.assessment_password}
+
+Instructions:
+1. Click the link above at your scheduled time
+2. Log in using the credentials provided
+3. Complete the assessment within the allotted time
+4. Do not switch tabs or leave the assessment page
+
+Important Notes:
+- Please ensure you have a stable internet connection
+- Use a desktop or laptop (mobile devices are not recommended)
+- Close all unnecessary applications and tabs
+- The assessment will be proctored (video and screen recording)
+
+If you have any questions or need assistance, please don't hesitate to contact us.
+
+Best regards,
+Recruitment Team
+"""
+
+        # Send email
+        send_mail(
+            subject=subject,
+            message=message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[candidate.email],
+            fail_silently=False,
+        )
+
+        logger.info(f"✅ WebDesk email sent to {candidate.email} (Candidate ID: {candidate.id})")
+        return True
+
+    except Exception as e:
+        logger.error(f"❌ Failed to send WebDesk email to candidate {candidate.id}: {e}")
+        return False
 
 
 @api_view(['GET'])
@@ -697,12 +797,24 @@ class CandidateViewSet(viewsets.ModelViewSet):
 
             candidate.save()
 
+            # Send WebDesk email automatically after call ends if interview is scheduled
+            email_sent = False
+            if candidate.retell_call_status == 'ended' and candidate.retell_interview_scheduled:
+                logger.info(f"Attempting to send WebDesk email to candidate {candidate.id}")
+                email_sent = send_webdesk_email(candidate)
+
             serializer = self.get_serializer(candidate)
-            return Response({
+            response_data = {
                 'success': True,
                 'message': 'Retell call data saved successfully',
                 'candidate': serializer.data
-            })
+            }
+
+            if email_sent:
+                response_data['email_sent'] = True
+                response_data['message'] += ' and WebDesk email sent to candidate'
+
+            return Response(response_data)
 
         except Exception as e:
             logger.error(f"Error saving Retell call data: {e}")

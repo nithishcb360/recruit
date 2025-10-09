@@ -30,6 +30,10 @@ interface Candidate {
   email: string
   assessment_username?: string
   assessment_password?: string
+  retell_interview_scheduled?: boolean
+  retell_scheduled_date?: string
+  retell_scheduled_time?: string
+  retell_scheduled_timezone?: string
 }
 
 // Convert feedback form questions to assessment questions
@@ -546,12 +550,96 @@ export default function WebDeskAssessment() {
     }
   }, [assessmentStarted, assessmentCompleted, timeRemaining])
 
+  // Check if WebDesk access is allowed based on scheduled time
+  const checkScheduledAccess = (candidate: Candidate): { allowed: boolean, message: string } => {
+    // If no interview scheduled, allow access anytime
+    if (!candidate.retell_interview_scheduled || !candidate.retell_scheduled_date || !candidate.retell_scheduled_time) {
+      return { allowed: true, message: '' }
+    }
+
+    try {
+      // Parse the scheduled date and time
+      const scheduledDate = new Date(candidate.retell_scheduled_date)
+      const timeStr = candidate.retell_scheduled_time.trim()
+
+      // Extract hours and minutes from time string (e.g., "10:00 AM")
+      const timeMatch = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i)
+      if (!timeMatch) {
+        return { allowed: true, message: 'Invalid time format' }
+      }
+
+      let hours = parseInt(timeMatch[1])
+      const minutes = parseInt(timeMatch[2])
+      const meridiem = timeMatch[3].toUpperCase()
+
+      // Convert to 24-hour format
+      if (meridiem === 'PM' && hours !== 12) {
+        hours += 12
+      } else if (meridiem === 'AM' && hours === 12) {
+        hours = 0
+      }
+
+      // Set the time on the scheduled date
+      scheduledDate.setHours(hours, minutes, 0, 0)
+
+      const now = new Date()
+
+      // Allow access 15 minutes before scheduled time and up to 2 hours after
+      const startTime = new Date(scheduledDate.getTime() - 15 * 60 * 1000) // 15 min before
+      const endTime = new Date(scheduledDate.getTime() + 2 * 60 * 60 * 1000) // 2 hours after
+
+      if (now < startTime) {
+        const diffMs = startTime.getTime() - now.getTime()
+        const diffMins = Math.floor(diffMs / 60000)
+        const diffHours = Math.floor(diffMins / 60)
+        const remainingMins = diffMins % 60
+
+        let timeUntil = ''
+        if (diffHours > 0) {
+          timeUntil = `${diffHours}h ${remainingMins}m`
+        } else {
+          timeUntil = `${diffMins} minutes`
+        }
+
+        return {
+          allowed: false,
+          message: `Assessment will be available in ${timeUntil}. Scheduled for ${candidate.retell_scheduled_time} on ${scheduledDate.toLocaleDateString()}`
+        }
+      }
+
+      if (now > endTime) {
+        return {
+          allowed: false,
+          message: `Assessment window has closed. It was scheduled for ${candidate.retell_scheduled_time} on ${scheduledDate.toLocaleDateString()}`
+        }
+      }
+
+      // Within the allowed window
+      return { allowed: true, message: '' }
+
+    } catch (error) {
+      console.error('Error parsing interview schedule:', error)
+      return { allowed: true, message: '' }
+    }
+  }
+
   const fetchCandidate = async () => {
     try {
       const response = await fetch(`http://localhost:8000/api/candidates/${candidateId}/`)
       if (response.ok) {
         const data = await response.json()
         setCandidate(data)
+
+        // Check if access is allowed based on scheduled time
+        const accessCheck = checkScheduledAccess(data)
+        if (!accessCheck.allowed) {
+          toast({
+            title: "Access Restricted",
+            description: accessCheck.message,
+            variant: "destructive",
+            duration: 10000
+          })
+        }
       }
     } catch (error) {
       console.error('Error fetching candidate:', error)
@@ -570,6 +658,19 @@ export default function WebDeskAssessment() {
     setLoginError('')
 
     if (!candidate) return
+
+    // Check if access is allowed based on scheduled time
+    const accessCheck = checkScheduledAccess(candidate)
+    if (!accessCheck.allowed) {
+      setLoginError(accessCheck.message)
+      toast({
+        title: "Access Restricted",
+        description: accessCheck.message,
+        variant: "destructive",
+        duration: 10000
+      })
+      return
+    }
 
     console.log('Login attempt:', {
       inputUsername: username,
