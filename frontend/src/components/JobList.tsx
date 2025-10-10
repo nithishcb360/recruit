@@ -2,24 +2,20 @@
 
 import { useState, useEffect } from 'react';
 import { getJobs, deleteJob, type Job } from '@/lib/api/jobs';
-import JobDetailsModal from './JobDetailsModal';
-import JobCreationForm from './JobCreationForm';
 import { Trash2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface JobListProps {
   refreshTrigger?: number;
+  onViewDetails?: (job: Job) => void;
+  onEditJob?: (job: Job) => void;
 }
 
-export default function JobList({ refreshTrigger = 0 }: JobListProps) {
+export default function JobList({ refreshTrigger = 0, onViewDetails, onEditJob }: JobListProps) {
   const { user } = useAuth();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
-  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [jobToEdit, setJobToEdit] = useState<Job | null>(null);
   const [deletingJobId, setDeletingJobId] = useState<number | null>(null);
   const [expandedDescriptions, setExpandedDescriptions] = useState<Set<number>>(new Set());
   const [expandedRequirements, setExpandedRequirements] = useState<Set<number>>(new Set());
@@ -127,30 +123,6 @@ export default function JobList({ refreshTrigger = 0 }: JobListProps) {
     console.log(`Publishing job ${jobId} to both platforms - LinkedIn: ${linkedInUrl}, Naukri: ${naukriUrl}`);
   };
 
-  const handleViewDetails = (job: Job) => {
-    setSelectedJob(job);
-    setIsDetailsModalOpen(true);
-  };
-
-  const closeDetailsModal = () => {
-    setIsDetailsModalOpen(false);
-    setSelectedJob(null);
-  };
-
-  const handleEditJob = (job: Job) => {
-    setJobToEdit(job);
-    setIsEditModalOpen(true);
-  };
-
-  const closeEditModal = () => {
-    setIsEditModalOpen(false);
-    setJobToEdit(null);
-  };
-
-  const handleEditSuccess = () => {
-    closeEditModal();
-    loadJobs(); // Refresh the job list
-  };
 
   const handleDeleteJob = async (job: Job) => {
     // Only HR users can delete jobs
@@ -579,7 +551,7 @@ export default function JobList({ refreshTrigger = 0 }: JobListProps) {
                 <div className="flex justify-between items-center">
                   <div className="flex gap-3">
                     <button
-                      onClick={() => handleViewDetails(job)}
+                      onClick={() => onViewDetails?.(job)}
                       className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-4 py-2.5 rounded-xl transition-all duration-200 text-sm font-medium shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -590,7 +562,7 @@ export default function JobList({ refreshTrigger = 0 }: JobListProps) {
                     </button>
                     {user?.role === 'hr' && (
                       <button
-                        onClick={() => handleEditJob(job)}
+                        onClick={() => onEditJob?.(job)}
                         className="flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white px-4 py-2.5 rounded-xl transition-all duration-200 text-sm font-medium shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -619,45 +591,6 @@ export default function JobList({ refreshTrigger = 0 }: JobListProps) {
               </div>
             </div>
           ))}
-        </div>
-      )}
-
-      {/* Job Details Modal */}
-      <JobDetailsModal
-        isOpen={isDetailsModalOpen}
-        onClose={closeDetailsModal}
-        job={selectedJob}
-      />
-
-      {/* Job Edit Modal */}
-      {isEditModalOpen && jobToEdit && (
-        <div className="fixed inset-0 z-50">
-          <div className="fixed inset-0 bg-background/80 backdrop-blur-sm" onClick={closeEditModal} />
-          <div className="fixed inset-0 flex  justify-center p-4">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-              <div className="p-6 border-b border-gray-200">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-bold text-gray-900">Edit Job</h2>
-                  <button
-                    onClick={closeEditModal}
-                    className="text-gray-400 hover:text-gray-600 transition-colors"
-                  >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-              <div className="p-6">
-                <JobCreationForm
-                  onSuccess={handleEditSuccess}
-                  onClose={closeEditModal}
-                  editingJob={jobToEdit}
-                  isModal={true}
-                />
-              </div>
-            </div>
-          </div>
         </div>
       )}
     </div>
