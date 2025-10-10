@@ -567,12 +567,12 @@ export default function FeedbackFormBuilder() {
       if (!question) throw new Error('Question not found')
 
       let responseData
-      if (question.type === 'text' || question.type === 'textarea') {
+      if (question.type === 'text' || question.type === 'textarea' || question.type === 'radio' || question.type === 'program') {
         responseData = {
           form_id: previewForm.id,
           question_id: questionId,
           response_text: response,
-          response_type: question.type as 'text' | 'textarea'
+          response_type: question.type as 'text' | 'textarea' | 'radio' | 'program'
         }
       } else if (question.type === 'audio' || question.type === 'video') {
         responseData = {
@@ -862,10 +862,15 @@ export default function FeedbackFormBuilder() {
       return updated
     })
     setNewQuestionText("")
-    setRadioChoices([])
-    setNewChoice("")
-    setProgramLanguage("javascript")
-    setNewQuestionType("text")
+    // Don't reset type - keep the current selection
+    // Only reset conditional fields based on current type
+    if (newQuestionType === "radio") {
+      setRadioChoices([])
+      setNewChoice("")
+    }
+    if (newQuestionType === "program") {
+      setProgramLanguage("javascript")
+    }
     setNewQuestionOptions("")
     setNewQuestionRequired(false)
   }
@@ -918,7 +923,7 @@ export default function FeedbackFormBuilder() {
         </div>
  
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2 bg-white border border-slate-300 rounded-lg p-1">
+          <TabsList className="grid w-full grid-cols-3 bg-white border border-slate-300 rounded-lg p-1">
             <TabsTrigger
               value="forms"
               className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-gray-600 rounded-md font-medium transition-all duration-200 py-2 px-4"
@@ -931,6 +936,13 @@ export default function FeedbackFormBuilder() {
               className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-gray-600 rounded-md font-medium transition-all duration-200 disabled:opacity-50 py-2 px-4"
             >
               Form Builder
+            </TabsTrigger>
+            <TabsTrigger
+              value="preview"
+              disabled={!editingForm}
+              className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-gray-600 rounded-md font-medium transition-all duration-200 disabled:opacity-50 py-2 px-4"
+            >
+              Preview & Response
             </TabsTrigger>
           </TabsList>
  
@@ -1178,34 +1190,6 @@ export default function FeedbackFormBuilder() {
                             }
                             placeholder="Question text..."
                           />
-                          <div className="flex gap-4">
-                            <Select
-                              value={question.type}
-                              onValueChange={(value) =>
-                                handleQuestionPropertyChange(question.id, "type", value)
-                              }
-                            >
-                              <SelectTrigger className="w-40 bg-white border-slate-300 text-black font-medium hover:border-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
-                                <SelectValue className="text-black" />
-                              </SelectTrigger>
-                              <SelectContent className="bg-white border border-slate-300 shadow-xl text-black">
-                                <SelectItem value="text" className="text-black hover:bg-gray-100 focus:bg-gray-100 cursor-pointer font-medium">Text</SelectItem>
-                                <SelectItem value="textarea" className="text-black hover:bg-gray-100 focus:bg-gray-100 cursor-pointer font-medium">Textarea</SelectItem>
-                                <SelectItem value="audio" className="text-black hover:bg-gray-100 focus:bg-gray-100 cursor-pointer font-medium">Audio</SelectItem>
-                                <SelectItem value="video" className="text-black hover:bg-gray-100 focus:bg-gray-100 cursor-pointer font-medium">Video</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <div className="flex items-center space-x-2">
-                              <Checkbox
-                                id={`required-${question.id}`}
-                                checked={question.required}
-                                onCheckedChange={(checked) =>
-                                  handleQuestionPropertyChange(question.id, "required", checked)
-                                }
-                              />
-                              <Label htmlFor={`required-${question.id}`}>Required</Label>
-                            </div>
-                          </div>
 
                           {/* Show answer if it exists */}
                           {question.answer && (
@@ -1230,22 +1214,6 @@ export default function FeedbackFormBuilder() {
                             </div>
                           )}
 
-                          {/* Add answer field for question_with_answer type */}
-                          {editingForm?.form_type === 'question_with_answer' && !question.answer && (
-                            <div className="mt-3">
-                              <Label className="text-sm font-medium text-slate-700 mb-2 block">
-                                Add Sample Answer/Guidance:
-                              </Label>
-                              <Textarea
-                                placeholder="Provide a sample answer or guidance for this question..."
-                                onChange={(e) =>
-                                  handleQuestionPropertyChange(question.id, "answer", e.target.value)
-                                }
-                                className="text-sm"
-                                rows={3}
-                              />
-                            </div>
-                          )}
 
                           {/* {question.type === "text" && (
                             <div className="mt-2">
@@ -1289,19 +1257,11 @@ export default function FeedbackFormBuilder() {
 
                           {/* Add Response Section for each question in builder */}
                           <div className="mt-4 pt-4 border-t border-gray-200">
-                            <div className="flex items-center justify-between mb-3">
-                              <h5 className="text-sm font-medium text-gray-900">Test This Question</h5>
-                              <Button
-                                size="sm"
-                                onClick={() => setIsFillingInBuilder(!isFillingInBuilder)}
-                                className="bg-purple-600 hover:bg-purple-700 text-white"
-                              >
-                                {isFillingInBuilder ? 'Hide Response' : 'Add Response'}
-                              </Button>
+                            <div className="mb-3">
+                              <h5 className="text-sm font-medium text-gray-900">Fill Response</h5>
                             </div>
-                            
-                            {isFillingInBuilder && (
-                              <div className="space-y-3">
+
+                            <div className="space-y-3">
                                 {question.type === "text" && (
                                   <div>
                                     <label className="text-xs font-medium text-gray-700">Your Response:</label>
@@ -1441,8 +1401,7 @@ export default function FeedbackFormBuilder() {
                                     Save Response
                                   </Button>
                                 </div>
-                              </div>
-                            )}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -1459,60 +1418,52 @@ export default function FeedbackFormBuilder() {
                       <Plus className="h-5 w-5 text-blue-600" />
                       Add New Question
                     </h4>
-                    <div className="space-y-4">
-                      <div>
-                        <Label htmlFor="new-question-text" className="text-sm font-medium text-slate-700">
-                          Question Text
-                        </Label>
+                    <div className="space-y-3">
+                      {/* Single Row with Question Text, Type Dropdown, and Add Button */}
+                      <div className="flex gap-2">
                         <Input
                           id="new-question-text"
                           value={newQuestionText}
                           onChange={(e) => setNewQuestionText(e.target.value)}
-                          placeholder="Enter your question here..."
-                          className="mt-1"
+                          placeholder="Type your question here..."
+                          className="flex-1"
                         />
+                        <Select
+                          value={newQuestionType}
+                          onValueChange={(value) => {
+                            setNewQuestionType(value as Question["type"])
+                            if (value !== "radio") setRadioChoices([])
+                            if (value === "program") setProgramLanguage("javascript")
+                          }}
+                        >
+                          <SelectTrigger className="w-44 bg-white border-slate-300 text-black">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white border shadow-xl">
+                            <SelectItem value="text" className="text-black hover:bg-gray-100">📝 Short Answer</SelectItem>
+                            <SelectItem value="textarea" className="text-black hover:bg-gray-100">📄 Long Answer</SelectItem>
+                            <SelectItem value="radio" className="text-black hover:bg-gray-100">⭕ Multiple Choice</SelectItem>
+                            <SelectItem value="program" className="text-black hover:bg-gray-100">💻 Code</SelectItem>
+                            <SelectItem value="audio" className="text-black hover:bg-gray-100">🎤 Audio</SelectItem>
+                            <SelectItem value="video" className="text-black hover:bg-gray-100">🎥 Video</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          onClick={handleAddQuestion}
+                          disabled={!newQuestionText.trim()}
+                          className="bg-blue-600 hover:bg-blue-700 text-white"
+                        >
+                          <Plus className="h-4 w-4 mr-1" />
+                          Add
+                        </Button>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <Label className="text-sm font-medium text-slate-700">Question Type</Label>
-                          <Select
-                            value={newQuestionType}
-                            onValueChange={(value) => setNewQuestionType(value as Question["type"])}
-                          >
-                            <SelectTrigger className="mt-1 bg-white border-slate-300 text-black font-medium hover:border-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
-                              <SelectValue className="text-black" />
-                            </SelectTrigger>
-                            <SelectContent className="bg-white border border-slate-300 shadow-xl text-black">
-                              <SelectItem value="text" className="text-black hover:bg-gray-100 focus:bg-gray-100 cursor-pointer font-medium">Text Input</SelectItem>
-                              <SelectItem value="textarea" className="text-black hover:bg-gray-100 focus:bg-gray-100 cursor-pointer font-medium">Long Text</SelectItem>
-                              <SelectItem value="radio" className="text-black hover:bg-gray-100 focus:bg-gray-100 cursor-pointer font-medium">Multiple Choice</SelectItem>
-                              <SelectItem value="program" className="text-black hover:bg-gray-100 focus:bg-gray-100 cursor-pointer font-medium">Programming Code</SelectItem>
-                              <SelectItem value="audio" className="text-black hover:bg-gray-100 focus:bg-gray-100 cursor-pointer font-medium">Audio Upload</SelectItem>
-                              <SelectItem value="video" className="text-black hover:bg-gray-100 focus:bg-gray-100 cursor-pointer font-medium">Video Upload</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div className="flex items-center mt-6">
-                          <Checkbox
-                            id="new-required"
-                            checked={newQuestionRequired}
-                            onCheckedChange={(checked) => setNewQuestionRequired(checked as boolean)}
-                          />
-                          <Label htmlFor="new-required" className="ml-2 text-sm font-medium text-slate-700">
-                            Required field
-                          </Label>
-                        </div>
-                      </div>
-
-                      {/* Radio Choices Input - Show when Multiple Choice is selected */}
+                      {/* Only show extra fields if needed */}
                       {newQuestionType === "radio" && (
-                        <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                          <Label className="text-sm font-medium text-slate-700 mb-2 block">Multiple Choice Options</Label>
-                          <div className="flex gap-2 mb-3">
+                        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                          <div className="flex gap-2 mb-2">
                             <Input
-                              placeholder="Enter a choice..."
+                              placeholder="Add choice (press Enter)"
                               value={newChoice}
                               onChange={(e) => setNewChoice(e.target.value)}
                               onKeyPress={(e) => {
@@ -1524,48 +1475,42 @@ export default function FeedbackFormBuilder() {
                                   }
                                 }
                               }}
-                              className="flex-1"
                             />
                             <Button
                               type="button"
+                              size="sm"
                               onClick={() => {
                                 if (newChoice.trim()) {
                                   setRadioChoices([...radioChoices, newChoice.trim()])
                                   setNewChoice("")
                                 }
                               }}
-                              className="bg-blue-600 hover:bg-blue-700"
+                              className="bg-blue-600"
                             >
-                              <Plus className="h-4 w-4 mr-1" />
-                              Add Choice
+                              <Plus className="h-4 w-4" />
                             </Button>
                           </div>
                           {radioChoices.length > 0 && (
-                            <div className="space-y-2">
+                            <div className="flex flex-wrap gap-1">
                               {radioChoices.map((choice, index) => (
-                                <div key={index} className="flex items-center justify-between bg-white p-2 rounded border">
-                                  <span className="text-sm">{choice}</span>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
+                                <span key={index} className="inline-flex items-center gap-1 bg-white px-2 py-1 rounded text-sm border">
+                                  {choice}
+                                  <XCircle
+                                    className="h-3 w-3 cursor-pointer text-red-500 hover:text-red-700"
                                     onClick={() => setRadioChoices(radioChoices.filter((_, i) => i !== index))}
-                                  >
-                                    <XCircle className="h-4 w-4 text-red-500" />
-                                  </Button>
-                                </div>
+                                  />
+                                </span>
                               ))}
                             </div>
                           )}
                         </div>
                       )}
 
-                      {/* Program Language Selection - Show when Programming Code is selected */}
                       {newQuestionType === "program" && (
-                        <div className="mt-4 p-4 bg-purple-50 border border-purple-200 rounded-lg">
-                          <Label className="text-sm font-medium text-slate-700 mb-2 block">Programming Language</Label>
+                        <div className="flex items-center gap-2 p-2 bg-purple-50 border border-purple-200 rounded">
+                          <span className="text-sm">Language:</span>
                           <Select value={programLanguage} onValueChange={setProgramLanguage}>
-                            <SelectTrigger className="bg-white">
+                            <SelectTrigger className="w-36 bg-white text-sm">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -1573,82 +1518,14 @@ export default function FeedbackFormBuilder() {
                               <SelectItem value="python">Python</SelectItem>
                               <SelectItem value="java">Java</SelectItem>
                               <SelectItem value="cpp">C++</SelectItem>
-                              <SelectItem value="csharp">C#</SelectItem>
                               <SelectItem value="go">Go</SelectItem>
                               <SelectItem value="rust">Rust</SelectItem>
-                              <SelectItem value="typescript">TypeScript</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
                       )}
 
-                      {/* Question Type Preview */}
-                      <div className="mt-4 p-4 bg-white rounded-lg border border-slate-200">
-                        <Label className="text-sm font-medium text-slate-600 mb-2 block">
-                          Question Preview:
-                        </Label>
-
-                        {newQuestionType === "text" && (
-                          <Input
-                            placeholder="Users will see a text input like this..."
-                            disabled
-                            className="bg-slate-50"
-                          />
-                        )}
-
-                        {newQuestionType === "textarea" && (
-                          <Textarea
-                            placeholder="Users will see a large text area like this for longer responses..."
-                            rows={3}
-                            disabled
-                            className="bg-slate-50"
-                          />
-                        )}
-
-                        {newQuestionType === "audio" && (
-                          <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center bg-slate-50">
-                            <Radio className="h-8 w-8 mx-auto text-slate-400 mb-2" />
-                            <p className="text-sm text-slate-600 mb-2">Audio File Upload Area</p>
-                            <p className="text-xs text-slate-500">Users can upload .mp3, .wav, or other audio files</p>
-                          </div>
-                        )}
-
-                        {newQuestionType === "video" && (
-                          <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center bg-slate-50">
-                            <Video className="h-8 w-8 mx-auto text-slate-400 mb-2" />
-                            <p className="text-sm text-slate-600 mb-2">Video File Upload Area</p>
-                            <p className="text-xs text-slate-500">Users can upload .mp4, .mov, or other video files</p>
-                          </div>
-                        )}
-
-                        {newQuestionType === "radio" && (
-                          <div className="space-y-2">
-                            {radioChoices.length > 0 ? (
-                              radioChoices.map((choice, index) => (
-                                <div key={index} className="flex items-center space-x-2">
-                                  <input type="radio" name="preview-radio" className="h-4 w-4" disabled />
-                                  <label className="text-sm text-slate-700">{choice}</label>
-                                </div>
-                              ))
-                            ) : (
-                              <p className="text-sm text-slate-500 italic">No choices added yet. Add choices above.</p>
-                            )}
-                          </div>
-                        )}
-
-                        {newQuestionType === "program" && (
-                          <div className="bg-slate-900 rounded-lg p-4">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-xs text-slate-400">Code Editor ({programLanguage})</span>
-                            </div>
-                            <pre className="text-sm text-green-400 font-mono">
-                              <code>{`// Users will write ${programLanguage} code here\nfunction example() {\n  // Your code...\n}`}</code>
-                            </pre>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex justify-end pt-2">
+                      <div className="hidden">
                         <Button
                           onClick={handleAddQuestion}
                           disabled={!newQuestionText.trim()}
@@ -1815,6 +1692,184 @@ export default function FeedbackFormBuilder() {
             </div>
           )}
         </TabsContent>
+
+        <TabsContent value="preview" className="mt-4">
+          {editingForm && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Eye className="h-5 w-5 text-blue-600" />
+                  Form Preview & Response
+                </CardTitle>
+                <CardDescription>Fill out the form and see your responses</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {editingForm.questions && editingForm.questions.length > 0 ? (
+                  editingForm.questions.map((question, index) => (
+                    <div key={question.id} className="border rounded-lg p-4 bg-gray-50">
+                      <div className="mb-3">
+                        <Label className="text-base font-medium">
+                          {index + 1}. {question.text}
+                          {question.required && <span className="text-red-500 ml-1">*</span>}
+                        </Label>
+                        <div className="flex gap-2 mt-1">
+                          <Badge variant="secondary">{question.type}</Badge>
+                          {question.language && <Badge variant="outline">Language: {question.language}</Badge>}
+                        </div>
+                      </div>
+
+                      {/* Response Input based on question type */}
+                      {question.type === "text" && (
+                        <Input
+                          value={builderResponses[question.id] || ''}
+                          onChange={(e) => setBuilderResponses({
+                            ...builderResponses,
+                            [question.id]: e.target.value
+                          })}
+                          placeholder="Type your answer here..."
+                          className="bg-white"
+                        />
+                      )}
+
+                      {question.type === "textarea" && (
+                        <Textarea
+                          value={builderResponses[question.id] || ''}
+                          onChange={(e) => setBuilderResponses({
+                            ...builderResponses,
+                            [question.id]: e.target.value
+                          })}
+                          placeholder="Type your answer here..."
+                          className="bg-white"
+                          rows={4}
+                        />
+                      )}
+
+                      {question.type === "radio" && question.options && (
+                        <div className="space-y-2">
+                          {question.options.map((option, optionIndex) => (
+                            <div key={optionIndex} className="flex items-center space-x-2">
+                              <input
+                                type="radio"
+                                id={`q${question.id}-option${optionIndex}`}
+                                name={`question-${question.id}`}
+                                value={option}
+                                checked={builderResponses[question.id] === option}
+                                onChange={(e) => setBuilderResponses({
+                                  ...builderResponses,
+                                  [question.id]: e.target.value
+                                })}
+                                className="w-4 h-4"
+                              />
+                              <Label htmlFor={`q${question.id}-option${optionIndex}`} className="cursor-pointer">
+                                {option}
+                              </Label>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {question.type === "program" && (
+                        <Textarea
+                          value={builderResponses[question.id] || ''}
+                          onChange={(e) => setBuilderResponses({
+                            ...builderResponses,
+                            [question.id]: e.target.value
+                          })}
+                          placeholder={`Write your ${question.language || 'code'} here...`}
+                          className="bg-white font-mono"
+                          rows={10}
+                        />
+                      )}
+
+                      {question.type === "audio" && (
+                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center bg-white">
+                          <Radio className="h-8 w-8 mx-auto text-gray-400 mb-2" />
+                          <p className="text-sm text-gray-600 mb-2">Audio upload placeholder</p>
+                          <Input
+                            type="file"
+                            accept="audio/*"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0]
+                              if (file) {
+                                setBuilderResponses({
+                                  ...builderResponses,
+                                  [question.id]: file.name
+                                })
+                              }
+                            }}
+                            className="text-sm"
+                          />
+                        </div>
+                      )}
+
+                      {question.type === "video" && (
+                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center bg-white">
+                          <Video className="h-8 w-8 mx-auto text-gray-400 mb-2" />
+                          <p className="text-sm text-gray-600 mb-2">Video upload placeholder</p>
+                          <Input
+                            type="file"
+                            accept="video/*"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0]
+                              if (file) {
+                                setBuilderResponses({
+                                  ...builderResponses,
+                                  [question.id]: file.name
+                                })
+                              }
+                            }}
+                            className="text-sm"
+                          />
+                        </div>
+                      )}
+
+                      {/* Display current response */}
+                      {builderResponses[question.id] && (
+                        <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                          <Label className="text-sm font-medium text-blue-800 mb-1 block">Your Response:</Label>
+                          <p className="text-sm text-blue-900 whitespace-pre-wrap">{builderResponses[question.id]}</p>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center text-gray-500 py-8">
+                    No questions added yet. Go to Form Builder to add questions.
+                  </div>
+                )}
+
+                {editingForm.questions && editingForm.questions.length > 0 && (
+                  <div className="flex gap-3 pt-4">
+                    <Button
+                      onClick={() => {
+                        toast({
+                          title: "Responses Saved",
+                          description: "Your responses have been saved locally.",
+                        })
+                      }}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      <Save className="h-4 w-4 mr-2" />
+                      Save Responses
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setBuilderResponses({})
+                        toast({
+                          title: "Responses Cleared",
+                          description: "All responses have been cleared.",
+                        })
+                      }}
+                      variant="outline"
+                    >
+                      Clear All Responses
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
       </Tabs>
 
       {/* Form Preview Modal */}
@@ -1896,11 +1951,25 @@ export default function FeedbackFormBuilder() {
                           <div className="flex items-center gap-2 mb-2">
                             {getQuestionIcon(question.type)}
                             <span className="text-sm font-medium text-black">Question {index + 1}</span>
+                            <Badge variant="secondary" className="text-xs">{question.type}</Badge>
+                            {question.language && <Badge variant="outline" className="text-xs">Language: {question.language}</Badge>}
                             {question.required && (
                               <Badge variant="destructive" className="text-xs">Required</Badge>
                             )}
                           </div>
                           <p className="text-sm font-medium text-black mb-4">{question.text}</p>
+
+                          {/* Show multiple choice options in preview mode */}
+                          {!isFillingForm && question.type === "radio" && question.options && (
+                            <div className="mt-2 pl-4">
+                              <p className="text-xs text-gray-600 mb-1">Options:</p>
+                              <ul className="list-disc pl-4 space-y-1">
+                                {question.options.map((option, optIndex) => (
+                                  <li key={optIndex} className="text-sm text-gray-700">{option}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
                         </div>
                         
                         {/* Interactive Form Elements */}
