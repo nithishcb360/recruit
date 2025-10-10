@@ -32,6 +32,7 @@ interface InterviewCandidate {
   experience_level?: string
   skills?: string[]
   resume_file?: string
+  description?: string
 
   // Retell Call Data
   retell_interview_scheduled: boolean
@@ -61,6 +62,8 @@ export default function InterviewsPage() {
   const [candidates, setCandidates] = useState<InterviewCandidate[]>([])
   const [loading, setLoading] = useState(true)
   const [filterStatus, setFilterStatus] = useState<'all' | 'scheduled' | 'pending'>('all')
+  const [descriptions, setDescriptions] = useState<Record<number, string>>({})
+  const [savingDescription, setSavingDescription] = useState<number | null>(null)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -138,6 +141,51 @@ export default function InterviewsPage() {
         description: "Failed to update candidate status",
         variant: "destructive"
       })
+    }
+  }
+
+  const saveDescription = async (candidateId: number) => {
+    try {
+      setSavingDescription(candidateId)
+      const description = descriptions[candidateId] || ''
+
+      const response = await fetch(`http://localhost:8000/api/candidates/${candidateId}/`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          description: description
+        })
+      })
+
+      if (response.ok) {
+        // Update candidate in state
+        setCandidates(prev => prev.map(c =>
+          c.id === candidateId ? { ...c, description: description } : c
+        ))
+
+        toast({
+          title: "Description Saved",
+          description: "Candidate description has been saved successfully",
+          variant: "default"
+        })
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to save description",
+          variant: "destructive"
+        })
+      }
+    } catch (error) {
+      console.error('Error saving description:', error)
+      toast({
+        title: "Error",
+        description: "Failed to save candidate description",
+        variant: "destructive"
+      })
+    } finally {
+      setSavingDescription(null)
     }
   }
 
@@ -263,6 +311,44 @@ export default function InterviewsPage() {
                         {candidate.phone}
                       </div>
                     )}
+                  </div>
+
+                  {/* Description Field */}
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <label htmlFor={`description-${candidate.id}`} className="block text-sm font-semibold text-gray-900 mb-2">
+                      Description
+                    </label>
+                    <textarea
+                      id={`description-${candidate.id}`}
+                      value={descriptions[candidate.id] ?? candidate.description ?? ''}
+                      onChange={(e) => setDescriptions(prev => ({
+                        ...prev,
+                        [candidate.id]: e.target.value
+                      }))}
+                      placeholder="Add notes or description about this candidate..."
+                      rows={3}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-sm"
+                    />
+                    <div className="mt-3 flex justify-end">
+                      <Button
+                        size="sm"
+                        onClick={() => saveDescription(candidate.id)}
+                        disabled={savingDescription === candidate.id}
+                        className="bg-green-600 hover:bg-green-700 text-white"
+                      >
+                        {savingDescription === candidate.id ? (
+                          <>
+                            <Clock className="h-4 w-4 mr-1 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle className="h-4 w-4 mr-1" />
+                            Save Description
+                          </>
+                        )}
+                      </Button>
+                    </div>
                   </div>
 
                   {/* Interview Schedule */}
