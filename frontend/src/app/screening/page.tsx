@@ -2889,11 +2889,10 @@ ${fromEmail}`
                           )}
 
                           {/* WebDesk Credentials - Show after call ends and interview is scheduled */}
-                          {candidate.retell_call_status === 'ended' && candidate.retell_interview_scheduled && (candidate.assessment_username || candidate.assessment_password) && (
+                          {/* {candidate.retell_call_status === 'ended' && candidate.retell_interview_scheduled && (candidate.assessment_username || candidate.assessment_password) && (
                             <div className="bg-blue-50 border border-blue-300 rounded p-2 mt-2">
                               <p className="text-xs font-semibold text-blue-900 mb-2">🖥️ WebDesk Assessment Details</p>
 
-                              {/* WebDesk Link */}
                               <div className="mb-2">
                                 <p className="text-xs text-blue-800 mb-1">
                                   <strong>Assessment Link:</strong>
@@ -2908,7 +2907,6 @@ ${fromEmail}`
                                 </a>
                               </div>
 
-                              {/* Credentials */}
                               <div className="bg-white border border-blue-200 rounded p-2">
                                 <p className="text-xs font-semibold text-blue-900 mb-1">Login Credentials:</p>
                                 {candidate.assessment_username && (
@@ -2923,14 +2921,13 @@ ${fromEmail}`
                                 )}
                               </div>
 
-                              {/* Important Note */}
                               <div className="bg-yellow-50 border-l-4 border-yellow-400 p-2 mt-2">
                                 <p className="text-xs text-yellow-900">
                                   <strong>⚠️ Note:</strong> Link is active 15 minutes before scheduled time until 2 hours after.
                                 </p>
                               </div>
                             </div>
-                          )}
+                          )} */}
 
                           {/* Call Status */}
                           {candidate.retell_call_status && (
