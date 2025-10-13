@@ -89,8 +89,10 @@ export default function FeedbackFormBuilder() {
   const [isGeneratingAI, setIsGeneratingAI] = useState(false)
   const [aiTopic, setAiTopic] = useState("")
   const [aiNumQuestions, setAiNumQuestions] = useState(5)
-  const [aiQuestionTypes, setAiQuestionTypes] = useState<Array<'text' | 'textarea' | 'audio' | 'video'>>(['text', 'textarea'])
-  const [aiConfig, setAiConfig] = useState<{provider: string; apiKey: string} | null>(null)
+  const [aiQuestionTypes, setAiQuestionTypes] = useState<Array<'text' | 'textarea' | 'audio' | 'video' | 'multiple_choice' | 'code'>>(['text', 'textarea'])
+  const [aiConfig, setAiConfig] = useState<{provider: string; apiKey: string; customPrompt?: string} | null>(null)
+  const [customPrompt, setCustomPrompt] = useState("")
+  const [isEditingPrompt, setIsEditingPrompt] = useState(false)
 
   // Helper functions for local storage
   const saveFormsToLocalStorage = (forms: FeedbackTemplate[]) => {
@@ -111,11 +113,30 @@ export default function FeedbackFormBuilder() {
     }
   }
  
-  // Load AI configuration from localStorage (simulating settings)
+  // Load AI configuration from localStorage (from organization settings)
   useEffect(() => {
     try {
+      // Load organization settings to get AI config
+      const orgSettings = localStorage.getItem('organizationSettings')
+      if (orgSettings) {
+        const settings = JSON.parse(orgSettings)
+        const aiProvider = settings.general?.aiProvider
+        const aiApiKey = settings.general?.aiApiKey
+        const questionPrompt = settings.ai?.implementations?.questionGeneration?.prompt
+
+        if (aiProvider && aiApiKey) {
+          setAiConfig({
+            provider: aiProvider,
+            apiKey: aiApiKey,
+            customPrompt: questionPrompt
+          })
+          setCustomPrompt(questionPrompt || "")
+        }
+      }
+
+      // Fallback to old ai-config if organization settings not found
       const storedConfig = localStorage.getItem('ai-config')
-      if (storedConfig) {
+      if (storedConfig && !aiConfig) {
         setAiConfig(JSON.parse(storedConfig))
       }
     } catch (error) {
@@ -149,13 +170,18 @@ export default function FeedbackFormBuilder() {
         topic: aiTopic,
         num_questions: aiNumQuestions,
         question_types: aiQuestionTypes,
-        include_answers: selectedFormType === 'ai_question_with_answer',
-        custom_prompt: `Generate professional feedback questions for: ${aiTopic}`
+        include_answers: selectedFormType === 'ai_question_with_answer'
       }
+
+      // Use custom prompt if available and being edited, otherwise use from config
+      const finalConfig = aiConfig ? {
+        ...aiConfig,
+        customPrompt: customPrompt || aiConfig.customPrompt
+      } : undefined
 
       const generatedQuestions = await generateAIQuestions(
         request,
-        aiConfig || undefined
+        finalConfig
       )
 
       if (editingForm) {
@@ -1591,7 +1617,7 @@ export default function FeedbackFormBuilder() {
                         Question Types (select multiple)
                       </Label>
                       <div className="flex flex-wrap gap-3">
-                        {(['text', 'textarea', 'audio', 'video'] as const).map((type) => (
+                        {(['text', 'textarea', 'audio', 'video', 'code', 'multiple_choice'] as const).map((type) => (
                           <div key={type} className="flex items-center space-x-2">
                             <Checkbox
                               id={`ai-type-${type}`}
@@ -1605,11 +1631,53 @@ export default function FeedbackFormBuilder() {
                               }}
                             />
                             <Label htmlFor={`ai-type-${type}`} className="text-sm capitalize">
-                              {type === 'textarea' ? 'Long Text' : type}
+                              {type === 'textarea' ? 'Long Text' : type === 'code' ? 'Program Coding' : type === 'multiple_choice' ? 'Multiple Choice' : type}
                             </Label>
                           </div>
                         ))}
                       </div>
+                    </div>
+
+                    {/* Custom AI Prompt Section */}
+                    <div className="border border-slate-200 rounded-lg p-4 bg-slate-50">
+                      <div className="flex items-center justify-between mb-2">
+                        <Label className="text-sm font-medium text-slate-700">
+                          AI Generation Prompt
+                        </Label>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setIsEditingPrompt(!isEditingPrompt)}
+                          className="text-xs"
+                        >
+                          {isEditingPrompt ? 'Hide' : 'Edit'} Prompt
+                        </Button>
+                      </div>
+
+                      {isEditingPrompt && (
+                        <div className="space-y-2 mt-3">
+                          <Textarea
+                            value={customPrompt}
+                            onChange={(e) => setCustomPrompt(e.target.value)}
+                            placeholder="Enter custom AI prompt for question generation..."
+                            rows={8}
+                            className="font-mono text-xs bg-white"
+                          />
+                          <p className="text-xs text-slate-500">
+                            This prompt will be used to guide the AI in generating questions.
+                            You can also update the default prompt in Settings → AI Configuration.
+                          </p>
+                        </div>
+                      )}
+
+                      {!isEditingPrompt && (
+                        <p className="text-xs text-slate-600 mt-1">
+                          {customPrompt ?
+                            `Using custom prompt (${customPrompt.length} characters)` :
+                            'Using default prompt from settings'
+                          }
+                        </p>
+                      )}
                     </div>
 
                     {!aiConfig && (

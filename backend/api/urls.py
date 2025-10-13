@@ -25,5 +25,8 @@ urlpatterns = [
     path('calculate-job-match/', views.calculate_job_match, name='calculate-job-match'),
     path('candidates/<int:candidate_id>/matching-jobs/', views.find_matching_jobs, name='find-matching-jobs'),
     path('jobs/<int:job_id>/matching-candidates/', views.find_matching_candidates, name='find-matching-candidates'),
+    # AI generation endpoints (server-side)
+    path('ai/generate-job-description/', views.generate_job_description_ai, name='ai-generate-job-description'),
+    path('ai/generate-questions/', views.generate_questions_ai, name='ai-generate-questions'),
     path('', include(router.urls)),
 ]

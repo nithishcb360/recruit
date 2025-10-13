@@ -3,7 +3,7 @@
 export interface Question {
   id: number
   text: string
-  type: "text" | "textarea" | "audio" | "video" | "radio" | "program"
+  type: "text" | "textarea" | "audio" | "video" | "multiple_choice" | "code"
   options?: string[]
   required: boolean
   answer?: string // Optional answer field for question-with-answer forms
@@ -178,12 +178,11 @@ export async function unpublishFeedbackTemplate(id: number): Promise<void> {
 export interface QuestionGenerationRequest {
   topic: string
   num_questions: number
-  question_types?: Array<'text' | 'textarea' | 'audio' | 'video' | 'radio' | 'program'>
+  question_types?: Array<'text' | 'textarea' | 'audio' | 'video' | 'multiple_choice' | 'code'>
   include_answers?: boolean
-  custom_prompt?: string
 }
 
-// AI Question Generation function using claude.ts
+// AI Question Generation function - calls server-side API
 export async function generateAIQuestions(
   request: QuestionGenerationRequest,
   aiConfig?: { provider: string; apiKey: string; customPrompt?: string }
@@ -195,97 +194,35 @@ export async function generateAIQuestions(
       return generateDemoQuestions(request);
     }
 
-    // Import the AI provider from claude.ts
-    const { generateJobDescriptionWithAI } = await import('./claude')
-
-    // Create a custom prompt for question generation
-    const systemPrompt = aiConfig?.customPrompt || `You are an expert interview and feedback form designer. Generate professional, insightful questions for feedback forms.
-
-Your task is to generate ${request.num_questions} questions about "${request.topic}".
-
-Requirements:
-- Create diverse, thoughtful questions
-- Make questions specific and actionable
-- Include a mix of question types if specified
-- Questions should be professional and unbiased
-- ${request.include_answers ? 'Provide sample answers for each question' : 'Only provide the questions'}
-
-Format your response as valid JSON with this structure:
-{
-  "questions": [
-    {
-      "text": "Your question here",
-      "type": "text",
-      "required": true,
-      ${request.include_answers ? '"answer": "Sample answer here"' : ''}
-    }
-  ]
-}`
-
-    const userPrompt = `Generate ${request.num_questions} professional feedback questions about "${request.topic}".
-
-Question requirements:
-- Topic: ${request.topic}
-- Number of questions: ${request.num_questions}
-- Question types: ${request.question_types?.join(', ') || 'text, textarea'}
-- Include answers: ${request.include_answers ? 'Yes' : 'No'}
-
-${request.custom_prompt ? `Additional requirements: ${request.custom_prompt}` : ''}
-
-Please respond with valid JSON containing an array of questions in the format specified in the system prompt.`
-
-    // Use the AI provider to generate content
-    const response = await generateJobDescriptionWithAI(
-      {
-        jobTitle: request.topic,
-        department: 'Question Generation',
-        experienceLevel: 'Professional',
-        experienceRange: '1-10'
+    // Call server-side API endpoint
+    const response = await fetch(`${API_BASE_URL}/ai/generate-questions/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
       },
-      aiConfig ? {
-        provider: aiConfig.provider,
-        apiKey: aiConfig.apiKey,
-        customPrompt: systemPrompt + '\n\nUser Request: ' + userPrompt
-      } : undefined
-    )
+      body: JSON.stringify({
+        topic: request.topic,
+        num_questions: request.num_questions,
+        question_types: request.question_types || ['text', 'textarea'],
+        include_answers: request.include_answers || false,
+        aiProvider: aiConfig.provider,
+        aiApiKey: aiConfig.apiKey,
+        systemPrompt: aiConfig.customPrompt
+      }),
+    });
 
-    // Parse the AI response to extract questions
-    let aiText = response.description + '\n' + response.requirements
-
-    // Try to extract JSON from the response
-    const jsonMatch = aiText.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      try {
-        const parsed = JSON.parse(jsonMatch[0]);
-        if (parsed.questions && Array.isArray(parsed.questions)) {
-          return parsed.questions.map((q: any, index: number) => ({
-            id: index + 1,
-            text: q.text || q.question || '',
-            type: q.type || 'text',
-            required: q.required !== false,
-            answer: request.include_answers ? q.answer : undefined,
-            ai_generated: true
-          }));
-        }
-      } catch (parseError) {
-        console.warn('Failed to parse AI JSON response:', parseError);
-      }
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(errorData.error || `Server error: ${response.statusText}`);
     }
 
-    // Fallback: create questions from text content
-    const lines = aiText.split('\n').filter(line =>
-      line.trim() &&
-      (line.includes('?') || line.toLowerCase().includes('question'))
-    );
+    const data = await response.json();
 
-    return lines.slice(0, request.num_questions).map((line, index) => ({
-      id: index + 1,
-      text: line.replace(/^\d+\.?\s*/, '').replace(/^[^\w]*/, '').trim(),
-      type: request.question_types?.[index % request.question_types.length] || 'text',
-      required: true,
-      answer: request.include_answers ? `Sample answer for: ${line}` : undefined,
-      ai_generated: true
-    }));
+    if (data.questions && Array.isArray(data.questions)) {
+      return data.questions;
+    }
+
+    throw new Error('Invalid response format from server');
 
   } catch (error) {
     console.error('AI question generation failed:', error);
