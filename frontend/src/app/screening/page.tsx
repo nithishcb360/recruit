@@ -3169,7 +3169,7 @@ ${fromEmail}`
                             {(candidate.assessment_video_recording || candidate.assessment_screen_recording) && (
                               <div className="mt-3 space-y-2">
                                 <p className="font-semibold text-gray-700 mb-2">📹 Assessment Recordings:</p>
-                                <div className="grid grid-cols-1 gap-2">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                   {/* Camera Recording */}
                                   {candidate.assessment_video_recording && (
                                     <div className="bg-white border border-gray-300 rounded overflow-hidden">
@@ -3179,7 +3179,7 @@ ${fromEmail}`
                                       <video
                                         controls
                                         className="w-full"
-                                        style={{ maxHeight: '150px' }}
+                                        style={{ maxHeight: '200px' }}
                                         onClick={(e) => e.stopPropagation()}
                                       >
                                         <source
@@ -3203,7 +3203,7 @@ ${fromEmail}`
                                       <video
                                         controls
                                         className="w-full"
-                                        style={{ maxHeight: '150px' }}
+                                        style={{ maxHeight: '200px' }}
                                         onClick={(e) => e.stopPropagation()}
                                       >
                                         <source
