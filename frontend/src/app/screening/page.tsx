@@ -1,7 +1,11 @@
 'use client'
 
 import React, { useState, useEffect, useMemo, ReactNode, useRef } from 'react'
-import { Search, Filter, Users, Target, Brain, ChevronDown, ChevronRight, Star, CheckCircle, XCircle, User, Briefcase, MapPin, Clock, Download, Trash2, Phone, Mail } from 'lucide-react'
+import {
+  Search, Filter, Users, Target, Brain, ChevronDown, ChevronRight,
+  Star, CheckCircle, XCircle, User, Briefcase, MapPin, Clock,
+  Download, Trash2, Phone, Mail, Eye
+} from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -1762,6 +1766,140 @@ export default function ScreeningPage() {
   }
 
 
+  // Generate assessment responses PDF
+  const generateAssessmentPDF = (candidate: any) => {
+    if (!candidate.assessment_responses || !candidate.assessment_responses.questions) {
+      toast({
+        title: "No Responses",
+        description: "No assessment responses available for this candidate",
+        variant: "destructive"
+      })
+      return null
+    }
+
+    try {
+      const doc = new jsPDF()
+      let yPosition = 20
+
+      // Header
+      doc.setFontSize(18)
+      doc.setTextColor(30, 64, 175)
+      doc.text('Assessment Responses Report', 14, yPosition)
+      yPosition += 10
+
+      // Candidate Info
+      doc.setFontSize(12)
+      doc.setTextColor(0, 0, 0)
+      doc.text(`Candidate: ${candidate.name}`, 14, yPosition)
+      yPosition += 6
+      doc.text(`Email: ${candidate.email}`, 14, yPosition)
+      yPosition += 6
+      doc.text(`Score: ${candidate.assessment_score}%`, 14, yPosition)
+      yPosition += 6
+      doc.text(`Status: ${candidate.assessment_disqualified ? 'DISQUALIFIED' : 'PASSED'}`, 14, yPosition)
+      yPosition += 10
+
+      // Questions and Answers
+      doc.setFontSize(14)
+      doc.setTextColor(30, 64, 175)
+      doc.text('Questions & Responses', 14, yPosition)
+      yPosition += 8
+
+      candidate.assessment_responses.questions.forEach((q: any, index: number) => {
+        // Check if we need a new page
+        if (yPosition > 260) {
+          doc.addPage()
+          yPosition = 20
+        }
+
+        // Question
+        doc.setFontSize(11)
+        doc.setTextColor(0, 0, 0)
+        doc.setFont('helvetica', 'bold')
+        const questionText = `Q${index + 1}. ${q.question}`
+        const questionLines = doc.splitTextToSize(questionText, 180)
+        doc.text(questionLines, 14, yPosition)
+        yPosition += questionLines.length * 6
+
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(10)
+
+        // Handle different question types
+        if (q.type === 'mcq' && q.options) {
+          q.options.forEach((option: string, optIndex: number) => {
+            const isCorrect = optIndex === q.correctAnswer
+            const isCandidate = optIndex === q.candidateAnswer
+
+            if (isCorrect) {
+              doc.setTextColor(22, 163, 74) // Green for correct
+              doc.text(`✓ ${option} (Correct Answer)`, 20, yPosition)
+            } else if (isCandidate) {
+              doc.setTextColor(239, 68, 68) // Red for wrong candidate answer
+              doc.text(`✗ ${option} (Candidate's Answer)`, 20, yPosition)
+            } else {
+              doc.setTextColor(100, 100, 100) // Gray for other options
+              doc.text(`  ${option}`, 20, yPosition)
+            }
+            yPosition += 5
+          })
+        } else if (q.type === 'text' || q.type === 'code') {
+          // Text/Code answer
+          doc.setTextColor(0, 0, 0)
+          doc.text('Answer:', 20, yPosition)
+          yPosition += 5
+          const answerLines = doc.splitTextToSize(q.candidateAnswer || 'No answer provided', 170)
+          doc.text(answerLines, 20, yPosition)
+          yPosition += answerLines.length * 5
+        }
+
+        // Points
+        doc.setTextColor(59, 130, 246)
+        doc.text(`Points: ${q.points}`, 20, yPosition)
+        yPosition += 8
+      })
+
+      return doc
+    } catch (error) {
+      console.error('Error generating PDF:', error)
+      toast({
+        title: "PDF Generation Failed",
+        description: "Failed to generate assessment PDF",
+        variant: "destructive"
+      })
+      return null
+    }
+  }
+
+  // Handle PDF preview
+  const handlePreviewPDF = (candidateId: number) => {
+    const candidate = movedCandidatesList.find(c => c.id === candidateId)
+    if (!candidate) return
+
+    const doc = generateAssessmentPDF(candidate)
+    if (doc) {
+      // Open PDF in new tab
+      const pdfBlob = doc.output('blob')
+      const pdfUrl = URL.createObjectURL(pdfBlob)
+      window.open(pdfUrl, '_blank')
+    }
+  }
+
+  // Handle PDF download
+  const handleDownloadPDF = (candidateId: number) => {
+    const candidate = movedCandidatesList.find(c => c.id === candidateId)
+    if (!candidate) return
+
+    const doc = generateAssessmentPDF(candidate)
+    if (doc) {
+      doc.save(`assessment_responses_${candidate.name.replace(/\s+/g, '_')}_${candidate.id}.pdf`)
+      toast({
+        title: "PDF Downloaded",
+        description: `Assessment responses PDF downloaded successfully`,
+        variant: "default"
+      })
+    }
+  }
+
   // Handle sending assessment results via email
   const handleSendAssessmentEmail = async (candidateId: number) => {
     const emailTo = assessmentEmailInputs.get(candidateId)
@@ -1831,6 +1969,102 @@ export default function ScreeningPage() {
       // Prepare attachments array
       const attachments: any[] = []
 
+      // Generate PDF for assessment responses if available
+      if (candidate.assessment_responses && candidate.assessment_responses.questions) {
+        try {
+          const doc = new jsPDF()
+          let yPosition = 20
+
+          // Header
+          doc.setFontSize(18)
+          doc.setTextColor(30, 64, 175)
+          doc.text('Assessment Responses Report', 14, yPosition)
+          yPosition += 10
+
+          // Candidate Info
+          doc.setFontSize(12)
+          doc.setTextColor(0, 0, 0)
+          doc.text(`Candidate: ${candidate.name}`, 14, yPosition)
+          yPosition += 6
+          doc.text(`Email: ${candidate.email}`, 14, yPosition)
+          yPosition += 6
+          doc.text(`Score: ${candidate.assessment_score}%`, 14, yPosition)
+          yPosition += 6
+          doc.text(`Status: ${candidate.assessment_disqualified ? 'DISQUALIFIED' : 'PASSED'}`, 14, yPosition)
+          yPosition += 10
+
+          // Questions and Answers
+          doc.setFontSize(14)
+          doc.setTextColor(30, 64, 175)
+          doc.text('Questions & Responses', 14, yPosition)
+          yPosition += 8
+
+          candidate.assessment_responses.questions.forEach((q: any, index: number) => {
+            // Check if we need a new page
+            if (yPosition > 260) {
+              doc.addPage()
+              yPosition = 20
+            }
+
+            // Question
+            doc.setFontSize(11)
+            doc.setTextColor(0, 0, 0)
+            doc.setFont('helvetica', 'bold')
+            const questionText = `Q${index + 1}. ${q.question}`
+            const questionLines = doc.splitTextToSize(questionText, 180)
+            doc.text(questionLines, 14, yPosition)
+            yPosition += questionLines.length * 6
+
+            doc.setFont('helvetica', 'normal')
+            doc.setFontSize(10)
+
+            // Handle different question types
+            if (q.type === 'mcq' && q.options) {
+              q.options.forEach((option: string, optIndex: number) => {
+                const isCorrect = optIndex === q.correctAnswer
+                const isCandidate = optIndex === q.candidateAnswer
+
+                if (isCorrect) {
+                  doc.setTextColor(22, 163, 74) // Green for correct
+                  doc.text(`✓ ${option} (Correct Answer)`, 20, yPosition)
+                } else if (isCandidate) {
+                  doc.setTextColor(239, 68, 68) // Red for wrong candidate answer
+                  doc.text(`✗ ${option} (Candidate's Answer)`, 20, yPosition)
+                } else {
+                  doc.setTextColor(100, 100, 100) // Gray for other options
+                  doc.text(`  ${option}`, 20, yPosition)
+                }
+                yPosition += 5
+              })
+            } else if (q.type === 'text' || q.type === 'code') {
+              // Text/Code answer
+              doc.setTextColor(0, 0, 0)
+              doc.text('Answer:', 20, yPosition)
+              yPosition += 5
+              const answerLines = doc.splitTextToSize(q.candidateAnswer || 'No answer provided', 170)
+              doc.text(answerLines, 20, yPosition)
+              yPosition += answerLines.length * 5
+            }
+
+            // Points
+            doc.setTextColor(59, 130, 246)
+            doc.text(`Points: ${q.points}`, 20, yPosition)
+            yPosition += 8
+          })
+
+          // Convert PDF to base64
+          const pdfBase64 = doc.output('datauristring').split(',')[1]
+          attachments.push({
+            filename: `assessment_responses_${candidate.id}.pdf`,
+            content: pdfBase64,
+            encoding: 'base64',
+            contentType: 'application/pdf'
+          })
+        } catch (error) {
+          console.error('Error generating assessment PDF:', error)
+        }
+      }
+
       // Fetch and convert video files to base64 for email attachments
       if (videoUrl) {
         try {
@@ -1895,7 +2129,11 @@ Status: ${candidate.assessment_disqualified ? 'DISQUALIFIED' : 'PASSED'}
 Tab Switches: ${candidate.assessment_tab_switches || 0}
 Time Taken: ${candidate.assessment_time_taken ? Math.round(candidate.assessment_time_taken / 60) : 'N/A'} minutes
 
-Assessment Recordings:
+${candidate.assessment_responses && candidate.assessment_responses.questions ? `Assessment Responses:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📄 Detailed responses PDF attached: assessment_responses_${candidate.id}.pdf
+
+` : ''}Assessment Recordings:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ${videoUrl ? `📷 Camera Recording:
    - Attachment: camera_recording_${candidate.id}.mp4
@@ -1905,9 +2143,9 @@ ${screenUrl ? `🖥️ Screen Recording:
    - Attachment: screen_recording_${candidate.id}.mp4
    - Link: ${screenUrl}` : '🖥️ Screen Recording: Not available'}
 
-Note: Videos are attached to this email. You can also view them using the links above.
+Note: ${candidate.assessment_responses && candidate.assessment_responses.questions ? 'Assessment responses PDF and videos are' : 'Videos are'} attached to this email. You can also view recordings using the links above.
 
-Please review the attached assessment recordings and results.
+Please review the attached assessment ${candidate.assessment_responses && candidate.assessment_responses.questions ? 'responses, recordings' : 'recordings'} and results.
 
 Best regards,
 Recruitment Team
@@ -1931,6 +2169,21 @@ ${fromEmail}`
             <p><strong>Tab Switches:</strong> ${candidate.assessment_tab_switches || 0}</p>
             <p><strong>Time Taken:</strong> ${candidate.assessment_time_taken ? Math.round(candidate.assessment_time_taken / 60) : 'N/A'} minutes</p>
           </div>
+
+          ${candidate.assessment_responses && candidate.assessment_responses.questions ? `
+          <div style="background-color: #ede9fe; border: 2px solid #8b5cf6; border-radius: 8px; padding: 20px; margin: 20px 0;">
+            <h3 style="color: #6b21a8; margin-top: 0;">📝 Assessment Responses</h3>
+            <div style="background-color: #fff; border: 1px solid #a78bfa; border-radius: 6px; padding: 15px;">
+              <p style="margin: 0 0 10px 0;"><strong style="color: #6b21a8;">📄 Detailed Responses PDF:</strong></p>
+              <p style="margin: 5px 0; font-size: 14px;">
+                📎 <strong>Attachment:</strong> assessment_responses_${candidate.id}.pdf
+              </p>
+              <p style="margin: 5px 0; font-size: 13px; color: #6b7280;">
+                Contains all questions, candidate answers, and scoring details
+              </p>
+            </div>
+          </div>
+          ` : ''}
 
           <div style="background-color: #fefce8; border: 2px solid #eab308; border-radius: 8px; padding: 20px; margin: 20px 0;">
             <h3 style="color: #854d0e; margin-top: 0;">📹 Assessment Recordings</h3>
@@ -3246,7 +3499,7 @@ ${fromEmail}`
                                     </Button>
                                   </div>
                                   <p className="text-xs text-indigo-600 mt-1">
-                                    Sends webdesk score, camera recording, and screen recording
+                                    Sends assessment results PDF, camera recording, and screen recording
                                   </p>
                                 </div>
                               </div>
@@ -3255,7 +3508,35 @@ ${fromEmail}`
                             {/* Assessment Responses Section */}
                             {candidate.assessment_responses && candidate.assessment_responses.questions && (
                               <div className="mt-4 border-t border-gray-200 pt-3">
-                                <p className="font-semibold text-gray-700 mb-3">📝 Assessment Responses:</p>
+                                <div className="flex items-center justify-between mb-3">
+                                  <p className="font-semibold text-gray-700">📝 Assessment Responses:</p>
+                                  <div className="flex gap-2">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handlePreviewPDF(candidate.id)
+                                      }}
+                                      className="h-7 text-xs bg-white hover:bg-blue-50 border-blue-300 text-blue-700"
+                                    >
+                                      <Eye className="h-3 w-3 mr-1" />
+                                      Preview PDF
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleDownloadPDF(candidate.id)
+                                      }}
+                                      className="h-7 text-xs bg-white hover:bg-green-50 border-green-300 text-green-700"
+                                    >
+                                      <Download className="h-3 w-3 mr-1" />
+                                      Download PDF
+                                    </Button>
+                                  </div>
+                                </div>
                                 <div className="space-y-3">
                                   {candidate.assessment_responses.questions.map((q: any, index: number) => (
                                     <div key={q.questionId || index} className="bg-gray-50 border border-gray-200 rounded p-3">
