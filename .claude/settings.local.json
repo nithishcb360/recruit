@@ -41,7 +41,12 @@
       "Bash(npm ls:*)",
       "Bash(npm uninstall:*)",
       "Bash(timeout 30 npm run dev)",
-      "Bash(timeout 15 npm run dev)"
+      "Bash(timeout 15 npm run dev)",
+      "Bash(npm run lint)",
+      "Bash(git log:*)",
+      "Read(//d/**)",
+      "Bash(git -C \"D:/recruit\" status)",
+      "Bash(git -C \"D:/recruit\" diff \"frontend/src/app/screening/page.tsx\")"
     ]
   }
 }

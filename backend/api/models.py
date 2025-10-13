@@ -264,6 +264,18 @@ class Candidate(models.Model):
     source = models.CharField(max_length=100, default='Direct Application')
     rating = models.PositiveIntegerField(null=True, blank=True)
 
+    # Assessment fields
+    assessment_url = models.URLField(blank=True, help_text='WebDesk assessment URL')
+    assessment_username = models.CharField(max_length=100, blank=True, help_text='Unique username for assessment login')
+    assessment_password = models.CharField(max_length=100, blank=True, help_text='Password for assessment login')
+    assessment_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, help_text='Assessment score percentage')
+    assessment_completed = models.BooleanField(default=False, help_text='Whether assessment is completed')
+    assessment_time_taken = models.IntegerField(null=True, blank=True, help_text='Time taken in seconds')
+    assessment_tab_switches = models.IntegerField(default=0, help_text='Number of tab switches detected')
+    assessment_disqualified = models.BooleanField(default=False, help_text='Whether candidate was disqualified for cheating')
+    assessment_recording = models.FileField(upload_to='assessment_recordings/', null=True, blank=True, help_text='Video/audio recording of assessment')
+    assessment_responses = models.JSONField(default=dict, blank=True, help_text='Full assessment question responses with answers')
+
     # Metadata
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)

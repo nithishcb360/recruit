@@ -18,6 +18,14 @@ export interface ScreeningCandidateData {
   salary_expectation?: number
   jobId?: number
   jobTitle?: string
+  assessment_url?: string
+  assessment_username?: string
+  assessment_password?: string
+  assessment_completed?: boolean
+  assessment_score?: number
+  assessment_tab_switches?: number
+  assessment_disqualified?: boolean
+  assessment_recording_url?: string
 }
 
 /**

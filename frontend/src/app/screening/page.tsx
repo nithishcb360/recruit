@@ -1,7 +1,7 @@
 'use client'
 
-import React, { useState, useEffect, useMemo } from 'react'
-import { Search, Filter, Users, Target, Brain, ChevronDown, ChevronRight, Star, CheckCircle, XCircle, User, Briefcase, MapPin, Clock, Download, Trash2, Phone } from 'lucide-react'
+import React, { useState, useEffect, useMemo, ReactNode } from 'react'
+import { Search, Filter, Users, Target, Brain, ChevronDown, ChevronRight, Star, CheckCircle, XCircle, User, Briefcase, MapPin, Clock, Download, Trash2, Phone, Mail } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast"
 import { getJobs } from "@/lib/api/jobs"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { getScreeningCandidateData, getScreeningCandidatesList, removeFromScreeningList, clearScreeningCandidateData, ScreeningCandidateData } from "@/utils/screeningData"
+import { enhancedRetellAPI, EnhancedRetellCallData } from "@/lib/api/retell-enhanced"
 
 interface Job {
   id: number
@@ -29,6 +30,15 @@ interface Job {
 }
 
 interface Candidate {
+  assessment_username?: string
+  assessment_password?: string
+  assessment_completed?: boolean
+  assessment_disqualified?: boolean
+  assessment_score?: number
+  assessment_tab_switches?: number
+  assessment_responses?: any
+  assessment_recording?: string
+  assessment_time_taken?: number
   id: number
   first_name: string
   last_name: string
@@ -185,13 +195,176 @@ export default function ScreeningPage() {
   const [screeningResults, setScreeningResults] = useState<ScreeningResult[]>([])
   const [expandedCards, setExpandedCards] = useState<Set<number>>(new Set())
   const [movedCandidatesList, setMovedCandidatesList] = useState<ScreeningCandidateData[]>([])
+  const [candidateCallData, setCandidateCallData] = useState<Map<number, EnhancedRetellCallData>>(new Map())
+  const [loadingCallData, setLoadingCallData] = useState<Set<number>>(new Set())
+  const [callIdInputs, setCallIdInputs] = useState<Map<number, string>>(new Map())
+  const [autoCallScheduled, setAutoCallScheduled] = useState<Set<number>>(new Set())
+  const [autoCallInProgress, setAutoCallInProgress] = useState<Set<number>>(new Set())
+  const [initiatedCallIds, setInitiatedCallIds] = useState<Map<number, string>>(new Map())
+
+  // Check if current time is within working hours (10 AM - 6 PM)
+  const isWithinWorkingHours = (): boolean => {
+    const currentHour = new Date().getHours()
+    return currentHour >= 10 && currentHour < 18 // 10 AM to 6 PM (18:00)
+  }
+
+  // Initiate automatic call for a candidate
+  const initiateAutomaticCall = async (candidate: ScreeningCandidateData) => {
+    // Check if it's within working hours
+    if (!isWithinWorkingHours()) {
+      console.log(`Outside working hours. Skipping call for ${candidate.name}`)
+      return
+    }
+
+    // Check if candidate has a phone number
+    if (!candidate.phone) {
+      console.log(`No phone number for ${candidate.name}. Skipping call.`)
+      return
+    }
+
+    // Check if call already scheduled or in progress
+    if (autoCallScheduled.has(candidate.id) || autoCallInProgress.has(candidate.id)) {
+      console.log(`Call already scheduled or in progress for ${candidate.name}`)
+      return
+    }
+
+    try {
+      // Mark as in progress
+      setAutoCallInProgress(prev => new Set(prev).add(candidate.id))
+
+      console.log(`Initiating automatic call for ${candidate.name} at ${candidate.phone}`)
+
+      // Call the existing handleStartMCPCall function
+      await handleStartMCPCall(candidate)
+
+      // Mark as scheduled
+      setAutoCallScheduled(prev => new Set(prev).add(candidate.id))
+
+      // Poll for call completion and fetch recording
+      pollForCallCompletion(candidate)
+
+    } catch (error) {
+      console.error(`Error initiating automatic call for ${candidate.name}:`, error)
+      // Remove from in progress on error
+      setAutoCallInProgress(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(candidate.id)
+        return newSet
+      })
+    }
+  }
+
+  // Poll for call completion and fetch recording/transcript
+  const pollForCallCompletion = async (candidate: ScreeningCandidateData) => {
+    let pollAttempts = 0
+    const maxPollAttempts = 20 // Poll for 10 minutes (20 * 30 seconds)
+
+    const pollInterval = setInterval(async () => {
+      pollAttempts++
+
+      try {
+        // Try to fetch recent completed calls from Retell AI
+        if (enhancedRetellAPI.isConfigured()) {
+          const recentCalls = await enhancedRetellAPI.getRecentCompletedCalls(10)
+
+          // Try to match by candidate phone number or timing
+          const matchingCall = recentCalls.find(call => {
+            // You could implement more sophisticated matching logic here
+            // For now, we'll take the most recent completed call
+            return call.call_status === 'ended' || call.call_status === 'completed'
+          })
+
+          if (matchingCall) {
+            console.log(`Call completed for ${candidate.name}. Fetching recording and transcript...`)
+
+            // Store call data for this candidate
+            setCandidateCallData(prev => {
+              const newMap = new Map(prev)
+              newMap.set(candidate.id, matchingCall)
+              return newMap
+            })
+
+            // Remove from in progress
+            setAutoCallInProgress(prev => {
+              const newSet = new Set(prev)
+              newSet.delete(candidate.id)
+              return newSet
+            })
+
+            // Show success notification
+            toast({
+              title: "Call Completed",
+              description: `Call with ${candidate.name} completed. Recording and transcript loaded.`,
+              variant: "default"
+            })
+
+            clearInterval(pollInterval)
+            return
+          }
+        }
+
+        // Stop polling after max attempts
+        if (pollAttempts >= maxPollAttempts) {
+          console.log(`Max poll attempts reached for ${candidate.name}. Stopping polling.`)
+
+          // Remove from in progress
+          setAutoCallInProgress(prev => {
+            const newSet = new Set(prev)
+            newSet.delete(candidate.id)
+            return newSet
+          })
+
+          clearInterval(pollInterval)
+        }
+      } catch (error) {
+        console.error(`Error polling for call completion for ${candidate.name}:`, error)
+      }
+    }, 30000) // Poll every 30 seconds
+  }
+
+  // Automatic call scheduling effect - runs only once when candidates are added
+  useEffect(() => {
+    // Only proceed if we have candidates in the screening list
+    if (movedCandidatesList.length === 0) return
+
+    // Only proceed if within working hours
+    if (!isWithinWorkingHours()) {
+      console.log('Outside working hours. Automatic calls will not be initiated.')
+      return
+    }
+
+    // Check localStorage to see if calls were already made for these candidates
+    const callsAlreadyMade = JSON.parse(localStorage.getItem('screening_calls_made') || '[]')
+
+    // Iterate through candidates and initiate calls
+    movedCandidatesList.forEach(candidate => {
+      // Skip if call was already made for this candidate
+      if (callsAlreadyMade.includes(candidate.id)) {
+        console.log(`Call already made for ${candidate.name}, skipping.`)
+        return
+      }
+
+      // Only initiate if not already scheduled or in progress
+      if (!autoCallScheduled.has(candidate.id) && !autoCallInProgress.has(candidate.id)) {
+        // Add a small delay to stagger calls
+        const delay = Math.random() * 5000 // Random delay up to 5 seconds
+        setTimeout(() => {
+          initiateAutomaticCall(candidate)
+          // Mark call as made in localStorage
+          const updatedCalls = JSON.parse(localStorage.getItem('screening_calls_made') || '[]')
+          updatedCalls.push(candidate.id)
+          localStorage.setItem('screening_calls_made', JSON.stringify(updatedCalls))
+        }, delay)
+      }
+    })
+  }, [movedCandidatesList])
 
   // Load jobs and applications on component mount
   useEffect(() => {
     fetchJobs()
     fetchCandidates()
     fetchApplications()
-    
+
     // Load screening candidates list
     const screeningList = getScreeningCandidatesList()
     setMovedCandidatesList(screeningList)
@@ -210,7 +383,45 @@ export default function ScreeningPage() {
         setSelectedJobId(screeningData.jobId.toString())
       }
     }
+
+    // Refresh candidate data from API to get latest assessment credentials
+    refreshMovedCandidatesData(screeningList)
   }, [])
+
+  // Function to refresh moved candidates data from API
+  const refreshMovedCandidatesData = async (candidatesList: ScreeningCandidateData[]) => {
+    if (candidatesList.length === 0) return
+
+    try {
+      // Fetch fresh data for each candidate
+      const updatedCandidates = await Promise.all(
+        candidatesList.map(async (candidate) => {
+          try {
+            const response = await fetch(`http://localhost:8000/api/candidates/${candidate.id}/`)
+            if (response.ok) {
+              const freshData = await response.json()
+              return {
+                ...candidate,
+                assessment_username: freshData.assessment_username,
+                assessment_password: freshData.assessment_password,
+                assessment_completed: freshData.assessment_completed,
+                assessment_score: freshData.assessment_score,
+                assessment_tab_switches: freshData.assessment_tab_switches,
+                assessment_disqualified: freshData.assessment_disqualified
+              }
+            }
+            return candidate
+          } catch (error) {
+            console.error(`Error fetching candidate ${candidate.id}:`, error)
+            return candidate
+          }
+        })
+      )
+      setMovedCandidatesList(updatedCandidates)
+    } catch (error) {
+      console.error('Error refreshing candidate data:', error)
+    }
+  }
 
   const fetchJobs = async () => {
     try {
@@ -595,9 +806,153 @@ export default function ScreeningPage() {
 
   const getScoreColor = (score: number) => {
     if (score >= 85) return 'text-green-600'
-    if (score >= 70) return 'text-blue-600' 
+    if (score >= 70) return 'text-blue-600'
     if (score >= 55) return 'text-yellow-600'
     return 'text-red-600'
+  }
+
+  // Function to manually fetch call data by call ID
+  const fetchCallDataByCallId = async (candidateId: number, callId: string) => {
+    if (!callId.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter a valid call ID",
+        variant: "destructive"
+      })
+      return
+    }
+
+    // Add to loading state
+    setLoadingCallData(prev => new Set(prev).add(candidateId))
+
+    try {
+      console.log(`Fetching call data for candidate ${candidateId} with call ID: ${callId}`)
+
+      const callData = await enhancedRetellAPI.getCallDetails(callId.trim())
+
+      if (callData) {
+        // Store call data for this candidate
+        setCandidateCallData(prev => {
+          const newMap = new Map(prev)
+          newMap.set(candidateId, callData)
+          return newMap
+        })
+
+        toast({
+          title: "Call Data Retrieved",
+          description: `Successfully loaded call recording and transcript for the candidate`,
+          variant: "default"
+        })
+
+        console.log('Call data retrieved:', {
+          callId: callData.call_id,
+          hasRecording: !!callData.recording_url,
+          hasTranscript: !!callData.transcript,
+          status: callData.call_status,
+          duration: callData.duration_ms
+        })
+      } else {
+        toast({
+          title: "Call Not Found",
+          description: "Could not find call data with the provided call ID",
+          variant: "destructive"
+        })
+      }
+    } catch (error) {
+      console.error('Error fetching call data:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch call data from Retell AI'
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive"
+      })
+    } finally {
+      // Remove from loading state
+      setLoadingCallData(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(candidateId)
+        return newSet
+      })
+    }
+  }
+
+  // Function to load recent calls and try to match with candidates
+  const loadRecentCallsForCandidates = async () => {
+    if (!enhancedRetellAPI.isConfigured()) {
+      toast({
+        title: "Retell AI Not Configured",
+        description: "Please configure Retell AI credentials to load call data",
+        variant: "destructive"
+      })
+      return
+    }
+
+    try {
+      console.log('Loading recent calls from Retell AI...')
+      const recentCalls = await enhancedRetellAPI.getRecentCompletedCalls(50)
+
+      console.log(`Found ${recentCalls.length} recent completed calls`)
+
+      // Try to match calls with candidates based on phone numbers
+      const candidatesWithPhones = screeningResults.filter(result =>
+        result.candidate.email || result.candidate.id
+      )
+
+      let matchedCalls = 0
+      recentCalls.forEach(call => {
+        // You could implement phone number matching here
+        // For now, let's store the most recent call for demo purposes
+        if (candidatesWithPhones.length > 0 && matchedCalls === 0) {
+          const candidate = candidatesWithPhones[0].candidate
+          setCandidateCallData(prev => {
+            const newMap = new Map(prev)
+            newMap.set(candidate.id, call)
+            return newMap
+          })
+          matchedCalls++
+        }
+      })
+
+      if (matchedCalls > 0) {
+        toast({
+          title: "Recent Calls Loaded",
+          description: `Loaded ${matchedCalls} recent call(s) for candidates`,
+          variant: "default"
+        })
+      } else {
+        toast({
+          title: "No Matching Calls",
+          description: "No recent calls could be matched with current candidates",
+          variant: "default"
+        })
+      }
+    } catch (error) {
+      console.error('Error loading recent calls:', error)
+      toast({
+        title: "Error",
+        description: "Failed to load recent calls from Retell AI",
+        variant: "destructive"
+      })
+    }
+  }
+
+  // Function to get call data for a candidate
+  const getCallDataForCandidate = (candidateId: number): EnhancedRetellCallData | null => {
+    return candidateCallData.get(candidateId) || null
+  }
+
+  // Function to handle call ID input changes
+  const handleCallIdInputChange = (candidateId: number, callId: string) => {
+    setCallIdInputs(prev => {
+      const newMap = new Map(prev)
+      newMap.set(candidateId, callId)
+      return newMap
+    })
+  }
+
+  // Function to get call ID input for a candidate
+  const getCallIdInput = (candidateId: number): string => {
+    return callIdInputs.get(candidateId) || ""
   }
 
   const handleDeleteCandidate = async (candidateId: number) => {
@@ -832,10 +1187,26 @@ export default function ScreeningPage() {
       console.log('Frontend - Response data:', result);
 
       if (result.success) {
+        // Store the call ID if available
+        if (result.callId) {
+          setInitiatedCallIds(prev => {
+            const newMap = new Map(prev)
+            newMap.set(candidate.id, result.callId)
+            return newMap
+          })
+
+          // Also set it in the input field for easy access
+          setCallIdInputs(prev => {
+            const newMap = new Map(prev)
+            newMap.set(candidate.id, result.callId)
+            return newMap
+          })
+        }
+
         const title = result.demo ? "Demo Call Initiated" : "Call Initiated";
         const description = result.demo ?
           `Demo call started for ${candidate.name} (Retell AI not configured)` :
-          `Calling ${candidate.name} at ${candidate.phone}`;
+          `Calling ${candidate.name} at ${candidate.phone}${result.callId ? `\nCall ID: ${result.callId}` : ''}`;
 
         toast({
           title,
@@ -878,7 +1249,6 @@ export default function ScreeningPage() {
               MCP Server Calls
             </Badge>
             <Button
-              variant="outline"
               size="sm"
               onClick={() => handleStartMCPCall({
                 id: 999,
@@ -887,10 +1257,24 @@ export default function ScreeningPage() {
                 phone: "1234567890",
                 jobTitle: "Test Position"
               })}
-              className="text-green-600 hover:text-green-800"
+              className="bg-blue-600 hover:bg-blue-700 text-white"
             >
               Test Call
             </Button>
+          </div>
+        </div>
+
+        {/* Search Bar */}
+        <div className="mb-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input
+              type="text"
+              placeholder="Search candidates by name, email, or phone..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 w-full"
+            />
           </div>
         </div>
 
@@ -914,10 +1298,9 @@ export default function ScreeningPage() {
                 </div>
                 <div className="flex gap-2">
                   <Button
-                    variant="outline"
                     size="sm"
                     onClick={handleClearAllCandidates}
-                    className="text-blue-600 hover:text-blue-800 border-blue-300"
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
                   >
                     <XCircle className="h-4 w-4 mr-2" />
                     Clear All
@@ -927,106 +1310,237 @@ export default function ScreeningPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {movedCandidatesList.map((candidate, index) => (
+                {movedCandidatesList
+                  .filter(candidate => {
+                    if (!searchTerm) return true
+                    const search = searchTerm.toLowerCase()
+                    return (
+                      candidate.name?.toLowerCase().includes(search) ||
+                      candidate.email?.toLowerCase().includes(search) ||
+                      candidate.phone?.toLowerCase().includes(search)
+                    )
+                  })
+                  .map((candidate, index) => (
                   <div key={candidate.id} className="border border-slate-200 rounded-lg p-4 bg-white/50">
-                    <div className="flex items-center justify-between mb-3">
-                      <div>
-                        <h4 className="font-semibold text-gray-900">{candidate.name}</h4>
-                        <p className="text-sm text-gray-600">{candidate.email}</p>
-                        {candidate.jobTitle && (
-                          <p className="text-xs text-blue-600">Applied for: {candidate.jobTitle}</p>
-                        )}
+                    {/* Candidate Info */}
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <h4 className="font-semibold text-gray-900">{candidate.name}</h4>
+                          {candidate.phone && (
+                            <span className="text-sm text-gray-600">{candidate.phone}</span>
+                          )}
+                        </div>
+                        {/* Buttons next to name */}
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            onClick={async () => {
+                              const fromEmail = process.env.NEXT_PUBLIC_COMPANY_EMAIL || 'hr@company.com'
+                              const subject = `Next Round Interview - WebDesk Assessment`
+
+                              // Get current domain and port for WebDesk link
+                              const hostname = window.location.hostname
+                              const port = window.location.port
+                              const protocol = window.location.protocol
+                              let baseUrl = `${protocol}//${hostname}`
+                              if (port && port !== '80' && port !== '443') {
+                                baseUrl += `:${port}`
+                              }
+                              const webdeskLink = `${baseUrl}/webdesk/${candidate.id}`
+
+                              const emailBody = `Dear ${candidate.name},
+
+Greetings!
+
+We are pleased to inform you that you have been selected for the next round of interviews for the position of ${candidate.jobTitle || 'the role you applied for'}.
+
+As part of our assessment process, we kindly request you to complete a WebDesk technical assessment.
+
+WebDesk Assessment Details:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Link: ${webdeskLink}
+
+Login Credentials:
+Username: ${candidate.assessment_username || 'Not yet generated'}
+Password: ${candidate.assessment_password || 'Not yet generated'}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Instructions:
+1. Click on the WebDesk link above
+2. Enter your username and password
+3. Grant camera and microphone permissions when prompted
+4. Complete all assessment questions
+5. Submit your responses
+
+Please complete this assessment at your earliest convenience. If you have any questions or face any technical difficulties, feel free to reach out.
+
+We look forward to your participation.
+
+Best regards,
+Recruitment Team
+${fromEmail}`
+
+                              const emailHtml = `
+                                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                                  <p>Dear <strong>${candidate.name}</strong>,</p>
+                                  <p>Greetings!</p>
+                                  <p>We are pleased to inform you that you have been selected for the next round of interviews for the position of <strong>${candidate.jobTitle || 'the role you applied for'}</strong>.</p>
+                                  <p>As part of our assessment process, we kindly request you to complete a WebDesk technical assessment.</p>
+
+                                  <div style="background-color: #f0f9ff; border: 2px solid #3b82f6; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                                    <h3 style="color: #1e40af; margin-top: 0;">WebDesk Assessment Details</h3>
+                                    <p><strong>Link:</strong> <a href="${webdeskLink}" style="color: #2563eb;">${webdeskLink}</a></p>
+                                    <div style="background-color: #fef2f2; border: 1px solid #ef4444; border-radius: 4px; padding: 10px; margin-top: 10px;">
+                                      <p style="margin: 5px 0;"><strong>Username:</strong> <code style="background-color: #fee2e2; padding: 2px 6px; border-radius: 3px;">${candidate.assessment_username || 'Not yet generated'}</code></p>
+                                      <p style="margin: 5px 0;"><strong>Password:</strong> <code style="background-color: #fee2e2; padding: 2px 6px; border-radius: 3px;">${candidate.assessment_password || 'Not yet generated'}</code></p>
+                                    </div>
+                                  </div>
+
+                                  <h4>Instructions:</h4>
+                                  <ol>
+                                    <li>Click on the WebDesk link above</li>
+                                    <li>Enter your username and password</li>
+                                    <li>Grant camera and microphone permissions when prompted</li>
+                                    <li>Complete all assessment questions</li>
+                                    <li>Submit your responses</li>
+                                  </ol>
+
+                                  <p>Please complete this assessment at your earliest convenience. If you have any questions or face any technical difficulties, feel free to reach out.</p>
+                                  <p>We look forward to your participation.</p>
+
+                                  <p style="margin-top: 30px;">
+                                    Best regards,<br/>
+                                    <strong>Recruitment Team</strong><br/>
+                                    ${fromEmail}
+                                  </p>
+                                </div>
+                              `
+
+                              try {
+                                const response = await fetch('/api/send-email', {
+                                  method: 'POST',
+                                  headers: {
+                                    'Content-Type': 'application/json',
+                                  },
+                                  body: JSON.stringify({
+                                    to: candidate.email,
+                                    subject,
+                                    text: emailBody,
+                                    html: emailHtml
+                                  })
+                                })
+
+                                const result = await response.json()
+
+                                if (result.success) {
+                                  toast({
+                                    title: result.demo ? "Email Preview" : "Email Sent",
+                                    description: result.demo
+                                      ? `Email content ready but not sent (configure EMAIL_USER and EMAIL_PASSWORD)`
+                                      : `Email sent successfully to ${candidate.email}`,
+                                    variant: "default"
+                                  })
+                                } else {
+                                  toast({
+                                    title: "Email Failed",
+                                    description: result.message || "Failed to send email",
+                                    variant: "destructive"
+                                  })
+                                }
+                              } catch (error) {
+                                console.error('Error sending email:', error)
+                                toast({
+                                  title: "Error",
+                                  description: "Failed to send email",
+                                  variant: "destructive"
+                                })
+                              }
+                            }}
+                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                            title={`Send email to ${candidate.email}`}
+                          >
+                            <Mail className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => handleStartMCPCall(candidate)}
+                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                            title={candidate.phone ?
+                              `Call ${candidate.name} at ${candidate.phone}` :
+                              "No phone number available"
+                            }
+                          >
+                            <Phone className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => handleRemoveFromScreening(candidate.id)}
+                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleStartMCPCall(candidate)}
-                          className={candidate.phone ?
-                            "text-blue-600 hover:text-blue-800 hover:bg-blue-50" :
-                            "text-gray-400 hover:text-gray-600 hover:bg-gray-50"
-                          }
-                          title={candidate.phone ?
-                            `Call ${candidate.name} at ${candidate.phone}` :
-                            "No phone number available"
-                          }
+                      <p className="text-sm text-gray-600">{candidate.email}</p>
+                      {candidate.jobTitle && (
+                        <p className="text-xs text-blue-600 mt-1">Applied for: {candidate.jobTitle}</p>
+                      )}
+                      <div className="mt-2 space-y-2">
+                        <a
+                          href={`/webdesk/${candidate.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-green-600 hover:text-green-800 hover:underline flex items-center gap-1"
                         >
-                          <Phone className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleRemoveFromScreening(candidate.id)}
-                          className="text-red-600 hover:text-red-800 hover:bg-red-50"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                          <Clock className="h-3 w-3" />
+                          Start WebDesk Assessment
+                        </a>
+                        {candidate.assessment_username && candidate.assessment_password && (
+                          <div className="bg-red-50 border border-red-200 rounded p-2 text-xs">
+                            <p className="font-semibold text-red-900 mb-1">WebDesk Credentials:</p>
+                            <p className="text-red-700">Username: <span className="font-mono font-bold">{candidate.assessment_username}</span></p>
+                            <p className="text-red-700">Password: <span className="font-mono font-bold">{candidate.assessment_password}</span></p>
+                          </div>
+                        )}
+                        {candidate.assessment_completed && (
+                          <div className="bg-green-50 border border-green-200 rounded p-2 text-xs">
+                            <p className="font-semibold text-green-900">Assessment: Completed</p>
+                            <p className="text-green-700">Score: {candidate.assessment_score}%</p>
+                            {(candidate.assessment_tab_switches ?? 0) > 0 && (
+                              <p className="text-orange-700">Tab Switches: {candidate.assessment_tab_switches}</p>
+                            )}
+                            {candidate.assessment_disqualified && (
+                              <p className="text-red-700 font-bold">Status: DISQUALIFIED</p>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                      {/* Basic Info */}
-                      <div className="space-y-2">
-                        {candidate.phone && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-gray-500">Phone:</span>
-                            <span>{candidate.phone}</span>
+                    {/* Call Recording and Transcript Section */}
+                    {(() => {
+                      const callData = getCallDataForCandidate(candidate.id)
+                      if (callData && callData.recording_url) {
+                        return (
+                          <div className="mt-4 pt-4 border-t border-slate-200">
+                            <h5 className="text-sm font-semibold text-gray-900 mb-2">Screening Call Recording</h5>
+                            <AudioPlayer
+                              url={callData.recording_url}
+                              candidateName={candidate.name}
+                              transcript={callData.transcript}
+                              className="w-full"
+                            />
+                            {callData.call_status && (
+                              <div className="mt-2 text-xs text-gray-600">
+                                Status: {callData.call_status} {callData.duration_ms && `• Duration: ${Math.round(callData.duration_ms / 1000)}s`}
+                              </div>
+                            )}
                           </div>
-                        )}
-                        {candidate.location && (
-                          <div className="flex items-center gap-2">
-                            <MapPin className="h-3 w-3 text-gray-500" />
-                            <span>{candidate.location}</span>
-                          </div>
-                        )}
-                        {candidate.salary_expectation && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-gray-500">Expected:</span>
-                            <span>${candidate.salary_expectation.toLocaleString()}</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Professional Info */}
-                      <div className="space-y-2">
-                        {candidate.experience_years && (
-                          <div className="flex items-center gap-2">
-                            <Clock className="h-3 w-3 text-gray-500" />
-                            <span>{candidate.experience_years} years experience</span>
-                          </div>
-                        )}
-                        {candidate.experience_level && (
-                          <Badge variant="outline" className="text-xs">
-                            {candidate.experience_level}
-                          </Badge>
-                        )}
-                        {candidate.current_position && (
-                          <div className="text-xs text-gray-600" title={candidate.current_position}>
-                            {extractCurrentRole(candidate.current_position)}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Skills */}
-                      <div className="space-y-2">
-                        {candidate.skills && candidate.skills.length > 0 && (
-                          <div>
-                            <div className="flex flex-wrap gap-1">
-                              {candidate.skills.slice(0, 4).map((skill, idx) => (
-                                <Badge key={idx} variant="secondary" className="text-xs">
-                                  {skill}
-                                </Badge>
-                              ))}
-                              {candidate.skills.length > 4 && (
-                                <Badge variant="outline" className="text-xs">
-                                  +{candidate.skills.length - 4} more
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                        )
+                      }
+                      return null
+                    })()}
                   </div>
                 ))}
               </div>
@@ -1190,6 +1704,38 @@ export default function ScreeningPage() {
                                   </span>
                                 )}
                               </CardDescription>
+
+                              {/* WebDesk Credentials */}
+                              {result.candidate.assessment_username && result.candidate.assessment_password && (
+                                <div className="mt-2 bg-red-50 border border-red-200 rounded p-2 text-xs max-w-md">
+                                  <p className="font-semibold text-red-900 mb-1">🔐 WebDesk Login:</p>
+                                  <div className="flex gap-4">
+                                    <span className="text-red-700">User: <span className="font-mono font-bold">{result.candidate.assessment_username}</span></span>
+                                    <span className="text-red-700">Pass: <span className="font-mono font-bold">{result.candidate.assessment_password}</span></span>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Assessment Status */}
+                              {result.candidate.assessment_completed && (
+                                <div className={`mt-2 border rounded p-2 text-xs max-w-md ${
+                                  result.candidate.assessment_disqualified
+                                    ? 'bg-red-50 border-red-200'
+                                    : 'bg-green-50 border-green-200'
+                                }`}>
+                                  <p className={`font-semibold mb-1 ${
+                                    result.candidate.assessment_disqualified ? 'text-red-900' : 'text-green-900'
+                                  }`}>
+                                    ✅ Assessment: {result.candidate.assessment_disqualified ? 'DISQUALIFIED' : 'Completed'}
+                                  </p>
+                                  <p className={result.candidate.assessment_disqualified ? 'text-red-700' : 'text-green-700'}>
+                                    Score: {result.candidate.assessment_score}%
+                                  </p>
+                                  {(result.candidate.assessment_tab_switches ?? 0) > 0 && (
+                                    <p className="text-orange-700">⚠️ Tab Switches: {result.candidate.assessment_tab_switches}</p>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
                           <div className="flex items-center gap-4">
@@ -1202,14 +1748,14 @@ export default function ScreeningPage() {
                               </Badge>
                             </div>
                             <Button
-                              variant="ghost"
                               size="sm"
                               onClick={(e) => {
                                 e.stopPropagation()
                                 handleDeleteCandidate(result.candidate.id)
                               }}
+                              className="bg-blue-600 hover:bg-blue-700 text-white"
                             >
-                              <Trash2 className="h-4 w-4 text-red-500" />
+                              <Trash2 className="h-4 w-4" />
                             </Button>
                             {isExpanded ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
                           </div>
@@ -1357,23 +1903,217 @@ export default function ScreeningPage() {
                               )}
                             </div>
 
+                            {/* WebDesk Assessment Responses */}
+                            {result.candidate.assessment_responses && result.candidate.assessment_responses.questions && (
+                              <div className="space-y-4 mb-6">
+                                <h4 className="font-semibold text-gray-900">📝 Assessment Responses</h4>
+                                <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-4">
+                                  {result.candidate.assessment_responses.questions.map((response: any, index: number) => (
+                                    <div key={response.questionId} className="border-b border-gray-200 pb-4 last:border-b-0 last:pb-0">
+                                      <div className="flex items-start justify-between mb-2">
+                                        <h5 className="font-semibold text-sm text-gray-900">
+                                          Question {index + 1} ({response.type.toUpperCase()})
+                                        </h5>
+                                        <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                          {response.points} points
+                                        </span>
+                                      </div>
+                                      <p className="text-sm text-gray-700 mb-3">{response.question}</p>
+
+                                      {/* MCQ Response */}
+                                      {response.type === 'mcq' && response.options && (
+                                        <div className="space-y-2">
+                                          {response.options.map((option: string, optIndex: number) => {
+                                            const isCorrect = optIndex === response.correctAnswer
+                                            const isSelected = optIndex === response.candidateAnswer
+                                            return (
+                                              <div
+                                                key={optIndex}
+                                                className={`text-sm p-2 rounded ${
+                                                  isSelected && isCorrect
+                                                    ? 'bg-green-100 border border-green-300'
+                                                    : isSelected && !isCorrect
+                                                    ? 'bg-red-100 border border-red-300'
+                                                    : isCorrect
+                                                    ? 'bg-green-50 border border-green-200'
+                                                    : 'bg-gray-50 border border-gray-200'
+                                                }`}
+                                              >
+                                                <span className="font-medium">{String.fromCharCode(65 + optIndex)}.</span> {option}
+                                                {isSelected && <span className="ml-2 text-xs font-bold">(Selected)</span>}
+                                                {isCorrect && <span className="ml-2 text-xs text-green-700 font-bold">✓ Correct</span>}
+                                              </div>
+                                            )
+                                          })}
+                                        </div>
+                                      )}
+
+                                      {/* Text/Coding Response */}
+                                      {(response.type === 'text' || response.type === 'coding') && (
+                                        <div className="mt-2">
+                                          <p className="text-xs text-gray-600 mb-1 font-medium">Candidate Answer:</p>
+                                          <div className="bg-gray-50 border border-gray-200 rounded p-3">
+                                            <pre className={`text-sm whitespace-pre-wrap ${response.type === 'coding' ? 'font-mono' : ''}`}>
+                                              {response.candidateAnswer || <span className="text-gray-400 italic">No answer provided</span>}
+                                            </pre>
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {/* Result indicator */}
+                                      {response.isCorrect !== null && (
+                                        <div className={`mt-2 text-xs font-semibold ${response.isCorrect ? 'text-green-600' : 'text-red-600'}`}>
+                                          {response.isCorrect ? '✓ Correct' : '✗ Incorrect'}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+
+                                  {/* Score Summary */}
+                                  <div className="mt-4 pt-4 border-t border-gray-300">
+                                    <div className="flex justify-between items-center">
+                                      <span className="font-bold text-gray-900">Total Score:</span>
+                                      <span className="text-lg font-bold text-blue-600">
+                                        {result.candidate.assessment_responses.percentage}% ({result.candidate.assessment_responses.totalScore}/{result.candidate.assessment_responses.maxScore} points)
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* WebDesk Assessment Recording */}
+                            {result.candidate.assessment_recording && (
+                              <div className="space-y-4 mb-6">
+                                <h4 className="font-semibold text-gray-900">📹 WebDesk Assessment Recording</h4>
+                                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                  <video
+                                    controls
+                                    className="w-full rounded"
+                                    style={{ maxHeight: '400px' }}
+                                  >
+                                    <source src={`http://localhost:8000${result.candidate.assessment_recording}`} type="video/webm" />
+                                    Your browser does not support the video tag.
+                                  </video>
+                                  <div className="mt-2 text-xs text-gray-600">
+                                    <p>Full assessment video with audio</p>
+                                    {result.candidate.assessment_time_taken && (
+                                      <p>Duration: {Math.floor(result.candidate.assessment_time_taken / 60)}m {result.candidate.assessment_time_taken % 60}s</p>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
                             {/* Call Audio Player */}
                             <div className="space-y-4">
                               <h4 className="font-semibold text-gray-900">Screening Call</h4>
-                              {result.candidate.call_audio_url ? (
-                                <AudioPlayer
-                                  url={result.candidate.call_audio_url}
-                                  candidateName={`${result.candidate.first_name}_${result.candidate.last_name}`}
-                                  transcript={result.candidate.call_transcript}
-                                  className="w-full"
-                                />
-                              ) : (
-                                <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-gray-300 rounded-lg">
-                                  <Phone className="h-12 w-12 text-gray-400 mb-4" />
-                                  <p className="text-gray-600 text-center">No call recording available</p>
-                                  <p className="text-gray-500 text-sm mt-1">Start a screening call to generate recording</p>
-                                </div>
-                              )}
+                              {(() => {
+                                const callData = getCallDataForCandidate(result.candidate.id)
+                                const isLoadingCallData = loadingCallData.has(result.candidate.id)
+
+                                if (callData) {
+                                  return (
+                                    <div className="space-y-4">
+                                      {/* Call Information */}
+                                      <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                                        <div className="flex items-center gap-2 mb-2">
+                                          <CheckCircle className="h-4 w-4 text-green-600" />
+                                          <span className="text-sm font-medium text-green-800">Call Data Retrieved</span>
+                                        </div>
+                                        <div className="text-xs text-green-700 space-y-1">
+                                          <div>Call ID: {callData.call_id}</div>
+                                          <div>Status: {callData.call_status}</div>
+                                          {callData.duration_ms && (
+                                            <div>Duration: {Math.round(callData.duration_ms / 1000)}s</div>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      {/* Audio Player */}
+                                      {callData.recording_url ? (
+                                        <AudioPlayer
+                                          url={callData.recording_url}
+                                          candidateName={`${result.candidate.first_name}_${result.candidate.last_name}`}
+                                          transcript={callData.transcript}
+                                          className="w-full"
+                                        />
+                                      ) : (
+                                        <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                          <p className="text-yellow-800 text-sm">Call data found but no recording URL available</p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )
+                                }
+
+                                return (
+                                  <div className="space-y-4">
+                                    {/* Show Call ID if call was initiated */}
+                                    {initiatedCallIds.has(result.candidate.id) && (
+                                      <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                                        <div className="flex items-center justify-between mb-2">
+                                          <div className="flex items-center gap-2">
+                                            <CheckCircle className="h-4 w-4 text-green-600" />
+                                            <span className="text-sm font-medium text-green-800">Call Initiated Successfully</span>
+                                          </div>
+                                        </div>
+                                        <div className="text-xs text-green-700 space-y-1">
+                                          <div>Call ID: <code className="bg-green-100 px-1 py-0.5 rounded">{initiatedCallIds.get(result.candidate.id)}</code></div>
+                                          <div className="text-xs text-green-600 mt-2">
+                                            ⏱️ The call is in progress. Wait a few minutes for it to complete, then click "Fetch Call Data" below to get the recording and transcript.
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Manual Call ID Input */}
+                                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                                      <div className="flex items-center gap-2 mb-3">
+                                        <Phone className="h-4 w-4 text-blue-600" />
+                                        <span className="text-sm font-medium text-blue-800">Fetch Call Recording & Transcript</span>
+                                      </div>
+                                      <div className="space-y-3">
+                                        <Input
+                                          placeholder="Call ID is auto-filled after call initiation..."
+                                          value={getCallIdInput(result.candidate.id)}
+                                          onChange={(e) => handleCallIdInputChange(result.candidate.id, e.target.value)}
+                                          className="text-sm"
+                                          disabled={isLoadingCallData}
+                                        />
+                                        <Button
+                                          onClick={() => fetchCallDataByCallId(result.candidate.id, getCallIdInput(result.candidate.id))}
+                                          disabled={isLoadingCallData || !getCallIdInput(result.candidate.id).trim()}
+                                          size="sm"
+                                          className="w-full bg-blue-600 hover:bg-blue-700 text-white border-blue-600"
+                                        >
+                                          {isLoadingCallData ? (
+                                            <>
+                                              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-2"></div>
+                                              Loading...
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Download className="h-3 w-3 mr-2" />
+                                              Fetch Call Data
+                                            </>
+                                          )}
+                                        </Button>
+                                        <p className="text-xs text-blue-600">
+                                          💡 Tip: After clicking "Phone" button, wait 5-10 minutes for the call to complete, then click this button to fetch the recording.
+                                        </p>
+                                      </div>
+                                    </div>
+
+                                    {/* No Call Data Placeholder */}
+                                    <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-gray-300 rounded-lg">
+                                      <Phone className="h-12 w-12 text-gray-400 mb-4" />
+                                      <p className="text-gray-600 text-center">No call recording available</p>
+                                      <p className="text-gray-500 text-sm mt-1">Enter a call ID above to load existing call data</p>
+                                    </div>
+                                  </div>
+                                )
+                              })()}
                             </div>
                           </div>
                         </div>

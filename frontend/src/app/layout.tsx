@@ -32,8 +32,9 @@ export default function RootLayout({
 }>) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const pathname = usePathname()
-  
+
   const isAuthPage = pathname === '/signin' || pathname === '/unauthorized'
+  const isWebDeskPage = pathname?.startsWith('/webdesk')
 
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen)
@@ -49,19 +50,24 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <AuthProvider>
-          <div className="min-h-screen bg-slate-50 text-slate-900">
-            {!isAuthPage && <Sidebar isOpen={isSidebarOpen} onToggle={toggleSidebar} />}
-            
-            {/* Main column with conditional left margin for fixed sidebar */}
-            <div className={`flex min-w-0 flex-1 flex-col ${!isAuthPage ? 'md:ml-72' : ''}`}>
-              {!isAuthPage && <Header onMenuClick={toggleSidebar} />}
-              
-              {/* Page content */}
-              <main className="flex-1">
-                {children}
-              </main>
+          {isWebDeskPage ? (
+            // WebDesk pages: no sidebar, no header, fullscreen
+            children
+          ) : (
+            <div className="min-h-screen bg-slate-50 text-slate-900">
+              {!isAuthPage && <Sidebar isOpen={isSidebarOpen} onToggle={toggleSidebar} />}
+
+              {/* Main column with conditional left margin for fixed sidebar */}
+              <div className={`flex min-w-0 flex-1 flex-col ${!isAuthPage ? 'md:ml-72' : ''}`}>
+                {!isAuthPage && <Header onMenuClick={toggleSidebar} />}
+
+                {/* Page content */}
+                <main className="flex-1">
+                  {children}
+                </main>
+              </div>
             </div>
-          </div>
+          )}
         </AuthProvider>
       </body>
     </html>
