@@ -274,7 +274,51 @@ class Candidate(models.Model):
     assessment_tab_switches = models.IntegerField(default=0, help_text='Number of tab switches detected')
     assessment_disqualified = models.BooleanField(default=False, help_text='Whether candidate was disqualified for cheating')
     assessment_recording = models.FileField(upload_to='assessment_recordings/', null=True, blank=True, help_text='Video/audio recording of assessment')
+    assessment_video_recording = models.FileField(upload_to='assessment_videos/', null=True, blank=True, help_text='Camera video recording of assessment')
+    assessment_screen_recording = models.FileField(upload_to='assessment_screens/', null=True, blank=True, help_text='Screen recording of assessment')
+    assessment_video_url = models.URLField(blank=True, help_text='Video recording URL from WebDesk assessment')
+    assessment_audio_url = models.URLField(blank=True, help_text='Audio recording URL from WebDesk assessment')
+    assessment_screen_url = models.URLField(blank=True, help_text='Screen recording URL from WebDesk assessment')
     assessment_responses = models.JSONField(default=dict, blank=True, help_text='Full assessment question responses with answers')
+
+    # Retell AI Call fields
+    retell_call_id = models.CharField(max_length=100, blank=True, help_text='Retell AI call ID')
+    retell_call_status = models.CharField(max_length=20, blank=True, help_text='Call status: registered, ongoing, ended, error')
+    retell_call_type = models.CharField(max_length=20, blank=True, help_text='Call type: phone_call or web_call')
+    retell_recording_url = models.URLField(blank=True, help_text='Retell call recording URL')
+    retell_transcript = models.TextField(blank=True, help_text='Full call transcript from Retell')
+    retell_transcript_object = models.JSONField(default=list, blank=True, help_text='Detailed transcript with timestamps')
+    retell_call_duration_ms = models.IntegerField(null=True, blank=True, help_text='Call duration in milliseconds')
+    retell_call_summary = models.TextField(blank=True, help_text='AI-generated call summary')
+    retell_call_analysis = models.JSONField(default=dict, blank=True, help_text='Full call analysis from Retell AI')
+    retell_user_sentiment = models.CharField(max_length=20, blank=True, help_text='Candidate sentiment: Positive/Neutral/Negative')
+    retell_call_successful = models.BooleanField(default=False, help_text='Whether call was successful')
+    retell_in_voicemail = models.BooleanField(default=False, help_text='Whether call went to voicemail')
+
+    # Retell AI - Interview Scheduling Data
+    retell_interview_scheduled = models.BooleanField(default=False, help_text='Was interview time confirmed?')
+    retell_scheduled_date = models.CharField(max_length=50, blank=True, help_text='Interview date YYYY-MM-DD')
+    retell_scheduled_time = models.CharField(max_length=50, blank=True, help_text='Interview time HH:MM AM/PM')
+    retell_scheduled_timezone = models.CharField(max_length=100, blank=True, help_text='Interview timezone')
+    retell_scheduled_datetime_iso = models.CharField(max_length=100, blank=True, help_text='ISO 8601 datetime string')
+    retell_candidate_timezone = models.CharField(max_length=100, blank=True, help_text='Candidate timezone')
+    retell_availability_preference = models.CharField(max_length=200, blank=True, help_text='Candidate availability preference')
+    retell_unavailable_dates = models.TextField(blank=True, help_text='Dates candidate is NOT available')
+
+    # Retell AI - Screening Data
+    retell_is_qualified = models.BooleanField(default=False, help_text='Does candidate meet basic qualifications?')
+    retell_interest_level = models.CharField(max_length=20, blank=True, help_text='Candidate interest: High/Medium/Low/Not Interested')
+    retell_technical_skills = models.JSONField(default=list, blank=True, help_text='Technical skills mentioned in call')
+    retell_questions_asked = models.JSONField(default=list, blank=True, help_text='Questions asked by candidate')
+    retell_call_outcome = models.CharField(max_length=50, blank=True, help_text='Call outcome: Interview Scheduled/Callback Requested/Not Interested/Voicemail')
+    retell_rejection_reason = models.TextField(blank=True, help_text='Reason if candidate rejected')
+
+    # Retell AI - Metadata
+    retell_metadata = models.JSONField(default=dict, blank=True, help_text='Custom metadata from call')
+    retell_start_timestamp = models.BigIntegerField(null=True, blank=True, help_text='Call start timestamp (ms)')
+    retell_end_timestamp = models.BigIntegerField(null=True, blank=True, help_text='Call end timestamp (ms)')
+    retell_public_log_url = models.URLField(blank=True, help_text='Public URL for call logs')
+    retell_additional_notes = models.TextField(blank=True, help_text='Additional notes from call analysis')
 
     # Metadata
     created_at = models.DateTimeField(default=timezone.now)

@@ -274,27 +274,11 @@ export default function BulkCandidateUpload({ onClose, onCandidatesCreated }: Bu
 
   return (
     <div className="min-h-[600px]">
-      {/* Modern Header */}
-      <div className="bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-700 p-8 rounded-t-2xl text-white">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
-              <Upload className="h-6 w-6 text-white" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-bold">Bulk Candidate Upload</h2>
-              <p className="text-blue-100 mt-1">
-                Upload multiple resumes and automatically create candidate profiles
-              </p>
-            </div>
-          </div>
-          <button 
-            onClick={onClose}
-            className="w-8 h-8 bg-white/20 hover:bg-white/30 rounded-lg flex items-center justify-center transition-all duration-200"
-          >
-            ✕
-          </button>
-        </div>
+      {/* Description */}
+      <div className="mb-6">
+        <p className="text-gray-600">
+          Upload multiple resumes and automatically create candidate profiles
+        </p>
       </div>
 
       {/* Main Content */}

@@ -75,6 +75,97 @@ class EnhancedRetellAPI {
     }
   }
 
+  /**
+   * Fetch call details from Retell AND save to backend database
+   * This is the recommended method to use as it persists the data
+   * Only sends essential data to backend (not full transcript/recording)
+   */
+  async getCallDetailsAndSave(callId: string, candidateId: number): Promise<any> {
+    try {
+      // Step 1: Fetch full call data from Retell (with retry logic for analysis)
+      const response = await fetch(`/api/retell-call/${callId}`)
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        console.error('Failed to fetch call details:', errorData)
+        throw new Error(errorData.message || `Failed to fetch call details: ${response.statusText}`)
+      }
+
+      const result = await response.json()
+
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to fetch call data')
+      }
+
+      const fullCallData = result.data
+
+      console.log('📞 Fetched call data from Retell:', {
+        call_id: fullCallData.call_id,
+        has_analysis: !!fullCallData.call_analysis,
+        has_custom_data: !!(fullCallData.call_analysis?.custom_analysis_data),
+        full_call_analysis: fullCallData.call_analysis
+      })
+
+      // Step 2: Extract only essential data to save (not full transcript/recording)
+      const essentialData = {
+        call_id: fullCallData.call_id,
+        call_status: fullCallData.call_status,
+        call_type: fullCallData.call_type,
+        recording_url: fullCallData.recording_url, // URL only, not content
+        duration_ms: fullCallData.duration_ms,
+        start_timestamp: fullCallData.start_timestamp,
+        end_timestamp: fullCallData.end_timestamp,
+        metadata: fullCallData.metadata,
+        public_log_url: fullCallData.public_log_url,
+        // Only send analysis data, not full transcript
+        call_analysis: fullCallData.call_analysis ? {
+          call_summary: fullCallData.call_analysis.call_summary,
+          user_sentiment: fullCallData.call_analysis.user_sentiment,
+          call_successful: fullCallData.call_analysis.call_successful,
+          in_voicemail: fullCallData.call_analysis.in_voicemail,
+          custom_analysis_data: fullCallData.call_analysis.custom_analysis_data
+        } : null
+      }
+
+      console.log('💾 Sending essential data to backend (excluding transcript):', {
+        call_id: essentialData.call_id,
+        has_custom_data: !!essentialData.call_analysis?.custom_analysis_data,
+        custom_analysis_data: essentialData.call_analysis?.custom_analysis_data,
+        data_size: JSON.stringify(essentialData).length + ' bytes'
+      })
+
+      // Step 3: Save to backend database
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
+      const saveResponse = await fetch(`${backendUrl}/api/candidates/${candidateId}/save_retell_call_data/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(essentialData)
+      })
+
+      if (!saveResponse.ok) {
+        const errorData = await saveResponse.json()
+        console.error('Failed to save call data to backend:', errorData)
+        throw new Error(errorData.error || 'Failed to save call data to backend')
+      }
+
+      const saveResult = await saveResponse.json()
+
+      console.log('✅ Call data saved to backend:', {
+        candidate_id: candidateId,
+        interview_scheduled: saveResult.candidate?.retell_interview_scheduled,
+        scheduled_date: saveResult.candidate?.retell_scheduled_date,
+        scheduled_time: saveResult.candidate?.retell_scheduled_time
+      })
+
+      return saveResult
+    } catch (error) {
+      console.error('Error in getCallDetailsAndSave:', error)
+      throw error
+    }
+  }
+
   async getRecentCompletedCalls(limit: number = 50): Promise<EnhancedRetellCallData[]> {
     if (!this.apiKey) {
       throw new Error('Retell API key not configured')

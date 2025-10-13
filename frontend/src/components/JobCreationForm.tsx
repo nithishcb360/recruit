@@ -186,11 +186,8 @@ Make the description inclusive and avoid any language that might discourage dive
 
   // Sample assignees - in a real app, this would come from an API
   const assignees = [
-    { id: 'john-doe', name: 'John Doe', role: 'Senior Developer' },
-    { id: 'jane-smith', name: 'Jane Smith', role: 'Tech Lead' },
-    { id: 'mike-johnson', name: 'Mike Johnson', role: 'Engineering Manager' },
-    { id: 'sarah-wilson', name: 'Sarah Wilson', role: 'HR Manager' },
-    { id: 'david-brown', name: 'David Brown', role: 'Product Manager' },
+    { id: 'jaikar', name: 'Jaikar', role: 'jaikar.s@cloudberry360.com' },
+    { id: 'yadhendra', name: 'Yadhendra', role: 'yadhendra.kannan@cloudberry360.com' },
   ];
 
   const steps = [

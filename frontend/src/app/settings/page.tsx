@@ -335,6 +335,31 @@ Preferred Qualifications:
 • Item 2
 
 Make sure the requirements field contains properly formatted text, not JSON structure.`
+        },
+        questionGeneration: {
+          name: "Questions Generation with AI",
+          prompt: `You are an expert interview and feedback form designer. Generate professional, insightful questions for feedback forms.
+
+Your task is to generate questions based on the provided topic.
+
+Requirements:
+- Create diverse, thoughtful questions
+- Make questions specific and actionable
+- Include a mix of question types if specified
+- Questions should be professional and unbiased
+- Provide sample answers if requested
+
+Format your response as valid JSON with this structure:
+{
+  "questions": [
+    {
+      "text": "Your question here",
+      "type": "text",
+      "required": true,
+      "answer": "Sample answer here (if requested)"
+    }
+  ]
+}`
         }
       }
     },
@@ -872,9 +897,63 @@ Preferred Qualifications:
 • Item 2
 
 Make sure the requirements field contains properly formatted text, not JSON structure.`
+            },
+            questionGeneration: {
+              name: "Questions Generation with AI",
+              prompt: `You are an expert interview and feedback form designer. Generate professional, insightful questions for feedback forms.
+
+Your task is to generate questions based on the provided topic.
+
+Requirements:
+- Create diverse, thoughtful questions
+- Make questions specific and actionable
+- Include a mix of question types if specified
+- Questions should be professional and unbiased
+- Provide sample answers if requested
+
+Format your response as valid JSON with this structure:
+{
+  "questions": [
+    {
+      "text": "Your question here",
+      "type": "text",
+      "required": true,
+      "answer": "Sample answer here (if requested)"
+    }
+  ]
+}`
             }
           };
           parsedSettings.ai.selectedImplementation = parsedSettings.ai.selectedImplementation || "jobDescription";
+        }
+
+        // Ensure questionGeneration implementation exists (for existing settings)
+        if (parsedSettings.ai && parsedSettings.ai.implementations && !parsedSettings.ai.implementations.questionGeneration) {
+          parsedSettings.ai.implementations.questionGeneration = {
+            name: "Questions Generation with AI",
+            prompt: `You are an expert interview and feedback form designer. Generate professional, insightful questions for feedback forms.
+
+Your task is to generate questions based on the provided topic.
+
+Requirements:
+- Create diverse, thoughtful questions
+- Make questions specific and actionable
+- Include a mix of question types if specified
+- Questions should be professional and unbiased
+- Provide sample answers if requested
+
+Format your response as valid JSON with this structure:
+{
+  "questions": [
+    {
+      "text": "Your question here",
+      "type": "text",
+      "required": true,
+      "answer": "Sample answer here (if requested)"
+    }
+  ]
+}`
+          };
         }
 
         setOrgSettings(prevSettings => ({
@@ -1768,7 +1847,9 @@ Make sure the requirements field contains properly formatted text, not JSON stru
                       <SelectContent className="bg-white border border-gray-200 shadow-lg z-50">
                         <SelectItem value="anthropic" className="text-black hover:bg-gray-100">Anthropic (Claude)</SelectItem>
                         <SelectItem value="openai" className="text-black hover:bg-gray-100">OpenAI (GPT)</SelectItem>
+                        <SelectItem value="groq" className="text-black hover:bg-gray-100">Groq (Free - No Card!)</SelectItem>
                         <SelectItem value="google" className="text-black hover:bg-gray-100">Google (Gemini)</SelectItem>
+                        <SelectItem value="perplexity" className="text-black hover:bg-gray-100">Perplexity AI</SelectItem>
                         <SelectItem value="azure" className="text-black hover:bg-gray-100">Azure OpenAI</SelectItem>
                       </SelectContent>
                     </Select>

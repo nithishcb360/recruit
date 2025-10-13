@@ -6,11 +6,15 @@ import JobList from '@/components/JobList';
 import Modal from '@/components/ui/modal';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { useAuth } from '@/contexts/AuthContext';
+import { Job } from '@/lib/api/jobs';
 
 export default function JobsPage() {
   const { user } = useAuth();
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isViewDetailsOpen, setIsViewDetailsOpen] = useState(false);
+  const [isEditJobOpen, setIsEditJobOpen] = useState(false);
+  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
 
   const handleJobCreated = () => {
     setRefreshTrigger(prev => prev + 1);
@@ -22,6 +26,32 @@ export default function JobsPage() {
 
   const closeModal = () => {
     setIsModalOpen(false);
+  };
+
+  const handleViewDetails = (job: Job) => {
+    setSelectedJob(job);
+    setIsViewDetailsOpen(true);
+  };
+
+  const closeViewDetails = () => {
+    setIsViewDetailsOpen(false);
+    setSelectedJob(null);
+  };
+
+  const handleEditJob = (job: Job) => {
+    setSelectedJob(job);
+    setIsEditJobOpen(true);
+  };
+
+  const closeEditJob = () => {
+    setIsEditJobOpen(false);
+    setSelectedJob(null);
+  };
+
+  const handleJobUpdated = () => {
+    setRefreshTrigger(prev => prev + 1);
+    closeViewDetails();
+    closeEditJob();
   };
 
   return (
@@ -77,7 +107,11 @@ export default function JobsPage() {
               </div>
             </div>
             <div className="p-6">
-              <JobList refreshTrigger={refreshTrigger} />
+              <JobList
+                refreshTrigger={refreshTrigger}
+                onViewDetails={handleViewDetails}
+                onEditJob={handleEditJob}
+              />
             </div>
           </div>
 
@@ -96,8 +130,43 @@ export default function JobsPage() {
               />
             </Modal>
           )}
+
+          {/* View Details Modal */}
+          <Modal
+            isOpen={isViewDetailsOpen}
+            onClose={closeViewDetails}
+            title="View Job Details"
+            maxWidth="4xl"
+          >
+            {selectedJob && (
+              <JobCreationForm
+                onSuccess={handleJobUpdated}
+                onClose={closeViewDetails}
+                editingJob={selectedJob}
+                isModal={true}
+              />
+            )}
+          </Modal>
+
+          {/* Edit Job Modal */}
+          <Modal
+            isOpen={isEditJobOpen}
+            onClose={closeEditJob}
+            title="Edit Job Posting"
+            maxWidth="4xl"
+          >
+            {selectedJob && (
+              <JobCreationForm
+                onSuccess={handleJobUpdated}
+                onClose={closeEditJob}
+                editingJob={selectedJob}
+                isModal={true}
+              />
+            )}
+          </Modal>
         </div>
       </div>
     </ProtectedRoute>
   );
 }
+                                                                                                                                     

@@ -22,6 +22,8 @@ from .serializers import (
 )
 from .utils.enhanced_resume_parser import EnhancedResumeParser
 from .utils.resume_parser import ResumeParser
+from django.core.mail import send_mail
+from django.conf import settings
 import logging
 
 logger = logging.getLogger(__name__)
@@ -51,8 +53,129 @@ import logging
 from django.http import HttpResponse, Http404
 from django.core.files.storage import default_storage
 import datetime
+import json
 
 logger = logging.getLogger(__name__)
+
+# Import AI SDKs for AI operations
+try:
+    from anthropic import Anthropic
+    ANTHROPIC_AVAILABLE = True
+except ImportError:
+    logger.warning("Anthropic SDK not available.")
+    ANTHROPIC_AVAILABLE = False
+
+try:
+    import openai
+    OPENAI_AVAILABLE = True
+except ImportError:
+    logger.warning("OpenAI SDK not available.")
+    OPENAI_AVAILABLE = False
+
+try:
+    import google.generativeai as genai
+    GEMINI_AVAILABLE = True
+except ImportError:
+    logger.warning("Google Gemini SDK not available.")
+    GEMINI_AVAILABLE = False
+
+
+def send_webdesk_email(candidate):
+    """
+    Send WebDesk assessment email to candidate after call ends
+    Email includes credentials and scheduled interview time
+    """
+    try:
+        # Check if candidate has email
+        if not candidate.email:
+            logger.warning(f"Candidate {candidate.id} has no email address")
+            return False
+
+        # Generate credentials if not already generated
+        if not candidate.assessment_username or not candidate.assessment_password:
+            import random
+            import string
+            first_name = candidate.first_name.lower().replace(' ', '')
+            random_suffix = ''.join(random.choices(string.digits, k=4))
+            candidate.assessment_username = f"{first_name}{random_suffix}"
+            password_chars = string.ascii_letters + string.digits + '@#$%'
+            candidate.assessment_password = ''.join(random.choices(password_chars, k=8))
+            candidate.save()
+
+        # Build WebDesk URL
+        webdesk_url = f"http://localhost:3003/?candidate_id={candidate.id}"
+
+        # Format scheduled date/time if available
+        schedule_info = ""
+        if candidate.retell_interview_scheduled and candidate.retell_scheduled_date and candidate.retell_scheduled_time:
+            from datetime import datetime
+            try:
+                scheduled_date = datetime.strptime(candidate.retell_scheduled_date, '%Y-%m-%d')
+                date_str = scheduled_date.strftime('%A, %B %d, %Y')
+                schedule_info = f"""
+Interview Schedule:
+Date: {date_str}
+Time: {candidate.retell_scheduled_time}
+Timezone: {candidate.retell_scheduled_timezone or 'Local Time'}
+
+IMPORTANT: The assessment link will only be active 15 minutes before your scheduled time until 2 hours after.
+"""
+            except:
+                schedule_info = f"""
+Interview Schedule:
+Date: {candidate.retell_scheduled_date}
+Time: {candidate.retell_scheduled_time}
+
+IMPORTANT: The assessment link will only be active 15 minutes before your scheduled time until 2 hours after.
+"""
+
+        # Email subject and body
+        subject = f"Technical Assessment - {candidate.first_name}"
+        message = f"""Dear {candidate.first_name},
+
+Thank you for your interest in our position. We are pleased to invite you to complete a technical assessment as the next step in the interview process.
+
+{schedule_info}
+
+Assessment Details:
+-----------------
+Link: {webdesk_url}
+Username: {candidate.assessment_username}
+Password: {candidate.assessment_password}
+
+Instructions:
+1. Click the link above at your scheduled time
+2. Log in using the credentials provided
+3. Complete the assessment within the allotted time
+4. Do not switch tabs or leave the assessment page
+
+Important Notes:
+- Please ensure you have a stable internet connection
+- Use a desktop or laptop (mobile devices are not recommended)
+- Close all unnecessary applications and tabs
+- The assessment will be proctored (video and screen recording)
+
+If you have any questions or need assistance, please don't hesitate to contact us.
+
+Best regards,
+Recruitment Team
+"""
+
+        # Send email
+        send_mail(
+            subject=subject,
+            message=message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[candidate.email],
+            fail_silently=False,
+        )
+
+        logger.info(f"✅ WebDesk email sent to {candidate.email} (Candidate ID: {candidate.id})")
+        return True
+
+    except Exception as e:
+        logger.error(f"❌ Failed to send WebDesk email to candidate {candidate.id}: {e}")
+        return False
 
 
 @api_view(['GET'])
@@ -512,6 +635,214 @@ class CandidateViewSet(viewsets.ModelViewSet):
             logger.error(f"Error generating credentials: {e}")
             return Response(
                 {'error': f'Failed to generate credentials: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['post'])
+    def save_retell_call_data(self, request, pk=None):
+        """
+        Save Retell AI call data to candidate record
+
+        Expected request body:
+        {
+            "call_id": "call_abc123",
+            "call_status": "ended",
+            "call_type": "phone_call",
+            "recording_url": "https://...",
+            "transcript": "Full transcript text...",
+            "transcript_object": [...],
+            "call_analysis": {
+                "call_summary": "...",
+                "user_sentiment": "Positive",
+                "call_successful": true,
+                "in_voicemail": false,
+                "custom_analysis_data": {
+                    "interview_scheduled": true,
+                    "scheduled_date": "2025-10-08",
+                    "scheduled_time": "10:00 AM",
+                    ...
+                }
+            },
+            "duration_ms": 600000,
+            "start_timestamp": 1704067200000,
+            "end_timestamp": 1704067800000,
+            "metadata": {...},
+            "public_log_url": "https://..."
+        }
+        """
+        try:
+            candidate = self.get_object()
+            data = request.data
+
+            # Debug logging
+            logger.info(f"Received Retell data for candidate {pk}")
+            logger.info(f"Has call_analysis: {bool(data.get('call_analysis'))}")
+            if data.get('call_analysis'):
+                logger.info(f"Custom analysis data: {data.get('call_analysis', {}).get('custom_analysis_data')}")
+
+            # Basic call info - only essentials
+            if 'call_id' in data:
+                candidate.retell_call_id = data['call_id']
+            if 'call_status' in data:
+                candidate.retell_call_status = data['call_status']
+            if 'call_type' in data:
+                candidate.retell_call_type = data['call_type']
+            if 'recording_url' in data:
+                candidate.retell_recording_url = data['recording_url']
+            # DON'T save full transcript - too large, just store URL to access it
+            # if 'transcript' in data:
+            #     candidate.retell_transcript = data['transcript']
+            # DON'T save transcript_object - too large
+            # if 'transcript_object' in data:
+            #     candidate.retell_transcript_object = data['transcript_object']
+            if 'duration_ms' in data:
+                candidate.retell_call_duration_ms = data['duration_ms']
+            if 'start_timestamp' in data:
+                candidate.retell_start_timestamp = data['start_timestamp']
+            if 'end_timestamp' in data:
+                candidate.retell_end_timestamp = data['end_timestamp']
+            # Only save essential metadata (candidate_id, job_id)
+            if 'metadata' in data:
+                candidate.retell_metadata = data['metadata']
+            if 'public_log_url' in data:
+                candidate.retell_public_log_url = data['public_log_url']
+
+            # Extract from Dynamic Variables (retell_llm_dynamic_variables or collected_dynamic_variables)
+            dynamic_vars = data.get('retell_llm_dynamic_variables') or data.get('collected_dynamic_variables') or {}
+
+            # Extract from dynamic variables if available
+            if dynamic_vars:
+                if 'interviewDate' in dynamic_vars or 'interview_date' in dynamic_vars:
+                    interview_date = dynamic_vars.get('interviewDate') or dynamic_vars.get('interview_date')
+                    candidate.retell_scheduled_date = interview_date
+                    candidate.retell_interview_scheduled = True
+
+                if 'interviewTime' in dynamic_vars or 'interview_time' in dynamic_vars:
+                    interview_time = dynamic_vars.get('interviewTime') or dynamic_vars.get('interview_time')
+                    candidate.retell_scheduled_time = interview_time
+                    candidate.retell_interview_scheduled = True
+
+                if 'interviewTimezone' in dynamic_vars or 'timezone' in dynamic_vars:
+                    timezone_val = dynamic_vars.get('interviewTimezone') or dynamic_vars.get('timezone')
+                    candidate.retell_scheduled_timezone = timezone_val
+                    candidate.retell_candidate_timezone = timezone_val
+
+                if 'candidateName' in dynamic_vars:
+                    # Store in additional notes
+                    candidate.retell_additional_notes = f"Candidate Name from call: {dynamic_vars['candidateName']}"
+
+                if 'candidateEmail' in dynamic_vars:
+                    # Could update candidate email if needed
+                    pass
+
+                if 'jobTitle' in dynamic_vars:
+                    # Store job title in metadata
+                    if not candidate.retell_metadata:
+                        candidate.retell_metadata = {}
+                    candidate.retell_metadata['job_title'] = dynamic_vars['jobTitle']
+
+            # Call analysis data - extract only what we need, don't store full JSON
+            call_analysis = data.get('call_analysis', {})
+            if call_analysis:
+                # DON'T save full call_analysis - too large and redundant
+                # candidate.retell_call_analysis = call_analysis
+
+                # Extract only the essential analysis fields
+                if 'call_summary' in call_analysis:
+                    candidate.retell_call_summary = call_analysis['call_summary']
+                if 'user_sentiment' in call_analysis:
+                    candidate.retell_user_sentiment = call_analysis['user_sentiment']
+                if 'call_successful' in call_analysis:
+                    candidate.retell_call_successful = call_analysis['call_successful']
+                if 'in_voicemail' in call_analysis:
+                    candidate.retell_in_voicemail = call_analysis['in_voicemail']
+
+                # Extract custom analysis data - THIS IS WHAT WE ACTUALLY NEED
+                custom_data = call_analysis.get('custom_analysis_data', {})
+                if custom_data:
+                    logger.info(f"Processing custom_data keys: {list(custom_data.keys())}")
+
+                    # Interview scheduling fields (check multiple possible field names)
+                    if 'interview_scheduled' in custom_data:
+                        candidate.retell_interview_scheduled = custom_data['interview_scheduled']
+
+                    # Check for scheduled_date
+                    if 'scheduled_date' in custom_data:
+                        candidate.retell_scheduled_date = custom_data['scheduled_date']
+                        logger.info(f"Set scheduled_date: {custom_data['scheduled_date']}")
+                        # Auto-set interview_scheduled to True if we have a date
+                        candidate.retell_interview_scheduled = True
+
+                    # Check for scheduled_time or retell_scheduled_time
+                    if 'scheduled_time' in custom_data:
+                        candidate.retell_scheduled_time = custom_data['scheduled_time']
+                        logger.info(f"Set scheduled_time: {custom_data['scheduled_time']}")
+                        # Auto-set interview_scheduled to True if we have a time
+                        candidate.retell_interview_scheduled = True
+                    elif 'retell_scheduled_time' in custom_data:
+                        candidate.retell_scheduled_time = custom_data['retell_scheduled_time']
+                        logger.info(f"Set retell_scheduled_time: {custom_data['retell_scheduled_time']}")
+                        # Auto-set interview_scheduled to True if we have a time
+                        candidate.retell_interview_scheduled = True
+
+                    if 'scheduled_timezone' in custom_data:
+                        candidate.retell_scheduled_timezone = custom_data['scheduled_timezone']
+                    if 'scheduled_datetime_iso' in custom_data:
+                        candidate.retell_scheduled_datetime_iso = custom_data['scheduled_datetime_iso']
+                    if 'candidate_timezone' in custom_data:
+                        candidate.retell_candidate_timezone = custom_data['candidate_timezone']
+                    if 'availability_preference' in custom_data:
+                        candidate.retell_availability_preference = custom_data['availability_preference']
+                    if 'unavailable_dates' in custom_data:
+                        candidate.retell_unavailable_dates = custom_data['unavailable_dates']
+
+                    # Screening fields
+                    if 'is_qualified_candidate' in custom_data:
+                        candidate.retell_is_qualified = custom_data['is_qualified_candidate']
+                    if 'candidate_interest_level' in custom_data or 'interest_level' in custom_data:
+                        candidate.retell_interest_level = custom_data.get('candidate_interest_level') or custom_data.get('interest_level')
+                    if 'technical_skills_mentioned' in custom_data or 'technical_skills' in custom_data:
+                        candidate.retell_technical_skills = custom_data.get('technical_skills_mentioned') or custom_data.get('technical_skills')
+                    if 'questions_asked' in custom_data or 'questions_asked_by_candidate' in custom_data:
+                        candidate.retell_questions_asked = custom_data.get('questions_asked') or custom_data.get('questions_asked_by_candidate')
+                    if 'outcome' in custom_data or 'call_outcome' in custom_data:
+                        candidate.retell_call_outcome = custom_data.get('outcome') or custom_data.get('call_outcome')
+                    if 'rejection_reason' in custom_data:
+                        candidate.retell_rejection_reason = custom_data['rejection_reason']
+                    if 'additional_notes' in custom_data:
+                        candidate.retell_additional_notes = custom_data['additional_notes']
+
+                    # Update candidate status based on call outcome
+                    if candidate.retell_interview_scheduled:
+                        candidate.status = 'interviewing'
+                    elif candidate.retell_call_outcome == 'Not Interested':
+                        candidate.status = 'rejected'
+
+            candidate.save()
+
+            # Send WebDesk email automatically after call ends if interview is scheduled
+            email_sent = False
+            if candidate.retell_call_status == 'ended' and candidate.retell_interview_scheduled:
+                logger.info(f"Attempting to send WebDesk email to candidate {candidate.id}")
+                email_sent = send_webdesk_email(candidate)
+
+            serializer = self.get_serializer(candidate)
+            response_data = {
+                'success': True,
+                'message': 'Retell call data saved successfully',
+                'candidate': serializer.data
+            }
+
+            if email_sent:
+                response_data['email_sent'] = True
+                response_data['message'] += ' and WebDesk email sent to candidate'
+
+            return Response(response_data)
+
+        except Exception as e:
+            logger.error(f"Error saving Retell call data: {e}")
+            return Response(
+                {'success': False, 'error': f'Failed to save Retell call data: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -1812,3 +2143,548 @@ class InterviewRoundViewSet(viewsets.ModelViewSet):
     search_fields = ['name', 'description']
     ordering_fields = ['order', 'name', 'created_at']
     ordering = ['flow', 'order']
+
+
+@csrf_exempt
+@api_view(['POST'])
+def generate_job_description_ai(request):
+    """
+    Generate job description using AI (server-side)
+
+    Expected POST data:
+    {
+        "jobTitle": str,
+        "department": str,
+        "experienceLevel": str,
+        "experienceRange": str,
+        "workType": str (optional),
+        "location": str (optional),
+        "aiProvider": str,
+        "aiApiKey": str,
+        "customPrompt": str (optional)
+    }
+    """
+    try:
+        # Extract request data
+        job_title = request.data.get('jobTitle')
+        department = request.data.get('department')
+        experience_level = request.data.get('experienceLevel')
+        experience_range = request.data.get('experienceRange')
+        work_type = request.data.get('workType', '')
+        location = request.data.get('location', '')
+        ai_provider = request.data.get('aiProvider', 'anthropic').lower()
+        ai_api_key = request.data.get('aiApiKey')
+        custom_prompt = request.data.get('customPrompt')
+
+        # Validate required fields
+        if not all([job_title, department, experience_level, experience_range, ai_api_key]):
+            return Response(
+                {'error': 'Missing required fields: jobTitle, department, experienceLevel, experienceRange, aiApiKey'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validate provider availability
+        if ai_provider == 'anthropic' and not ANTHROPIC_AVAILABLE:
+            return Response(
+                {'error': 'Anthropic SDK not installed. Please install it: pip install anthropic'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider == 'openai' and not OPENAI_AVAILABLE:
+            return Response(
+                {'error': 'OpenAI SDK not installed. Please install it: pip install openai'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider == 'google' and not GEMINI_AVAILABLE:
+            return Response(
+                {'error': 'Google Gemini SDK not installed. Please install it: pip install google-generativeai'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider == 'perplexity' and not OPENAI_AVAILABLE:
+            return Response(
+                {'error': 'OpenAI SDK not installed (required for Perplexity). Please install it: pip install openai'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider == 'groq' and not OPENAI_AVAILABLE:
+            return Response(
+                {'error': 'OpenAI SDK not installed (required for Groq). Please install it: pip install openai'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider not in ['anthropic', 'openai', 'google', 'perplexity', 'groq']:
+            return Response(
+                {'error': f'Unsupported AI provider: {ai_provider}. Supported providers: anthropic, openai, google, perplexity, groq'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Default system prompt
+        default_system_prompt = """You are an expert HR professional and job description writer. Create professional, engaging, and comprehensive job descriptions that attract qualified candidates.
+
+Your task is to generate:
+1. A detailed job description (3-4 paragraphs)
+2. Comprehensive requirements list (both required and preferred qualifications)
+
+Make the content:
+- Professional yet engaging
+- Specific to the role and industry
+- Include relevant technologies and skills for the position
+- Follow modern job posting best practices
+- Be inclusive and welcoming
+
+Format the response as JSON with two fields: "description" and "requirements".
+For the requirements field, format it as a clean, readable text with sections like:
+Required Qualifications:
+• Item 1
+• Item 2
+
+Technical Skills:
+• Skill 1
+• Skill 2
+
+Preferred Qualifications:
+• Item 1
+• Item 2
+
+Make sure the requirements field contains properly formatted text, not JSON structure."""
+
+        system_prompt = custom_prompt if custom_prompt else default_system_prompt
+
+        # Build user prompt
+        user_prompt = f"""Generate a job description and requirements for the following position:
+
+Job Title: {job_title}
+Department: {department}
+Experience Level: {experience_level}
+Experience Range: {experience_range}
+{f'Work Type: {work_type}' if work_type else ''}
+{f'Location: {location}' if location else ''}
+
+Please create:
+1. Job Description: A compelling 3-4 paragraph description that includes:
+   - Brief company/role introduction
+   - Key responsibilities and duties
+   - What the candidate will achieve/impact
+   - Work environment and culture fit
+
+2. Requirements: A comprehensive requirements section that includes:
+   - Required qualifications (education, experience, skills)
+   - Preferred qualifications
+   - Technical skills specific to this role
+   - Soft skills and personal qualities
+
+Make sure the content is tailored specifically to a {job_title} role in {department} at {experience_level} level with {experience_range} years of experience.
+
+Please respond with valid JSON in this exact format:
+{{
+  "description": "Your detailed job description here...",
+  "requirements": "Your comprehensive requirements formatted as readable text with sections and bullet points..."
+}}"""
+
+        # Call appropriate AI provider API
+        try:
+            response_text = None
+
+            if ai_provider == 'anthropic':
+                client = Anthropic(api_key=ai_api_key)
+                message = client.messages.create(
+                    model="claude-3-haiku-20240307",
+                    max_tokens=2000,
+                    temperature=0.7,
+                    system=system_prompt,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": user_prompt
+                        }
+                    ]
+                )
+                response_content = message.content[0]
+                if response_content.type != 'text':
+                    raise Exception('Unexpected response type from Claude')
+                response_text = response_content.text
+
+            elif ai_provider == 'openai':
+                client = openai.OpenAI(api_key=ai_api_key)
+                completion = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    max_tokens=2000,
+                    temperature=0.7
+                )
+                response_text = completion.choices[0].message.content
+
+            elif ai_provider == 'perplexity':
+                client = openai.OpenAI(
+                    api_key=ai_api_key,
+                    base_url="https://api.perplexity.ai"
+                )
+                completion = client.chat.completions.create(
+                    model="llama-3.1-sonar-small-128k-online",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    max_tokens=2000,
+                    temperature=0.7
+                )
+                response_text = completion.choices[0].message.content
+
+            elif ai_provider == 'groq':
+                client = openai.OpenAI(
+                    api_key=ai_api_key,
+                    base_url="https://api.groq.com/openai/v1"
+                )
+                completion = client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    max_tokens=2000,
+                    temperature=0.7
+                )
+                response_text = completion.choices[0].message.content
+
+            elif ai_provider == 'google':
+                genai.configure(api_key=ai_api_key)
+
+                # Try models in order of preference
+                model_names = ['gemini-1.5-pro', 'gemini-1.0-pro', 'gemini-pro']
+                response_text = None
+                last_error = None
+
+                for model_name in model_names:
+                    try:
+                        model = genai.GenerativeModel(model_name)
+                        full_prompt = f"{system_prompt}\n\n{user_prompt}"
+
+                        # Configure safety settings to be less restrictive
+                        safety_settings = [
+                            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+                        ]
+
+                        response = model.generate_content(
+                            full_prompt,
+                            safety_settings=safety_settings
+                        )
+
+                        # Check if response was blocked
+                        if not response.text:
+                            raise Exception(f"Gemini blocked the response. Prompt feedback: {response.prompt_feedback if hasattr(response, 'prompt_feedback') else 'No feedback'}")
+
+                        response_text = response.text
+                        break  # Success, exit loop
+                    except Exception as e:
+                        last_error = e
+                        continue  # Try next model
+
+                if not response_text:
+                    raise Exception(f"All Gemini models failed. Last error: {str(last_error)}")
+
+            # Parse JSON response
+            try:
+                parsed_response = json.loads(response_text)
+                return Response({
+                    'description': parsed_response.get('description', ''),
+                    'requirements': parsed_response.get('requirements', '')
+                })
+            except json.JSONDecodeError:
+                # Try to extract content manually
+                desc_match = re.search(r'"description":\s*"([^"]*(?:\\.[^"]*)*)"', response_text)
+                req_match = re.search(r'"requirements":\s*"([^"]*(?:\\.[^"]*)*)"', response_text)
+
+                if desc_match and req_match:
+                    return Response({
+                        'description': desc_match.group(1).replace('\\n', '\n').replace('\\"', '"'),
+                        'requirements': req_match.group(1).replace('\\n', '\n').replace('\\"', '"')
+                    })
+
+                # Fallback response
+                return Response({
+                    'description': response_text,
+                    'requirements': 'Please review the generated description and specify requirements.'
+                })
+
+        except Exception as ai_error:
+            logger.error(f"{ai_provider.capitalize()} API error: {ai_error}")
+            return Response(
+                {'error': f'AI generation failed: {str(ai_error)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    except Exception as e:
+        logger.error(f"Job description generation error: {e}")
+        return Response(
+            {'error': f'Failed to generate job description: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@csrf_exempt
+@api_view(['POST'])
+def generate_questions_ai(request):
+    """
+    Generate feedback form questions using AI (server-side)
+
+    Expected POST data:
+    {
+        "topic": str,
+        "num_questions": int,
+        "question_types": list[str],
+        "include_answers": bool,
+        "custom_prompt": str (optional),
+        "aiProvider": str,
+        "aiApiKey": str,
+        "systemPrompt": str (optional)
+    }
+    """
+    try:
+        # Extract request data
+        topic = request.data.get('topic')
+        num_questions = request.data.get('num_questions', 5)
+        question_types = request.data.get('question_types', ['text', 'textarea'])
+        include_answers = request.data.get('include_answers', False)
+        custom_prompt = request.data.get('custom_prompt', '')
+        ai_provider = request.data.get('aiProvider', 'anthropic').lower()
+        ai_api_key = request.data.get('aiApiKey')
+        system_prompt = request.data.get('systemPrompt')
+
+        # Validate required fields
+        if not all([topic, ai_api_key]):
+            return Response(
+                {'error': 'Missing required fields: topic, aiApiKey'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validate provider availability
+        if ai_provider == 'anthropic' and not ANTHROPIC_AVAILABLE:
+            return Response(
+                {'error': 'Anthropic SDK not installed. Please install it: pip install anthropic'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider == 'openai' and not OPENAI_AVAILABLE:
+            return Response(
+                {'error': 'OpenAI SDK not installed. Please install it: pip install openai'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider == 'google' and not GEMINI_AVAILABLE:
+            return Response(
+                {'error': 'Google Gemini SDK not installed. Please install it: pip install google-generativeai'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider == 'perplexity' and not OPENAI_AVAILABLE:
+            return Response(
+                {'error': 'OpenAI SDK not installed (required for Perplexity). Please install it: pip install openai'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider == 'groq' and not OPENAI_AVAILABLE:
+            return Response(
+                {'error': 'OpenAI SDK not installed (required for Groq). Please install it: pip install openai'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider not in ['anthropic', 'openai', 'google', 'perplexity', 'groq']:
+            return Response(
+                {'error': f'Unsupported AI provider: {ai_provider}. Supported providers: anthropic, openai, google, perplexity, groq'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Default system prompt
+        default_system_prompt = f"""You are an expert interview and feedback form designer. Generate professional, insightful questions for feedback forms.
+
+Your task is to generate {num_questions} questions about "{topic}".
+
+Requirements:
+- Create diverse, thoughtful questions
+- Make questions specific and actionable
+- Include a mix of question types if specified
+- Questions should be professional and unbiased
+- {'Provide sample answers for each question' if include_answers else 'Only provide the questions'}
+
+Format your response as valid JSON with this structure:
+{{
+  "questions": [
+    {{
+      "text": "Your question here",
+      "type": "text",
+      "required": true{', "answer": "Sample answer here"' if include_answers else ''}
+    }}
+  ]
+}}"""
+
+        final_system_prompt = system_prompt if system_prompt else default_system_prompt
+
+        # Build user prompt
+        user_prompt = f"""Generate {num_questions} professional feedback questions about "{topic}".
+
+Question requirements:
+- Topic: {topic}
+- Number of questions: {num_questions}
+- Question types: {', '.join(question_types)}
+- Include answers: {'Yes' if include_answers else 'No'}
+
+{f'Additional requirements: {custom_prompt}' if custom_prompt else ''}
+
+Please respond with valid JSON containing an array of questions."""
+
+        # Call appropriate AI provider API
+        try:
+            response_text = None
+
+            if ai_provider == 'anthropic':
+                client = Anthropic(api_key=ai_api_key)
+                message = client.messages.create(
+                    model="claude-3-haiku-20240307",
+                    max_tokens=2000,
+                    temperature=0.7,
+                    system=final_system_prompt,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": user_prompt
+                        }
+                    ]
+                )
+                response_content = message.content[0]
+                if response_content.type != 'text':
+                    raise Exception('Unexpected response type from Claude')
+                response_text = response_content.text
+
+            elif ai_provider == 'openai':
+                client = openai.OpenAI(api_key=ai_api_key)
+                completion = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": final_system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    max_tokens=2000,
+                    temperature=0.7
+                )
+                response_text = completion.choices[0].message.content
+
+            elif ai_provider == 'perplexity':
+                client = openai.OpenAI(
+                    api_key=ai_api_key,
+                    base_url="https://api.perplexity.ai"
+                )
+                completion = client.chat.completions.create(
+                    model="llama-3.1-sonar-small-128k-online",
+                    messages=[
+                        {"role": "system", "content": final_system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    max_tokens=2000,
+                    temperature=0.7
+                )
+                response_text = completion.choices[0].message.content
+
+            elif ai_provider == 'groq':
+                client = openai.OpenAI(
+                    api_key=ai_api_key,
+                    base_url="https://api.groq.com/openai/v1"
+                )
+                completion = client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=[
+                        {"role": "system", "content": final_system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    max_tokens=2000,
+                    temperature=0.7
+                )
+                response_text = completion.choices[0].message.content
+
+            elif ai_provider == 'google':
+                genai.configure(api_key=ai_api_key)
+
+                # Try models in order of preference
+                model_names = ['gemini-1.5-pro', 'gemini-1.0-pro', 'gemini-pro']
+                response_text = None
+                last_error = None
+
+                for model_name in model_names:
+                    try:
+                        model = genai.GenerativeModel(model_name)
+                        full_prompt = f"{final_system_prompt}\n\n{user_prompt}"
+
+                        # Configure safety settings to be less restrictive
+                        safety_settings = [
+                            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+                        ]
+
+                        response = model.generate_content(
+                            full_prompt,
+                            safety_settings=safety_settings
+                        )
+
+                        # Check if response was blocked
+                        if not response.text:
+                            raise Exception(f"Gemini blocked the response. Prompt feedback: {response.prompt_feedback if hasattr(response, 'prompt_feedback') else 'No feedback'}")
+
+                        response_text = response.text
+                        break  # Success, exit loop
+                    except Exception as e:
+                        last_error = e
+                        continue  # Try next model
+
+                if not response_text:
+                    raise Exception(f"All Gemini models failed. Last error: {str(last_error)}")
+
+            # Try to extract JSON from response
+            json_match = re.search(r'\{[\s\S]*\}', response_text)
+            if json_match:
+                try:
+                    parsed = json.loads(json_match.group(0))
+                    if 'questions' in parsed and isinstance(parsed['questions'], list):
+                        # Format questions properly
+                        formatted_questions = []
+                        for idx, q in enumerate(parsed['questions']):
+                            formatted_q = {
+                                'id': idx + 1,
+                                'text': q.get('text') or q.get('question', ''),
+                                'type': q.get('type', question_types[idx % len(question_types)]),
+                                'required': q.get('required', True),
+                                'ai_generated': True
+                            }
+                            if include_answers and 'answer' in q:
+                                formatted_q['answer'] = q['answer']
+                            formatted_questions.append(formatted_q)
+
+                        return Response({'questions': formatted_questions})
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Failed to parse AI JSON response: {e}")
+
+            # Fallback: create questions from text content
+            lines = [line.strip() for line in response_text.split('\n') if line.strip() and ('?' in line or 'question' in line.lower())]
+            fallback_questions = []
+            for idx, line in enumerate(lines[:num_questions]):
+                fallback_questions.append({
+                    'id': idx + 1,
+                    'text': re.sub(r'^\d+\.?\s*', '', line).strip(),
+                    'type': question_types[idx % len(question_types)],
+                    'required': True,
+                    'ai_generated': True
+                })
+
+            return Response({'questions': fallback_questions})
+
+        except Exception as ai_error:
+            logger.error(f"{ai_provider.capitalize()} API error: {ai_error}")
+            return Response(
+                {'error': f'AI generation failed: {str(ai_error)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    except Exception as e:
+        logger.error(f"Questions generation error: {e}")
+        return Response(
+            {'error': f'Failed to generate questions: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

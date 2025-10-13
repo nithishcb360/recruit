@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Filter, Loader2, SortAsc, SortDesc, Search, X, Trash2, FileText, Target } from "lucide-react"
 import CandidateCard from "@/components/candidate-card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import Modal from "@/components/ui/modal"
 import InterviewScheduler from "@/components/interview-scheduler"
 import BulkCandidateUpload from "@/components/bulk-candidate-upload"
 import CandidateNotes from "@/components/candidate-notes"
@@ -1074,10 +1075,10 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
             : c
         )
       )
-      
+
       // Navigate to screening page with candidate and job info as query parameters
       router.push(`/screening?candidateId=${candidate.id}&jobId=${jobId}`)
-      
+
       toast({
         title: "Moved to Screening",
         description: `${candidate.name} has been moved to screening for ${jobMatch.jobTitle}. Status updated to 'screening'.`,
@@ -1463,17 +1464,17 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
           )}
         </DialogContent>
       </Dialog>
-      <Dialog open={isBulkUploadOpen} onOpenChange={setIsBulkUploadOpen}>
-        <DialogContent className="max-w-4xl h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-black">Bulk Candidate Upload</DialogTitle>
-          </DialogHeader>
-          <BulkCandidateUpload 
-            onClose={() => setIsBulkUploadOpen(false)} 
-            onCandidatesCreated={handleCandidatesCreated}
-          />
-        </DialogContent>
-      </Dialog>
+      <Modal
+        isOpen={isBulkUploadOpen}
+        onClose={() => setIsBulkUploadOpen(false)}
+        title="Bulk Candidate Upload"
+        maxWidth="4xl"
+      >
+        <BulkCandidateUpload
+          onClose={() => setIsBulkUploadOpen(false)}
+          onCandidatesCreated={handleCandidatesCreated}
+        />
+      </Modal>
       
       {selectedCandidateForNotes && (
         <CandidateNotes
