@@ -167,14 +167,14 @@ export default function InterviewsPage() {
         ))
 
         toast({
-          title: "Description Saved",
-          description: "Candidate description has been saved successfully",
+          title: "Feedback Saved",
+          description: "Interview feedback has been saved successfully",
           variant: "default"
         })
       } else {
         toast({
           title: "Error",
-          description: "Failed to save description",
+          description: "Failed to save feedback",
           variant: "destructive"
         })
       }
@@ -182,7 +182,7 @@ export default function InterviewsPage() {
       console.error('Error saving description:', error)
       toast({
         title: "Error",
-        description: "Failed to save candidate description",
+        description: "Failed to save interview feedback",
         variant: "destructive"
       })
     } finally {
@@ -333,10 +333,10 @@ export default function InterviewsPage() {
                     )}
                   </div>
 
-                  {/* Description Field */}
+                  {/* Interview Feedback Field */}
                   <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                     <label htmlFor={`description-${candidate.id}`} className="block text-sm font-semibold text-gray-900 mb-2">
-                      Description
+                      Interview Feedback
                     </label>
                     <textarea
                       id={`description-${candidate.id}`}
@@ -345,7 +345,7 @@ export default function InterviewsPage() {
                         ...prev,
                         [candidate.id]: e.target.value
                       }))}
-                      placeholder="Add notes or description about this candidate..."
+                      placeholder="Add interview feedback or notes about this candidate..."
                       rows={3}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-sm"
                     />
@@ -364,7 +364,7 @@ export default function InterviewsPage() {
                         ) : (
                           <>
                             <CheckCircle className="h-4 w-4 mr-1" />
-                            Save Description
+                            Save Feedback
                           </>
                         )}
                       </Button>

@@ -2209,9 +2209,14 @@ def generate_job_description_ai(request):
                 {'error': 'OpenAI SDK not installed (required for Groq). Please install it: pip install openai'},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE
             )
-        elif ai_provider not in ['anthropic', 'openai', 'google', 'perplexity', 'groq']:
+        elif ai_provider == 'grok' and not OPENAI_AVAILABLE:
             return Response(
-                {'error': f'Unsupported AI provider: {ai_provider}. Supported providers: anthropic, openai, google, perplexity, groq'},
+                {'error': 'OpenAI SDK not installed (required for Grok/xAI). Please install it: pip install openai'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider not in ['anthropic', 'openai', 'google', 'perplexity', 'groq', 'grok']:
+            return Response(
+                {'error': f'Unsupported AI provider: {ai_provider}. Supported providers: anthropic, openai, google, perplexity, groq, grok'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -2337,6 +2342,22 @@ Please respond with valid JSON in this exact format:
                 )
                 completion = client.chat.completions.create(
                     model="llama-3.3-70b-versatile",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    max_tokens=2000,
+                    temperature=0.7
+                )
+                response_text = completion.choices[0].message.content
+
+            elif ai_provider == 'grok':
+                client = openai.OpenAI(
+                    api_key=ai_api_key,
+                    base_url="https://api.x.ai/v1"
+                )
+                completion = client.chat.completions.create(
+                    model="grok-beta",
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt}
