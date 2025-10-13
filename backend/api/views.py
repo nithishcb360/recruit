@@ -51,8 +51,31 @@ import logging
 from django.http import HttpResponse, Http404
 from django.core.files.storage import default_storage
 import datetime
+import json
 
 logger = logging.getLogger(__name__)
+
+# Import AI SDKs for AI operations
+try:
+    from anthropic import Anthropic
+    ANTHROPIC_AVAILABLE = True
+except ImportError:
+    logger.warning("Anthropic SDK not available.")
+    ANTHROPIC_AVAILABLE = False
+
+try:
+    import openai
+    OPENAI_AVAILABLE = True
+except ImportError:
+    logger.warning("OpenAI SDK not available.")
+    OPENAI_AVAILABLE = False
+
+try:
+    import google.generativeai as genai
+    GEMINI_AVAILABLE = True
+except ImportError:
+    logger.warning("Google Gemini SDK not available.")
+    GEMINI_AVAILABLE = False
 
 
 @api_view(['GET'])
@@ -1812,3 +1835,548 @@ class InterviewRoundViewSet(viewsets.ModelViewSet):
     search_fields = ['name', 'description']
     ordering_fields = ['order', 'name', 'created_at']
     ordering = ['flow', 'order']
+
+
+@csrf_exempt
+@api_view(['POST'])
+def generate_job_description_ai(request):
+    """
+    Generate job description using AI (server-side)
+
+    Expected POST data:
+    {
+        "jobTitle": str,
+        "department": str,
+        "experienceLevel": str,
+        "experienceRange": str,
+        "workType": str (optional),
+        "location": str (optional),
+        "aiProvider": str,
+        "aiApiKey": str,
+        "customPrompt": str (optional)
+    }
+    """
+    try:
+        # Extract request data
+        job_title = request.data.get('jobTitle')
+        department = request.data.get('department')
+        experience_level = request.data.get('experienceLevel')
+        experience_range = request.data.get('experienceRange')
+        work_type = request.data.get('workType', '')
+        location = request.data.get('location', '')
+        ai_provider = request.data.get('aiProvider', 'anthropic').lower()
+        ai_api_key = request.data.get('aiApiKey')
+        custom_prompt = request.data.get('customPrompt')
+
+        # Validate required fields
+        if not all([job_title, department, experience_level, experience_range, ai_api_key]):
+            return Response(
+                {'error': 'Missing required fields: jobTitle, department, experienceLevel, experienceRange, aiApiKey'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validate provider availability
+        if ai_provider == 'anthropic' and not ANTHROPIC_AVAILABLE:
+            return Response(
+                {'error': 'Anthropic SDK not installed. Please install it: pip install anthropic'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider == 'openai' and not OPENAI_AVAILABLE:
+            return Response(
+                {'error': 'OpenAI SDK not installed. Please install it: pip install openai'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider == 'google' and not GEMINI_AVAILABLE:
+            return Response(
+                {'error': 'Google Gemini SDK not installed. Please install it: pip install google-generativeai'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider == 'perplexity' and not OPENAI_AVAILABLE:
+            return Response(
+                {'error': 'OpenAI SDK not installed (required for Perplexity). Please install it: pip install openai'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider == 'groq' and not OPENAI_AVAILABLE:
+            return Response(
+                {'error': 'OpenAI SDK not installed (required for Groq). Please install it: pip install openai'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider not in ['anthropic', 'openai', 'google', 'perplexity', 'groq']:
+            return Response(
+                {'error': f'Unsupported AI provider: {ai_provider}. Supported providers: anthropic, openai, google, perplexity, groq'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Default system prompt
+        default_system_prompt = """You are an expert HR professional and job description writer. Create professional, engaging, and comprehensive job descriptions that attract qualified candidates.
+
+Your task is to generate:
+1. A detailed job description (3-4 paragraphs)
+2. Comprehensive requirements list (both required and preferred qualifications)
+
+Make the content:
+- Professional yet engaging
+- Specific to the role and industry
+- Include relevant technologies and skills for the position
+- Follow modern job posting best practices
+- Be inclusive and welcoming
+
+Format the response as JSON with two fields: "description" and "requirements".
+For the requirements field, format it as a clean, readable text with sections like:
+Required Qualifications:
+• Item 1
+• Item 2
+
+Technical Skills:
+• Skill 1
+• Skill 2
+
+Preferred Qualifications:
+• Item 1
+• Item 2
+
+Make sure the requirements field contains properly formatted text, not JSON structure."""
+
+        system_prompt = custom_prompt if custom_prompt else default_system_prompt
+
+        # Build user prompt
+        user_prompt = f"""Generate a job description and requirements for the following position:
+
+Job Title: {job_title}
+Department: {department}
+Experience Level: {experience_level}
+Experience Range: {experience_range}
+{f'Work Type: {work_type}' if work_type else ''}
+{f'Location: {location}' if location else ''}
+
+Please create:
+1. Job Description: A compelling 3-4 paragraph description that includes:
+   - Brief company/role introduction
+   - Key responsibilities and duties
+   - What the candidate will achieve/impact
+   - Work environment and culture fit
+
+2. Requirements: A comprehensive requirements section that includes:
+   - Required qualifications (education, experience, skills)
+   - Preferred qualifications
+   - Technical skills specific to this role
+   - Soft skills and personal qualities
+
+Make sure the content is tailored specifically to a {job_title} role in {department} at {experience_level} level with {experience_range} years of experience.
+
+Please respond with valid JSON in this exact format:
+{{
+  "description": "Your detailed job description here...",
+  "requirements": "Your comprehensive requirements formatted as readable text with sections and bullet points..."
+}}"""
+
+        # Call appropriate AI provider API
+        try:
+            response_text = None
+
+            if ai_provider == 'anthropic':
+                client = Anthropic(api_key=ai_api_key)
+                message = client.messages.create(
+                    model="claude-3-haiku-20240307",
+                    max_tokens=2000,
+                    temperature=0.7,
+                    system=system_prompt,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": user_prompt
+                        }
+                    ]
+                )
+                response_content = message.content[0]
+                if response_content.type != 'text':
+                    raise Exception('Unexpected response type from Claude')
+                response_text = response_content.text
+
+            elif ai_provider == 'openai':
+                client = openai.OpenAI(api_key=ai_api_key)
+                completion = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    max_tokens=2000,
+                    temperature=0.7
+                )
+                response_text = completion.choices[0].message.content
+
+            elif ai_provider == 'perplexity':
+                client = openai.OpenAI(
+                    api_key=ai_api_key,
+                    base_url="https://api.perplexity.ai"
+                )
+                completion = client.chat.completions.create(
+                    model="llama-3.1-sonar-small-128k-online",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    max_tokens=2000,
+                    temperature=0.7
+                )
+                response_text = completion.choices[0].message.content
+
+            elif ai_provider == 'groq':
+                client = openai.OpenAI(
+                    api_key=ai_api_key,
+                    base_url="https://api.groq.com/openai/v1"
+                )
+                completion = client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    max_tokens=2000,
+                    temperature=0.7
+                )
+                response_text = completion.choices[0].message.content
+
+            elif ai_provider == 'google':
+                genai.configure(api_key=ai_api_key)
+
+                # Try models in order of preference
+                model_names = ['gemini-1.5-pro', 'gemini-1.0-pro', 'gemini-pro']
+                response_text = None
+                last_error = None
+
+                for model_name in model_names:
+                    try:
+                        model = genai.GenerativeModel(model_name)
+                        full_prompt = f"{system_prompt}\n\n{user_prompt}"
+
+                        # Configure safety settings to be less restrictive
+                        safety_settings = [
+                            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+                        ]
+
+                        response = model.generate_content(
+                            full_prompt,
+                            safety_settings=safety_settings
+                        )
+
+                        # Check if response was blocked
+                        if not response.text:
+                            raise Exception(f"Gemini blocked the response. Prompt feedback: {response.prompt_feedback if hasattr(response, 'prompt_feedback') else 'No feedback'}")
+
+                        response_text = response.text
+                        break  # Success, exit loop
+                    except Exception as e:
+                        last_error = e
+                        continue  # Try next model
+
+                if not response_text:
+                    raise Exception(f"All Gemini models failed. Last error: {str(last_error)}")
+
+            # Parse JSON response
+            try:
+                parsed_response = json.loads(response_text)
+                return Response({
+                    'description': parsed_response.get('description', ''),
+                    'requirements': parsed_response.get('requirements', '')
+                })
+            except json.JSONDecodeError:
+                # Try to extract content manually
+                desc_match = re.search(r'"description":\s*"([^"]*(?:\\.[^"]*)*)"', response_text)
+                req_match = re.search(r'"requirements":\s*"([^"]*(?:\\.[^"]*)*)"', response_text)
+
+                if desc_match and req_match:
+                    return Response({
+                        'description': desc_match.group(1).replace('\\n', '\n').replace('\\"', '"'),
+                        'requirements': req_match.group(1).replace('\\n', '\n').replace('\\"', '"')
+                    })
+
+                # Fallback response
+                return Response({
+                    'description': response_text,
+                    'requirements': 'Please review the generated description and specify requirements.'
+                })
+
+        except Exception as ai_error:
+            logger.error(f"{ai_provider.capitalize()} API error: {ai_error}")
+            return Response(
+                {'error': f'AI generation failed: {str(ai_error)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    except Exception as e:
+        logger.error(f"Job description generation error: {e}")
+        return Response(
+            {'error': f'Failed to generate job description: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@csrf_exempt
+@api_view(['POST'])
+def generate_questions_ai(request):
+    """
+    Generate feedback form questions using AI (server-side)
+
+    Expected POST data:
+    {
+        "topic": str,
+        "num_questions": int,
+        "question_types": list[str],
+        "include_answers": bool,
+        "custom_prompt": str (optional),
+        "aiProvider": str,
+        "aiApiKey": str,
+        "systemPrompt": str (optional)
+    }
+    """
+    try:
+        # Extract request data
+        topic = request.data.get('topic')
+        num_questions = request.data.get('num_questions', 5)
+        question_types = request.data.get('question_types', ['text', 'textarea'])
+        include_answers = request.data.get('include_answers', False)
+        custom_prompt = request.data.get('custom_prompt', '')
+        ai_provider = request.data.get('aiProvider', 'anthropic').lower()
+        ai_api_key = request.data.get('aiApiKey')
+        system_prompt = request.data.get('systemPrompt')
+
+        # Validate required fields
+        if not all([topic, ai_api_key]):
+            return Response(
+                {'error': 'Missing required fields: topic, aiApiKey'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validate provider availability
+        if ai_provider == 'anthropic' and not ANTHROPIC_AVAILABLE:
+            return Response(
+                {'error': 'Anthropic SDK not installed. Please install it: pip install anthropic'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider == 'openai' and not OPENAI_AVAILABLE:
+            return Response(
+                {'error': 'OpenAI SDK not installed. Please install it: pip install openai'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider == 'google' and not GEMINI_AVAILABLE:
+            return Response(
+                {'error': 'Google Gemini SDK not installed. Please install it: pip install google-generativeai'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider == 'perplexity' and not OPENAI_AVAILABLE:
+            return Response(
+                {'error': 'OpenAI SDK not installed (required for Perplexity). Please install it: pip install openai'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider == 'groq' and not OPENAI_AVAILABLE:
+            return Response(
+                {'error': 'OpenAI SDK not installed (required for Groq). Please install it: pip install openai'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider not in ['anthropic', 'openai', 'google', 'perplexity', 'groq']:
+            return Response(
+                {'error': f'Unsupported AI provider: {ai_provider}. Supported providers: anthropic, openai, google, perplexity, groq'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Default system prompt
+        default_system_prompt = f"""You are an expert interview and feedback form designer. Generate professional, insightful questions for feedback forms.
+
+Your task is to generate {num_questions} questions about "{topic}".
+
+Requirements:
+- Create diverse, thoughtful questions
+- Make questions specific and actionable
+- Include a mix of question types if specified
+- Questions should be professional and unbiased
+- {'Provide sample answers for each question' if include_answers else 'Only provide the questions'}
+
+Format your response as valid JSON with this structure:
+{{
+  "questions": [
+    {{
+      "text": "Your question here",
+      "type": "text",
+      "required": true{', "answer": "Sample answer here"' if include_answers else ''}
+    }}
+  ]
+}}"""
+
+        final_system_prompt = system_prompt if system_prompt else default_system_prompt
+
+        # Build user prompt
+        user_prompt = f"""Generate {num_questions} professional feedback questions about "{topic}".
+
+Question requirements:
+- Topic: {topic}
+- Number of questions: {num_questions}
+- Question types: {', '.join(question_types)}
+- Include answers: {'Yes' if include_answers else 'No'}
+
+{f'Additional requirements: {custom_prompt}' if custom_prompt else ''}
+
+Please respond with valid JSON containing an array of questions."""
+
+        # Call appropriate AI provider API
+        try:
+            response_text = None
+
+            if ai_provider == 'anthropic':
+                client = Anthropic(api_key=ai_api_key)
+                message = client.messages.create(
+                    model="claude-3-haiku-20240307",
+                    max_tokens=2000,
+                    temperature=0.7,
+                    system=final_system_prompt,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": user_prompt
+                        }
+                    ]
+                )
+                response_content = message.content[0]
+                if response_content.type != 'text':
+                    raise Exception('Unexpected response type from Claude')
+                response_text = response_content.text
+
+            elif ai_provider == 'openai':
+                client = openai.OpenAI(api_key=ai_api_key)
+                completion = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": final_system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    max_tokens=2000,
+                    temperature=0.7
+                )
+                response_text = completion.choices[0].message.content
+
+            elif ai_provider == 'perplexity':
+                client = openai.OpenAI(
+                    api_key=ai_api_key,
+                    base_url="https://api.perplexity.ai"
+                )
+                completion = client.chat.completions.create(
+                    model="llama-3.1-sonar-small-128k-online",
+                    messages=[
+                        {"role": "system", "content": final_system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    max_tokens=2000,
+                    temperature=0.7
+                )
+                response_text = completion.choices[0].message.content
+
+            elif ai_provider == 'groq':
+                client = openai.OpenAI(
+                    api_key=ai_api_key,
+                    base_url="https://api.groq.com/openai/v1"
+                )
+                completion = client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=[
+                        {"role": "system", "content": final_system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    max_tokens=2000,
+                    temperature=0.7
+                )
+                response_text = completion.choices[0].message.content
+
+            elif ai_provider == 'google':
+                genai.configure(api_key=ai_api_key)
+
+                # Try models in order of preference
+                model_names = ['gemini-1.5-pro', 'gemini-1.0-pro', 'gemini-pro']
+                response_text = None
+                last_error = None
+
+                for model_name in model_names:
+                    try:
+                        model = genai.GenerativeModel(model_name)
+                        full_prompt = f"{final_system_prompt}\n\n{user_prompt}"
+
+                        # Configure safety settings to be less restrictive
+                        safety_settings = [
+                            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+                        ]
+
+                        response = model.generate_content(
+                            full_prompt,
+                            safety_settings=safety_settings
+                        )
+
+                        # Check if response was blocked
+                        if not response.text:
+                            raise Exception(f"Gemini blocked the response. Prompt feedback: {response.prompt_feedback if hasattr(response, 'prompt_feedback') else 'No feedback'}")
+
+                        response_text = response.text
+                        break  # Success, exit loop
+                    except Exception as e:
+                        last_error = e
+                        continue  # Try next model
+
+                if not response_text:
+                    raise Exception(f"All Gemini models failed. Last error: {str(last_error)}")
+
+            # Try to extract JSON from response
+            json_match = re.search(r'\{[\s\S]*\}', response_text)
+            if json_match:
+                try:
+                    parsed = json.loads(json_match.group(0))
+                    if 'questions' in parsed and isinstance(parsed['questions'], list):
+                        # Format questions properly
+                        formatted_questions = []
+                        for idx, q in enumerate(parsed['questions']):
+                            formatted_q = {
+                                'id': idx + 1,
+                                'text': q.get('text') or q.get('question', ''),
+                                'type': q.get('type', question_types[idx % len(question_types)]),
+                                'required': q.get('required', True),
+                                'ai_generated': True
+                            }
+                            if include_answers and 'answer' in q:
+                                formatted_q['answer'] = q['answer']
+                            formatted_questions.append(formatted_q)
+
+                        return Response({'questions': formatted_questions})
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Failed to parse AI JSON response: {e}")
+
+            # Fallback: create questions from text content
+            lines = [line.strip() for line in response_text.split('\n') if line.strip() and ('?' in line or 'question' in line.lower())]
+            fallback_questions = []
+            for idx, line in enumerate(lines[:num_questions]):
+                fallback_questions.append({
+                    'id': idx + 1,
+                    'text': re.sub(r'^\d+\.?\s*', '', line).strip(),
+                    'type': question_types[idx % len(question_types)],
+                    'required': True,
+                    'ai_generated': True
+                })
+
+            return Response({'questions': fallback_questions})
+
+        except Exception as ai_error:
+            logger.error(f"{ai_provider.capitalize()} API error: {ai_error}")
+            return Response(
+                {'error': f'AI generation failed: {str(ai_error)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    except Exception as e:
+        logger.error(f"Questions generation error: {e}")
+        return Response(
+            {'error': f'Failed to generate questions: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
