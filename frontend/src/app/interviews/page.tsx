@@ -18,7 +18,8 @@ import {
   XCircle,
   AlertCircle,
   FileText,
-  Download
+  Download,
+  Loader2
 } from 'lucide-react'
 
 interface InterviewCandidate {
@@ -198,106 +199,125 @@ export default function InterviewsPage() {
 
   return (
     <ProtectedRoute>
-      <div className="container mx-auto p-6 space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Interviews</h1>
-            <p className="text-gray-600 mt-1">Manage and schedule candidate interviews</p>
-          </div>
-          <div className="flex items-center gap-4">
-            <Badge variant="outline" className="text-lg px-4 py-2">
-              <User className="h-4 w-4 mr-2" />
-              {candidates.length} Candidate{candidates.length !== 1 ? 's' : ''}
-            </Badge>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+        {/* Header Section */}
+        <div className="bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+              <div className="space-y-1">
+                <h1 className="text-2xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
+                  Interview Management
+                </h1>
+                <p className="text-slate-600 text-sm">Manage and schedule candidate interviews</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <Badge variant="outline" className="text-sm px-3 py-1.5 border-blue-200 bg-blue-50">
+                  <User className="h-3.5 w-3.5 mr-1.5" />
+                  {candidates.length} Candidate{candidates.length !== 1 ? 's' : ''}
+                </Badge>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Filter Tabs */}
-        <div className="flex gap-2">
-          <Button
-            onClick={() => setFilterStatus('all')}
-            size="sm"
-            className={filterStatus === 'all' ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}
-          >
-            All ({candidates.length})
-          </Button>
-          <Button
-            onClick={() => setFilterStatus('scheduled')}
-            size="sm"
-            className={filterStatus === 'scheduled' ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}
-          >
-            Scheduled ({candidates.filter(c => c.retell_interview_scheduled).length})
-          </Button>
-          <Button
-            onClick={() => setFilterStatus('pending')}
-            size="sm"
-            className={filterStatus === 'pending' ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}
-          >
-            Pending ({candidates.filter(c => !c.retell_interview_scheduled).length})
-          </Button>
-        </div>
-
-        {/* Candidates List */}
-        {loading ? (
-          <div className="text-center py-12">
-            <p className="text-gray-500">Loading candidates...</p>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+          {/* Filter Tabs */}
+          <div className="flex gap-2 bg-white p-1 rounded-lg shadow-sm border border-slate-200 w-fit">
+            <Button
+              onClick={() => setFilterStatus('all')}
+              size="sm"
+              variant={filterStatus === 'all' ? 'default' : 'ghost'}
+              className={filterStatus === 'all'
+                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-md'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'}
+            >
+              All ({candidates.length})
+            </Button>
+            <Button
+              onClick={() => setFilterStatus('scheduled')}
+              size="sm"
+              variant={filterStatus === 'scheduled' ? 'default' : 'ghost'}
+              className={filterStatus === 'scheduled'
+                ? 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white shadow-md'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'}
+            >
+              Scheduled ({candidates.filter(c => c.retell_interview_scheduled).length})
+            </Button>
+            <Button
+              onClick={() => setFilterStatus('pending')}
+              size="sm"
+              variant={filterStatus === 'pending' ? 'default' : 'ghost'}
+              className={filterStatus === 'pending'
+                ? 'bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 text-white shadow-md'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'}
+            >
+              Pending ({candidates.filter(c => !c.retell_interview_scheduled).length})
+            </Button>
           </div>
-        ) : filteredCandidates.length === 0 ? (
-          <Card className="p-12 text-center">
-            <AlertCircle className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">No Candidates Found</h3>
-            <p className="text-gray-600">
-              {filterStatus === 'all'
-                ? 'No candidates are currently in the interview stage.'
-                : filterStatus === 'scheduled'
-                ? 'No interviews have been scheduled yet.'
-                : 'All candidates have scheduled interviews.'}
-            </p>
-          </Card>
-        ) : (
-          <div className="grid gap-6">
-            {filteredCandidates.map(candidate => (
-              <Card key={candidate.id} className="p-6">
-                <div className="space-y-4">
-                  {/* Header - Name and Status */}
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3">
-                        <h3 className="text-xl font-bold text-gray-900">{candidate.name}</h3>
-                        <Badge className="bg-blue-100 text-blue-800">
-                          Interviewing
-                        </Badge>
+
+          {/* Candidates List */}
+          {loading ? (
+            <div className="text-center py-16">
+              <div className="inline-flex items-center gap-3 px-6 py-3 bg-white rounded-lg shadow-sm border border-slate-200">
+                <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+                <p className="text-slate-600 text-sm">Loading candidates...</p>
+              </div>
+            </div>
+          ) : filteredCandidates.length === 0 ? (
+            <Card className="p-16 text-center bg-white/80 backdrop-blur-sm shadow-lg border border-slate-200">
+              <AlertCircle className="h-16 w-16 mx-auto text-slate-400 mb-4" />
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">No Candidates Found</h3>
+              <p className="text-slate-600 text-sm max-w-md mx-auto">
+                {filterStatus === 'all'
+                  ? 'No candidates are currently in the interview stage.'
+                  : filterStatus === 'scheduled'
+                  ? 'No interviews have been scheduled yet.'
+                  : 'All candidates have scheduled interviews.'}
+              </p>
+            </Card>
+          ) : (
+            <div className="grid gap-5">
+              {filteredCandidates.map(candidate => (
+                <Card key={candidate.id} className="p-5 bg-white/80 backdrop-blur-sm hover:shadow-xl transition-all duration-200 border border-slate-200">
+                  <div className="space-y-4">
+                    {/* Header - Name and Status */}
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3">
+                          <h3 className="text-lg font-bold text-slate-900">{candidate.name}</h3>
+                          <Badge className="bg-gradient-to-r from-blue-500 to-indigo-500 text-white text-xs px-2 py-0.5 shadow-sm">
+                            Interviewing
+                          </Badge>
+                        </div>
+
+                        {candidate.jobTitle && (
+                          <p className="text-sm text-indigo-600 mt-1 flex items-center gap-1">
+                            <Briefcase className="h-3.5 w-3.5" />
+                            Applied for: {candidate.jobTitle}
+                          </p>
+                        )}
                       </div>
 
-                      {candidate.jobTitle && (
-                        <p className="text-sm text-blue-600 mt-1 flex items-center gap-1">
-                          <Briefcase className="h-3 w-3" />
-                          Applied for: {candidate.jobTitle}
-                        </p>
-                      )}
+                      {/* Action Buttons */}
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => updateCandidateStatus(candidate.id, 'hired')}
+                          className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white shadow-md text-xs px-3 py-1.5"
+                        >
+                          <CheckCircle className="h-3.5 w-3.5 mr-1" />
+                          Hire
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => updateCandidateStatus(candidate.id, 'rejected')}
+                          className="bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white shadow-md text-xs px-3 py-1.5"
+                        >
+                          <XCircle className="h-3.5 w-3.5 mr-1" />
+                          Reject
+                        </Button>
+                      </div>
                     </div>
-
-                    {/* Action Buttons */}
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        onClick={() => updateCandidateStatus(candidate.id, 'hired')}
-                        className="bg-blue-600 hover:bg-blue-700 text-white"
-                      >
-                        <CheckCircle className="h-4 w-4 mr-1" />
-                        Hire
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={() => updateCandidateStatus(candidate.id, 'rejected')}
-                        className="bg-blue-600 hover:bg-blue-700 text-white"
-                      >
-                        <XCircle className="h-4 w-4 mr-1" />
-                        Reject
-                      </Button>
-                    </div>
-                  </div>
 
                   {/* Contact Info */}
                   <div className="grid grid-cols-2 gap-4">
@@ -531,6 +551,7 @@ export default function InterviewsPage() {
             ))}
           </div>
         )}
+        </div>
       </div>
     </ProtectedRoute>
   )

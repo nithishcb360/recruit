@@ -60,34 +60,34 @@ export default function Modal({
       />
       
       {/* Modal */}
-      <div className="fixed inset-0 flex  justify-center p-4">
-        <div 
-          className={`relative w-full ${maxWidthClasses[maxWidth]} max-h-[90vh] transform rounded-lg bg-white shadow-xl transition-all flex flex-col`}
+      <div className="fixed inset-0 flex items-center justify-center p-3">
+        <div
+          className={`relative w-full ${maxWidthClasses[maxWidth]} max-h-[80vh] transform rounded-lg bg-white shadow-xl transition-all flex flex-col text-xs`}
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
           {(title || showCloseButton) && (
-            <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+            <div className="flex items-center justify-between border-b border-gray-200 px-3 py-2 flex-shrink-0">
               {title && (
-                <h2 className="text-xl font-semibold text-gray-900">
+                <h2 className="text-sm font-semibold text-gray-900">
                   {title}
                 </h2>
               )}
               {showCloseButton && (
                 <button
                   onClick={onClose}
-                  className="rounded-full p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
               )}
             </div>
           )}
-          
+
           {/* Content */}
-          <div className="flex-1 overflow-y-auto px-6 py-4">
+          <div className="flex-1 overflow-y-auto px-3 py-2 min-h-0">
             {children}
           </div>
         </div>
