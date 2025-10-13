@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Filter, Loader2, SortAsc, SortDesc, Search, X, Trash2, FileText, Target } from "lucide-react"
+import { Filter, Loader2, SortAsc, SortDesc, Search, X, Trash2, FileText, Target, GitCompare } from "lucide-react"
 import CandidateCard from "@/components/candidate-card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import Modal from "@/components/ui/modal"
@@ -261,6 +261,8 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
   const [selectedCandidateForDetails, setSelectedCandidateForDetails] = useState<Candidate | null>(null)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [candidateToDelete, setCandidateToDelete] = useState<Candidate | null>(null)
+  const [isCompareModalOpen, setIsCompareModalOpen] = useState(false)
+  const [candidateForComparison, setCandidateForComparison] = useState<Candidate | null>(null)
 
   // Helper function for fetch with timeout and complete error suppression
   const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs: number = 5000): Promise<Response> => {
@@ -921,12 +923,25 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
     }
   }
 
+  const handleCompareClick = (candidate: Candidate) => {
+    if (!selectedJob) {
+      toast({
+        title: "No Job Selected",
+        description: "Please select a job to compare with the candidate's resume.",
+        variant: "destructive"
+      })
+      return
+    }
+    setCandidateForComparison(candidate)
+    setIsCompareModalOpen(true)
+  }
+
   const handleEditProfile = (updatedCandidate: Candidate) => {
     // Update the local candidates state
-    setCandidates(prev => prev.map(c => 
+    setCandidates(prev => prev.map(c =>
       c.id === updatedCandidate.id ? updatedCandidate : c
     ))
-    
+
     toast({
       title: "Profile Updated",
       description: `${updatedCandidate.name}'s profile has been updated successfully.`,
@@ -1362,24 +1377,6 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
                                         } shadow-lg`} />
                                       </div>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-2 w-full max-w-32">
-                                      <div className="bg-blue-50 px-2 py-1 rounded text-xs text-blue-700 text-center">
-                                        <div className="font-medium">Title</div>
-                                        <div className="font-bold">{candidate.selectedJobMatch.jobMatchDetails.jobTitleScore}%</div>
-                                      </div>
-                                      <div className="bg-green-50 px-2 py-1 rounded text-xs text-green-700 text-center">
-                                        <div className="font-medium">Dept</div>
-                                        <div className="font-bold">{candidate.selectedJobMatch.jobMatchDetails.departmentScore}%</div>
-                                      </div>
-                                      <div className="bg-purple-50 px-2 py-1 rounded text-xs text-purple-700 text-center">
-                                        <div className="font-medium">Exp</div>
-                                        <div className="font-bold">{candidate.selectedJobMatch.jobMatchDetails.experienceScore}%</div>
-                                      </div>
-                                      <div className="bg-orange-50 px-2 py-1 rounded text-xs text-orange-700 text-center">
-                                        <div className="font-medium">Loc</div>
-                                        <div className="font-bold">{candidate.selectedJobMatch.jobMatchDetails.locationScore}%</div>
-                                      </div>
-                                    </div>
                                   </>
                                 ) : (
                                   <div className="text-slate-400 bg-slate-50 px-4 py-2 rounded-lg">
@@ -1409,16 +1406,28 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
                                 <FileText className="h-4 w-4" />
                               </Button>
                           {selectedJob && candidate.selectedJobMatch && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleMoveToScreeningForJob(candidate, selectedJob.id)}
-                              className="text-white bg-purple-600 hover:bg-purple-700 border-purple-600"
-                              title="Move to Screening"
-                            >
-                              <Target className="h-4 w-4 mr-2" />
-                              Screening
-                            </Button>
+                            <>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleCompareClick(candidate)}
+                                className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white border-orange-600 shadow-lg hover:shadow-xl transition-all duration-200"
+                                title="Compare JD vs Resume"
+                              >
+                                <GitCompare className="h-4 w-4 mr-2" />
+                                Compare
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleMoveToScreeningForJob(candidate, selectedJob.id)}
+                                className="text-white bg-purple-600 hover:bg-purple-700 border-purple-600"
+                                title="Move to Screening"
+                              >
+                                <Target className="h-4 w-4 mr-2" />
+                                Screening
+                              </Button>
+                            </>
                           )}
                           <Button
                             variant="outline"
@@ -1556,6 +1565,424 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Comparison Modal */}
+      <Dialog open={isCompareModalOpen} onOpenChange={setIsCompareModalOpen}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto text-xs bg-white">
+          <DialogHeader>
+            <DialogTitle className="text-black text-sm flex items-center gap-2">
+              <GitCompare className="h-4 w-4 text-orange-600" />
+              JD vs Resume Comparison
+            </DialogTitle>
+          </DialogHeader>
+          {candidateForComparison && selectedJob && (
+            <div className="space-y-4 bg-white">
+              {/* Header Info */}
+              <div className="grid grid-cols-2 gap-3 p-3 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-200">
+                <div>
+                  <h3 className="text-xs font-semibold text-gray-900 mb-1">Candidate</h3>
+                  <p className="text-sm font-bold text-blue-700">{candidateForComparison.name}</p>
+                  <p className="text-xs text-gray-600">{candidateForComparison.email}</p>
+                </div>
+                <div>
+                  <h3 className="text-xs font-semibold text-gray-900 mb-1">Job Position</h3>
+                  <p className="text-sm font-bold text-purple-700">{selectedJob.title}</p>
+                  <p className="text-xs text-gray-600">{selectedJob.department?.name}</p>
+                </div>
+              </div>
+
+              {/* Match Score */}
+              {candidateForComparison.selectedJobMatch && (
+                <div className="p-4 bg-gradient-to-br from-orange-50 to-amber-50 rounded-lg border border-orange-300">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xs font-semibold text-gray-900 mb-1">Overall Match Score</h3>
+                      <p className="text-3xl font-bold bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">
+                        {candidateForComparison.selectedJobMatch.matchPercentage}%
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="bg-white p-2 rounded-lg shadow text-center">
+                        <div className="text-xs text-gray-600 mb-1">Job Title</div>
+                        <div className="text-lg font-bold text-blue-600">
+                          {candidateForComparison.selectedJobMatch.jobMatchDetails.jobTitleScore}%
+                        </div>
+                      </div>
+                      <div className="bg-white p-2 rounded-lg shadow text-center">
+                        <div className="text-xs text-gray-600 mb-1">Experience</div>
+                        <div className="text-lg font-bold text-purple-600">
+                          {(() => {
+                            const EXPERIENCE_LEVELS: {[key: string]: number} = {
+                              'entry': 1,
+                              'junior': 2,
+                              'mid': 3,
+                              'senior': 4,
+                              'lead': 5,
+                              'principal': 6
+                            }
+                            const requiredLevel = EXPERIENCE_LEVELS[selectedJob.experience_level?.toLowerCase() || ''] || 3
+                            const candidateYears = candidateForComparison.totalExperience || 0
+                            let experienceMatch = 0
+                            if (requiredLevel === 1 && candidateYears >= 0) experienceMatch = 100
+                            else if (requiredLevel === 2 && candidateYears >= 1) experienceMatch = Math.min(100, (candidateYears / 2) * 100)
+                            else if (requiredLevel === 3 && candidateYears >= 3) experienceMatch = Math.min(100, (candidateYears / 5) * 100)
+                            else if (requiredLevel === 4 && candidateYears >= 5) experienceMatch = Math.min(100, (candidateYears / 7) * 100)
+                            else if (requiredLevel === 5 && candidateYears >= 7) experienceMatch = Math.min(100, (candidateYears / 10) * 100)
+                            else if (requiredLevel === 6 && candidateYears >= 10) experienceMatch = Math.min(100, (candidateYears / 12) * 100)
+                            else experienceMatch = Math.max(0, Math.min(100, (candidateYears / (requiredLevel * 2)) * 100))
+                            return Math.round(experienceMatch)
+                          })()}%
+                        </div>
+                      </div>
+                      <div className="bg-white p-2 rounded-lg shadow text-center">
+                        <div className="text-xs text-gray-600 mb-1">Skill Match</div>
+                        <div className="text-lg font-bold text-green-600">
+                          {(() => {
+                            const jdText = `${selectedJob.title} ${selectedJob.description || ''} ${selectedJob.requirements || ''} ${selectedJob.department?.name || ''}`.toLowerCase()
+                            const resumeText = `${candidateForComparison.jobTitle} ${candidateForComparison.resumeText || ''} ${candidateForComparison.skillExperience?.map(s => s.skill).join(' ') || ''}`.toLowerCase()
+                            const allKeywords = ['javascript', 'python', 'java', 'react', 'angular', 'vue', 'node', 'nodejs', 'typescript', 'html', 'css', 'sql', 'mongodb', 'postgresql', 'mysql', 'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'git', 'api', 'rest', 'agile', 'scrum', 'devops', 'ci/cd', 'jenkins', 'testing', 'junit', 'frontend', 'backend', 'fullstack', 'full stack', 'mobile', 'android', 'ios', 'machine learning', 'ai', 'data', 'analytics', 'cloud', 'microservices', 'leadership', 'management', 'team lead', 'communication', 'problem solving', 'design', 'ui', 'ux', 'figma', 'photoshop', 'sketch', 'express', 'django', 'spring', 'redis', 'elasticsearch', 'graphql', 'webpack', 'redux', 'terraform', 'ansible', 'linux', 'bash', 'shell']
+                            const matchingKeywords: string[] = []
+                            const missingInResume: string[] = []
+                            allKeywords.forEach(keyword => {
+                              const inJD = jdText.includes(keyword)
+                              const inResume = resumeText.includes(keyword)
+                              if (inJD && inResume) {
+                                matchingKeywords.push(keyword)
+                              } else if (inJD && !inResume) {
+                                missingInResume.push(keyword)
+                              }
+                            })
+                            candidateForComparison.skillExperience?.forEach(skill => {
+                              const skillLower = skill.skill.toLowerCase()
+                              if (jdText.includes(skillLower) && !matchingKeywords.some(k => k.toLowerCase() === skillLower)) {
+                                matchingKeywords.push(skill.skill)
+                              }
+                            })
+                            return Math.round((matchingKeywords.length / (matchingKeywords.length + missingInResume.length)) * 100) || 0
+                          })()}%
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Matching Keywords Only */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-bold text-gray-900 pb-1 border-b border-gray-300 flex items-center gap-2">
+                  <span>🔍</span> Matching Keywords (JD vs Resume)
+                </h3>
+
+                {/* Extract matching keywords only */}
+                {(() => {
+                  // Extract keywords from JD and Resume
+                  const jdText = `${selectedJob.title} ${selectedJob.description || ''} ${selectedJob.requirements || ''} ${selectedJob.department?.name || ''}`.toLowerCase()
+                  const resumeText = `${candidateForComparison.jobTitle} ${candidateForComparison.resumeText || ''} ${candidateForComparison.skillExperience?.map(s => s.skill).join(' ') || ''}`.toLowerCase()
+
+                  // Common technical and professional keywords
+                  const allKeywords = [
+                    'javascript', 'python', 'java', 'react', 'angular', 'vue', 'node', 'nodejs',
+                    'typescript', 'html', 'css', 'sql', 'mongodb', 'postgresql', 'mysql',
+                    'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'git', 'api', 'rest',
+                    'agile', 'scrum', 'devops', 'ci/cd', 'jenkins', 'testing', 'junit',
+                    'frontend', 'backend', 'fullstack', 'full stack', 'mobile', 'android', 'ios',
+                    'machine learning', 'ai', 'data', 'analytics', 'cloud', 'microservices',
+                    'leadership', 'management', 'team lead', 'communication', 'problem solving',
+                    'design', 'ui', 'ux', 'figma', 'photoshop', 'sketch', 'express', 'django',
+                    'spring', 'redis', 'elasticsearch', 'graphql', 'webpack', 'redux',
+                    'terraform', 'ansible', 'linux', 'bash', 'shell'
+                  ]
+
+                  // Categorize all keywords with comparison
+                  const matchingKeywords: string[] = []
+                  const missingInResume: string[] = []
+                  const extraInResume: string[] = []
+
+                  allKeywords.forEach(keyword => {
+                    const inJD = jdText.includes(keyword)
+                    const inResume = resumeText.includes(keyword)
+
+                    if (inJD && inResume) {
+                      matchingKeywords.push(keyword)
+                    } else if (inJD && !inResume) {
+                      missingInResume.push(keyword)
+                    } else if (!inJD && inResume) {
+                      extraInResume.push(keyword)
+                    }
+                  })
+
+                  // Add candidate skills to appropriate categories
+                  candidateForComparison.skillExperience?.forEach(skill => {
+                    const skillLower = skill.skill.toLowerCase()
+                    if (jdText.includes(skillLower) && !matchingKeywords.some(k => k.toLowerCase() === skillLower)) {
+                      matchingKeywords.push(skill.skill)
+                    } else if (!jdText.includes(skillLower) && !extraInResume.some(k => k.toLowerCase() === skillLower)) {
+                      extraInResume.push(skill.skill)
+                    }
+                  })
+
+                  const matchPercentage = Math.round((matchingKeywords.length / (matchingKeywords.length + missingInResume.length)) * 100) || 0
+
+                  return (
+                    <div className="space-y-3">
+                      {/* Overall Match Percentage */}
+                      <div className="bg-gradient-to-r from-purple-100 to-blue-100 p-3 rounded-lg border border-purple-300 text-center">
+                        <div className="text-2xl font-bold text-purple-700 mb-1">
+                          {matchPercentage}%
+                        </div>
+                        <div className="text-xs text-purple-900 font-medium">
+                          Keyword Match Rate ({matchingKeywords.length} of {matchingKeywords.length + missingInResume.length} required)
+                        </div>
+                      </div>
+
+                      {/* Comparison Grid */}
+                      <div className="grid grid-cols-3 gap-3">
+                        {/* Matching Keywords */}
+                        <div className="bg-green-50 p-3 rounded-lg border border-green-300">
+                          <div className="flex items-center justify-between mb-2">
+                            <h4 className="text-xs font-bold text-green-900 flex items-center gap-1">
+                              <span>✅</span> Matching
+                            </h4>
+                            <span className="bg-green-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                              {matchingKeywords.length}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-1 max-h-48 overflow-y-auto">
+                            {matchingKeywords.length > 0 ? (
+                              matchingKeywords.map((keyword, idx) => (
+                                <span key={idx} className="px-1.5 py-0.5 bg-green-100 text-green-800 rounded text-xs font-medium border border-green-300">
+                                  {keyword}
+                                </span>
+                              ))
+                            ) : (
+                              <p className="text-xs text-green-700">No matches</p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Missing in Resume */}
+                        <div className="bg-red-50 p-3 rounded-lg border border-red-300">
+                          <div className="flex items-center justify-between mb-2">
+                            <h4 className="text-xs font-bold text-red-900 flex items-center gap-1">
+                              <span>❌</span> Missing
+                            </h4>
+                            <span className="bg-red-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                              {missingInResume.length}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-1 max-h-48 overflow-y-auto">
+                            {missingInResume.length > 0 ? (
+                              missingInResume.map((keyword, idx) => (
+                                <span key={idx} className="px-1.5 py-0.5 bg-red-100 text-red-800 rounded text-xs font-medium border border-red-300">
+                                  {keyword}
+                                </span>
+                              ))
+                            ) : (
+                              <p className="text-xs text-red-700">All covered!</p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Extra Skills */}
+                        <div className="bg-blue-50 p-3 rounded-lg border border-blue-300">
+                          <div className="flex items-center justify-between mb-2">
+                            <h4 className="text-xs font-bold text-blue-900 flex items-center gap-1">
+                              <span>➕</span> Bonus
+                            </h4>
+                            <span className="bg-blue-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                              {extraInResume.length}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-1 max-h-48 overflow-y-auto">
+                            {extraInResume.length > 0 ? (
+                              extraInResume.map((keyword, idx) => (
+                                <span key={idx} className="px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded text-xs font-medium border border-blue-300">
+                                  {keyword}
+                                </span>
+                              ))
+                            ) : (
+                              <p className="text-xs text-blue-700">No extras</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })()}
+              </div>
+
+              {/* Experience Comparison */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-bold text-gray-900 pb-1 border-b border-gray-300 flex items-center gap-2">
+                  <span>💼</span> Experience Comparison
+                </h3>
+                {(() => {
+                  // Calculate experience match percentage based on year range
+                  const candidateYears = candidateForComparison.totalExperience || 0
+
+                  // Parse experience_range field like "5-7" or use min/max fields
+                  let minYears = (selectedJob as any).min_experience_years || 0
+                  let maxYears = (selectedJob as any).max_experience_years || 0
+
+                  const experienceRange = (selectedJob as any).experience_range || ''
+                  if (experienceRange && experienceRange.includes('-')) {
+                    const [min, max] = experienceRange.split('-').map((s: string) => parseInt(s.trim()))
+                    if (!isNaN(min)) minYears = min
+                    if (!isNaN(max)) maxYears = max
+                  }
+
+                  let experienceMatch = 0
+                  if (minYears > 0 && maxYears > 0) {
+                    // If range is specified, check if candidate falls within range
+                    if (candidateYears >= minYears && candidateYears <= maxYears) {
+                      experienceMatch = 100
+                    } else if (candidateYears < minYears) {
+                      // Below minimum
+                      experienceMatch = Math.max(0, (candidateYears / minYears) * 100)
+                    } else {
+                      // Above maximum
+                      const overflow = candidateYears - maxYears
+                      experienceMatch = Math.max(60, 100 - (overflow * 5)) // Reduce by 5% for each year over
+                    }
+                  } else {
+                    // Fallback to experience level matching if no range specified
+                    const EXPERIENCE_LEVELS: {[key: string]: number} = {
+                      'entry': 1, 'junior': 2, 'mid': 3, 'senior': 4, 'lead': 5, 'principal': 6
+                    }
+                    const requiredLevel = EXPERIENCE_LEVELS[selectedJob.experience_level?.toLowerCase() || ''] || 3
+                    if (requiredLevel === 1 && candidateYears >= 0) experienceMatch = 100
+                    else if (requiredLevel === 2 && candidateYears >= 1) experienceMatch = Math.min(100, (candidateYears / 2) * 100)
+                    else if (requiredLevel === 3 && candidateYears >= 3) experienceMatch = Math.min(100, (candidateYears / 5) * 100)
+                    else if (requiredLevel === 4 && candidateYears >= 5) experienceMatch = Math.min(100, (candidateYears / 7) * 100)
+                    else if (requiredLevel === 5 && candidateYears >= 7) experienceMatch = Math.min(100, (candidateYears / 10) * 100)
+                    else if (requiredLevel === 6 && candidateYears >= 10) experienceMatch = Math.min(100, (candidateYears / 12) * 100)
+                    else experienceMatch = Math.max(0, Math.min(100, (candidateYears / (requiredLevel * 2)) * 100))
+                  }
+
+                  const isMatch = minYears > 0 && maxYears > 0 && candidateYears >= minYears && candidateYears <= maxYears
+
+                  return (
+                    <>
+                      <div className="bg-gradient-to-r from-indigo-100 to-purple-100 p-3 rounded-lg border border-indigo-300 text-center">
+                        <div className="text-2xl font-bold text-indigo-700 mb-1">
+                          {Math.round(experienceMatch)}%
+                        </div>
+                        <div className="text-xs text-indigo-900 font-medium">
+                          Experience Match Rate {isMatch && <span className="text-green-600">✓ In Range</span>}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-gradient-to-br from-blue-50 to-cyan-100 p-4 rounded-xl border border-blue-200 shadow-sm">
+                          <div className="flex items-center gap-2 mb-3">
+                            <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
+                              <span className="text-white text-xs font-bold">JD</span>
+                            </div>
+                            <h4 className="font-bold text-blue-900 text-sm">Job Requirement</h4>
+                          </div>
+                          <div className="space-y-2">
+                            <div className="bg-white/70 p-2 rounded-lg">
+                              <p className="text-xs text-blue-700 font-medium mb-0.5">Required Experience</p>
+                              <p className="text-xs font-bold text-blue-900">
+                                {minYears > 0 && maxYears > 0
+                                  ? `${minYears}-${maxYears} years`
+                                  : selectedJob.experience_level || 'Not specified'}
+                              </p>
+                            </div>
+                            <div className="bg-white/70 p-2 rounded-lg">
+                              <p className="text-xs text-blue-700 font-medium mb-0.5">Level</p>
+                              <p className="text-xs font-bold text-blue-900">{selectedJob.experience_level ? selectedJob.experience_level.charAt(0).toUpperCase() + selectedJob.experience_level.slice(1) : 'Not specified'}</p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="bg-gradient-to-br from-purple-50 to-violet-100 p-4 rounded-xl border border-purple-200 shadow-sm">
+                          <div className="flex items-center gap-2 mb-3">
+                            <div className="w-8 h-8 bg-purple-500 rounded-lg flex items-center justify-center">
+                              <span className="text-white text-sm font-bold">👤</span>
+                            </div>
+                            <h4 className="font-bold text-purple-900 text-sm">Candidate Experience</h4>
+                          </div>
+                          <div className="space-y-2">
+                            <div className="bg-white/70 p-2 rounded-lg">
+                              <p className="text-xs text-purple-700 font-medium mb-0.5">Total Experience</p>
+                              <p className={`text-xs font-bold ${isMatch ? 'text-green-600' : candidateYears < minYears ? 'text-orange-600' : 'text-purple-900'}`}>
+                                {candidateForComparison.totalExperience} years
+                                {minYears > 0 && maxYears > 0 && !isMatch && (
+                                  <span className="text-xs ml-1">
+                                    {candidateYears < minYears ? '(Below range)' : '(Above range)'}
+                                  </span>
+                                )}
+                              </p>
+                            </div>
+                            <div className="bg-white/70 p-2 rounded-lg">
+                              <p className="text-xs text-purple-700 font-medium mb-0.5">Current Position</p>
+                              <p className="text-xs font-bold text-purple-900">{candidateForComparison.jobTitle || 'Not specified'}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )
+                })()}
+              </div>
+
+              {/* Department Comparison */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-bold text-gray-900 pb-1 border-b border-gray-300 flex items-center gap-2">
+                  <span>🏢</span> Department Comparison
+                </h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-gradient-to-br from-green-50 to-emerald-100 p-4 rounded-xl border border-green-200 shadow-sm">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center">
+                        <span className="text-white text-sm font-bold">🏢</span>
+                      </div>
+                      <h4 className="font-bold text-green-900 text-sm">Job Department</h4>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="bg-white/70 p-2 rounded-lg">
+                        <p className="text-xs text-green-700 font-medium mb-0.5">Department</p>
+                        <p className="text-xs font-bold text-green-900">{selectedJob.department?.name || 'Not specified'}</p>
+                      </div>
+                      <div className="bg-white/70 p-2 rounded-lg">
+                        <p className="text-xs text-green-700 font-medium mb-0.5">Role Type</p>
+                        <p className="text-xs font-bold text-green-900">{selectedJob.employment_type || 'Not specified'}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-gradient-to-br from-teal-50 to-cyan-100 p-4 rounded-xl border border-teal-200 shadow-sm">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-8 h-8 bg-teal-500 rounded-lg flex items-center justify-center">
+                        <span className="text-white text-sm font-bold">👔</span>
+                      </div>
+                      <h4 className="font-bold text-teal-900 text-sm">Candidate Background</h4>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="bg-white/70 p-2 rounded-lg">
+                        <p className="text-xs text-teal-700 font-medium mb-0.5">Current Role</p>
+                        <p className="text-xs font-bold text-teal-900">{candidateForComparison.jobTitle || 'Not specified'}</p>
+                      </div>
+                      <div className="bg-white/70 p-2 rounded-lg">
+                        <p className="text-xs text-teal-700 font-medium mb-0.5">Location</p>
+                        <p className="text-xs font-bold text-teal-900">{candidateForComparison.location || 'Not specified'}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Match Insights */}
+              {candidateForComparison.selectedJobMatch?.matchInsights && (
+                <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                  <h3 className="font-semibold text-gray-900 mb-3">✨ Match Insights</h3>
+                  <p className="text-sm text-gray-700">
+                    {candidateForComparison.selectedJobMatch.matchInsights}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
         </div>

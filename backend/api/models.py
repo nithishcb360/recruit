@@ -138,6 +138,9 @@ class Job(models.Model):
     # Job details
     job_type = models.CharField(max_length=20, choices=JOB_TYPE_CHOICES, default='full_time')
     experience_level = models.CharField(max_length=20, choices=EXPERIENCE_LEVEL_CHOICES, default='mid')
+    experience_range = models.CharField(max_length=50, blank=True, help_text='Experience range (e.g., "3-5", "5-7")')
+    min_experience_years = models.PositiveIntegerField(null=True, blank=True, help_text='Minimum years of experience required')
+    max_experience_years = models.PositiveIntegerField(null=True, blank=True, help_text='Maximum years of experience required')
     location = models.CharField(max_length=200, default='Remote')
     work_type = models.CharField(max_length=20, choices=WORK_TYPE_CHOICES, default='remote')
     is_remote = models.BooleanField(default=True)
