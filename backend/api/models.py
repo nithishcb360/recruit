@@ -324,6 +324,19 @@ class Candidate(models.Model):
     retell_public_log_url = models.URLField(blank=True, help_text='Public URL for call logs')
     retell_additional_notes = models.TextField(blank=True, help_text='Additional notes from call analysis')
 
+    # AI Video Interview
+    video_interview_link = models.URLField(blank=True, help_text='Link to AI video interview')
+    video_interview_status = models.CharField(max_length=20, default='pending', help_text='Status: pending/in_progress/completed')
+    video_interview_transcript = models.JSONField(default=list, blank=True, help_text='Full conversation transcript with timestamps')
+    video_interview_recording_url = models.URLField(blank=True, help_text='URL to recorded video')
+    video_interview_started_at = models.DateTimeField(null=True, blank=True, help_text='When interview started')
+    video_interview_completed_at = models.DateTimeField(null=True, blank=True, help_text='When interview completed')
+    video_interview_duration = models.IntegerField(null=True, blank=True, help_text='Interview duration in seconds')
+    video_interview_questions_asked = models.JSONField(default=list, blank=True, help_text='Questions asked by AI')
+    video_interview_responses = models.JSONField(default=list, blank=True, help_text='Candidate responses')
+    video_interview_score = models.IntegerField(null=True, blank=True, help_text='Overall interview score 0-100')
+    video_interview_analysis = models.TextField(blank=True, help_text='AI analysis of interview performance')
+
     # Metadata
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)

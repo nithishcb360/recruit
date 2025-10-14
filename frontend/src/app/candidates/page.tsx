@@ -1918,12 +1918,28 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
 
                   return (
                     <>
-                      <div className="bg-gradient-to-r from-indigo-100 to-purple-100 p-3 rounded-lg border border-indigo-300 text-center">
-                        <div className="text-2xl font-bold text-indigo-700 mb-1">
+                      <div className="bg-gradient-to-r from-indigo-100 to-purple-100 p-4 rounded-lg border border-indigo-300 text-center">
+                        <div className="text-xs text-indigo-600 font-semibold mb-2">
+                          EXPERIENCE MATCH
+                        </div>
+                        <div className="text-3xl font-bold text-indigo-700 mb-2">
                           {Math.round(experienceMatch)}%
                         </div>
                         <div className="text-xs text-indigo-900 font-medium">
-                          Experience Match Rate {isMatch && <span className="text-green-600">✓ In Range</span>}
+                          {isMatch ? (
+                            <span className="text-green-700 flex items-center justify-center gap-1">
+                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/>
+                              </svg>
+                              Perfect Match - Within Range
+                            </span>
+                          ) : candidateYears < minYears ? (
+                            <span className="text-orange-700">Below Required Experience</span>
+                          ) : candidateYears > maxYears ? (
+                            <span className="text-blue-700">Exceeds Required Experience</span>
+                          ) : (
+                            <span className="text-gray-700">Experience Not Specified</span>
+                          )}
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-3">

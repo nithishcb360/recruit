@@ -495,7 +495,35 @@ class CandidateViewSet(viewsets.ModelViewSet):
         elif self.action == 'list':
             return CandidateListSerializer
         return CandidateSerializer
-    
+
+    def update(self, request, *args, **kwargs):
+        """Override update to trigger Retell call when status changes to screening"""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        old_status = instance.status
+
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        # Check if status changed to 'screening'
+        new_status = serializer.instance.status
+        if old_status != 'screening' and new_status == 'screening':
+            # Trigger Retell AI call
+            try:
+                from .retell_service import trigger_screening_call
+                trigger_screening_call(serializer.instance)
+                logger.info(f"Triggered Retell screening call for candidate {serializer.instance.id}")
+            except Exception as e:
+                logger.error(f"Failed to trigger Retell call: {e}")
+
+        return Response(serializer.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        """Override partial_update to use the custom update method"""
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
+
     @action(detail=False, methods=['get'])
     def statistics(self, request):
         """Get candidate statistics"""

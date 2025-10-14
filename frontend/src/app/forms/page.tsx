@@ -1127,25 +1127,6 @@ export default function FeedbackFormBuilder() {
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
-                          {form.status === "draft" ? (
-                            <Button
-                              size="sm"
-                              onClick={() => handlePublishForm(form.id)}
-                              disabled={isSubmitting}
-                              className="bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white shadow-md hover:shadow-lg transition-all duration-200 disabled:opacity-50 px-4 py-2"
-                            >
-                              <Send className="h-4 w-4" />
-                            </Button>
-                          ) : (
-                            <Button
-                              size="sm"
-                              onClick={() => handleUnpublishForm(form.id)}
-                              disabled={isSubmitting}
-                              className="bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white shadow-md hover:shadow-lg transition-all duration-200 disabled:opacity-50 px-4 py-2"
-                            >
-                              <XCircle className="h-4 w-4" />
-                            </Button>
-                          )}
                           <Button
                             size="sm"
                             onClick={() => handleOpenForm(form)}

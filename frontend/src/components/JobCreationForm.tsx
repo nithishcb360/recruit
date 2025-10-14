@@ -1748,11 +1748,11 @@ ${preferredQuals.map(qual => `• ${qual}`).join('\n')}`
 
           {activeStep === 1 && (
           <div className="space-y-8">
-            {/* Job ID and Job Title */}
+            {/* Job Code and Job Title */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Job ID
+                  Job Code
                   <span className="text-xs font-normal text-gray-500 ml-2">(Optional)</span>
                 </label>
                 <input
