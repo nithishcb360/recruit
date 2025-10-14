@@ -495,7 +495,35 @@ class CandidateViewSet(viewsets.ModelViewSet):
         elif self.action == 'list':
             return CandidateListSerializer
         return CandidateSerializer
-    
+
+    def update(self, request, *args, **kwargs):
+        """Override update to trigger Retell call when status changes to screening"""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        old_status = instance.status
+
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        # Check if status changed to 'screening'
+        new_status = serializer.instance.status
+        if old_status != 'screening' and new_status == 'screening':
+            # Trigger Retell AI call
+            try:
+                from .retell_service import trigger_screening_call
+                trigger_screening_call(serializer.instance)
+                logger.info(f"Triggered Retell screening call for candidate {serializer.instance.id}")
+            except Exception as e:
+                logger.error(f"Failed to trigger Retell call: {e}")
+
+        return Response(serializer.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        """Override partial_update to use the custom update method"""
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
+
     @action(detail=False, methods=['get'])
     def statistics(self, request):
         """Get candidate statistics"""
@@ -2209,9 +2237,14 @@ def generate_job_description_ai(request):
                 {'error': 'OpenAI SDK not installed (required for Groq). Please install it: pip install openai'},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE
             )
-        elif ai_provider not in ['anthropic', 'openai', 'google', 'perplexity', 'groq']:
+        elif ai_provider == 'grok' and not OPENAI_AVAILABLE:
             return Response(
-                {'error': f'Unsupported AI provider: {ai_provider}. Supported providers: anthropic, openai, google, perplexity, groq'},
+                {'error': 'OpenAI SDK not installed (required for Grok/xAI). Please install it: pip install openai'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider not in ['anthropic', 'openai', 'google', 'perplexity', 'groq', 'grok']:
+            return Response(
+                {'error': f'Unsupported AI provider: {ai_provider}. Supported providers: anthropic, openai, google, perplexity, groq, grok'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -2337,6 +2370,22 @@ Please respond with valid JSON in this exact format:
                 )
                 completion = client.chat.completions.create(
                     model="llama-3.3-70b-versatile",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    max_tokens=2000,
+                    temperature=0.7
+                )
+                response_text = completion.choices[0].message.content
+
+            elif ai_provider == 'grok':
+                client = openai.OpenAI(
+                    api_key=ai_api_key,
+                    base_url="https://api.x.ai/v1"
+                )
+                completion = client.chat.completions.create(
+                    model="grok-beta",
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt}

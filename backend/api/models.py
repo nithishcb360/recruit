@@ -129,6 +129,7 @@ class Job(models.Model):
     ]
 
     # Basic job information
+    job_id = models.CharField(max_length=100, blank=True, null=True, unique=True, help_text='Custom job ID (e.g., JOB-2024-001)')
     title = models.CharField(max_length=200)
     department = models.ForeignKey(Department, on_delete=models.CASCADE, related_name='jobs')
     description = models.TextField()
@@ -138,6 +139,9 @@ class Job(models.Model):
     # Job details
     job_type = models.CharField(max_length=20, choices=JOB_TYPE_CHOICES, default='full_time')
     experience_level = models.CharField(max_length=20, choices=EXPERIENCE_LEVEL_CHOICES, default='mid')
+    experience_range = models.CharField(max_length=50, blank=True, help_text='Experience range (e.g., "3-5", "5-7")')
+    min_experience_years = models.PositiveIntegerField(null=True, blank=True, help_text='Minimum years of experience required')
+    max_experience_years = models.PositiveIntegerField(null=True, blank=True, help_text='Maximum years of experience required')
     location = models.CharField(max_length=200, default='Remote')
     work_type = models.CharField(max_length=20, choices=WORK_TYPE_CHOICES, default='remote')
     is_remote = models.BooleanField(default=True)
@@ -319,6 +323,19 @@ class Candidate(models.Model):
     retell_end_timestamp = models.BigIntegerField(null=True, blank=True, help_text='Call end timestamp (ms)')
     retell_public_log_url = models.URLField(blank=True, help_text='Public URL for call logs')
     retell_additional_notes = models.TextField(blank=True, help_text='Additional notes from call analysis')
+
+    # AI Video Interview
+    video_interview_link = models.URLField(blank=True, help_text='Link to AI video interview')
+    video_interview_status = models.CharField(max_length=20, default='pending', help_text='Status: pending/in_progress/completed')
+    video_interview_transcript = models.JSONField(default=list, blank=True, help_text='Full conversation transcript with timestamps')
+    video_interview_recording_url = models.URLField(blank=True, help_text='URL to recorded video')
+    video_interview_started_at = models.DateTimeField(null=True, blank=True, help_text='When interview started')
+    video_interview_completed_at = models.DateTimeField(null=True, blank=True, help_text='When interview completed')
+    video_interview_duration = models.IntegerField(null=True, blank=True, help_text='Interview duration in seconds')
+    video_interview_questions_asked = models.JSONField(default=list, blank=True, help_text='Questions asked by AI')
+    video_interview_responses = models.JSONField(default=list, blank=True, help_text='Candidate responses')
+    video_interview_score = models.IntegerField(null=True, blank=True, help_text='Overall interview score 0-100')
+    video_interview_analysis = models.TextField(blank=True, help_text='AI analysis of interview performance')
 
     # Metadata
     created_at = models.DateTimeField(default=timezone.now)

@@ -289,13 +289,28 @@ export default function JobList({ refreshTrigger = 0, onViewDetails, onEditJob }
             >
               <div className="flex justify-between items-start mb-6">
                 <div className="flex-1">
-                  <h3 className="text-lg font-bold text-slate-900 mb-3 hover:text-blue-600 transition-colors duration-200">
-                    {job.title}
-                  </h3>
+                  <div className="flex items-center gap-3 mb-3">
+                    <h3 className="text-lg font-bold text-slate-900 hover:text-blue-600 transition-colors duration-200">
+                      {job.title}
+                    </h3>
+                    {job.job_id && (
+                      <span className="bg-gradient-to-r from-purple-100 to-pink-100 text-purple-800 px-3 py-1 rounded-full font-mono text-xs font-semibold border border-purple-200">
+                        {job.job_id}
+                      </span>
+                    )}
+                  </div>
                   <div className="flex items-center gap-3 text-sm mb-3">
                     <span className="bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-800 px-3 py-1.5 rounded-full font-medium border border-blue-200">
                       {job.department.name}
                     </span>
+                    {job.experience_range && (
+                      <span className="bg-gradient-to-r from-green-100 to-emerald-100 text-green-800 px-3 py-1.5 rounded-full font-medium border border-green-200 flex items-center gap-1">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m8 0h2a2 2 0 012 2v6a2 2 0 01-2 2H6a2 2 0 01-2-2V8a2 2 0 012-2h2" />
+                        </svg>
+                        {job.experience_range} years
+                      </span>
+                    )}
                     <span className="text-slate-600 flex items-center gap-1">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3a2 2 0 012-2h4a2 2 0 012 2v4m-6 0h6m-6 0l-3 3m3-3l3 3M4 7h16M4 7v10a2 2 0 002 2h12a2 2 0 002-2V7" />

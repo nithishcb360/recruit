@@ -276,11 +276,44 @@ export default function FeedbackFormBuilder() {
   }, [toast])
  
   const handleCreateNewForm = () => {
+    // Create default questions based on form type
+    let defaultQuestions: Question[] = []
+
+    if (selectedFormType === 'question_with_answer' || selectedFormType === 'ai_question_with_answer') {
+      // Add default questions with sample answers for question_with_answer type
+      defaultQuestions = [
+        {
+          id: Date.now(),
+          text: "What are your key strengths for this role?",
+          type: "textarea",
+          required: true,
+          order: 1,
+          sample_answer: "I bring strong technical skills in [relevant technologies], excellent problem-solving abilities, and proven experience in [specific area]. My background includes [key achievements] which directly align with this position's requirements."
+        },
+        {
+          id: Date.now() + 1,
+          text: "Describe a challenging project you worked on and how you overcame obstacles.",
+          type: "textarea",
+          required: true,
+          order: 2,
+          sample_answer: "In my previous role, I led a project to [project description]. We faced challenges with [specific obstacle], which I addressed by [solution]. The result was [positive outcome], demonstrating my ability to [relevant skill]."
+        },
+        {
+          id: Date.now() + 2,
+          text: "Why are you interested in this position?",
+          type: "textarea",
+          required: true,
+          order: 3,
+          sample_answer: "I'm excited about this opportunity because [specific reasons related to company/role]. My experience in [relevant area] aligns well with your needs, and I'm particularly drawn to [specific aspect of the role/company]."
+        }
+      ]
+    }
+
     setEditingForm({
       id: 0, // New form
       name: "New Feedback Form",
       description: "",
-      questions: [],
+      questions: defaultQuestions,
       sections: [],
       rating_criteria: [],
       status: "draft",
@@ -949,7 +982,7 @@ export default function FeedbackFormBuilder() {
         </div>
  
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3 bg-white border border-slate-300 rounded-lg p-1">
+          <TabsList className="grid w-full grid-cols-2 bg-white border border-slate-300 rounded-lg p-1">
             <TabsTrigger
               value="forms"
               className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-gray-600 rounded-md font-medium transition-all duration-200 py-2 px-4"
@@ -962,13 +995,6 @@ export default function FeedbackFormBuilder() {
               className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-gray-600 rounded-md font-medium transition-all duration-200 disabled:opacity-50 py-2 px-4"
             >
               Form Builder
-            </TabsTrigger>
-            <TabsTrigger
-              value="preview"
-              disabled={!editingForm}
-              className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-gray-600 rounded-md font-medium transition-all duration-200 disabled:opacity-50 py-2 px-4"
-            >
-              Preview & Response
             </TabsTrigger>
           </TabsList>
  
@@ -1101,25 +1127,6 @@ export default function FeedbackFormBuilder() {
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
-                          {form.status === "draft" ? (
-                            <Button
-                              size="sm"
-                              onClick={() => handlePublishForm(form.id)}
-                              disabled={isSubmitting}
-                              className="bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white shadow-md hover:shadow-lg transition-all duration-200 disabled:opacity-50 px-4 py-2"
-                            >
-                              <Send className="h-4 w-4" />
-                            </Button>
-                          ) : (
-                            <Button
-                              size="sm"
-                              onClick={() => handleUnpublishForm(form.id)}
-                              disabled={isSubmitting}
-                              className="bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white shadow-md hover:shadow-lg transition-all duration-200 disabled:opacity-50 px-4 py-2"
-                            >
-                              <XCircle className="h-4 w-4" />
-                            </Button>
-                          )}
                           <Button
                             size="sm"
                             onClick={() => handleOpenForm(form)}
@@ -1758,184 +1765,6 @@ export default function FeedbackFormBuilder() {
                 </Button>
               </div>
             </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="preview" className="mt-4">
-          {editingForm && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Eye className="h-5 w-5 text-blue-600" />
-                  Form Preview & Response
-                </CardTitle>
-                <CardDescription>Fill out the form and see your responses</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {editingForm.questions && editingForm.questions.length > 0 ? (
-                  editingForm.questions.map((question, index) => (
-                    <div key={question.id} className="border rounded-lg p-4 bg-gray-50">
-                      <div className="mb-3">
-                        <Label className="text-base font-medium">
-                          {index + 1}. {question.text}
-                          {question.required && <span className="text-red-500 ml-1">*</span>}
-                        </Label>
-                        <div className="flex gap-2 mt-1">
-                          <Badge variant="secondary">{question.type}</Badge>
-                          {question.language && <Badge variant="outline">Language: {question.language}</Badge>}
-                        </div>
-                      </div>
-
-                      {/* Response Input based on question type */}
-                      {question.type === "text" && (
-                        <Input
-                          value={builderResponses[question.id] || ''}
-                          onChange={(e) => setBuilderResponses({
-                            ...builderResponses,
-                            [question.id]: e.target.value
-                          })}
-                          placeholder="Type your answer here..."
-                          className="bg-white"
-                        />
-                      )}
-
-                      {question.type === "textarea" && (
-                        <Textarea
-                          value={builderResponses[question.id] || ''}
-                          onChange={(e) => setBuilderResponses({
-                            ...builderResponses,
-                            [question.id]: e.target.value
-                          })}
-                          placeholder="Type your answer here..."
-                          className="bg-white"
-                          rows={4}
-                        />
-                      )}
-
-                      {question.type === "radio" && question.options && (
-                        <div className="space-y-2">
-                          {question.options.map((option, optionIndex) => (
-                            <div key={optionIndex} className="flex items-center space-x-2">
-                              <input
-                                type="radio"
-                                id={`q${question.id}-option${optionIndex}`}
-                                name={`question-${question.id}`}
-                                value={option}
-                                checked={builderResponses[question.id] === option}
-                                onChange={(e) => setBuilderResponses({
-                                  ...builderResponses,
-                                  [question.id]: e.target.value
-                                })}
-                                className="w-4 h-4"
-                              />
-                              <Label htmlFor={`q${question.id}-option${optionIndex}`} className="cursor-pointer">
-                                {option}
-                              </Label>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {question.type === "program" && (
-                        <Textarea
-                          value={builderResponses[question.id] || ''}
-                          onChange={(e) => setBuilderResponses({
-                            ...builderResponses,
-                            [question.id]: e.target.value
-                          })}
-                          placeholder={`Write your ${question.language || 'code'} here...`}
-                          className="bg-white font-mono"
-                          rows={10}
-                        />
-                      )}
-
-                      {question.type === "audio" && (
-                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center bg-white">
-                          <Radio className="h-8 w-8 mx-auto text-gray-400 mb-2" />
-                          <p className="text-sm text-gray-600 mb-2">Audio upload placeholder</p>
-                          <Input
-                            type="file"
-                            accept="audio/*"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0]
-                              if (file) {
-                                setBuilderResponses({
-                                  ...builderResponses,
-                                  [question.id]: file.name
-                                })
-                              }
-                            }}
-                            className="text-sm"
-                          />
-                        </div>
-                      )}
-
-                      {question.type === "video" && (
-                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center bg-white">
-                          <Video className="h-8 w-8 mx-auto text-gray-400 mb-2" />
-                          <p className="text-sm text-gray-600 mb-2">Video upload placeholder</p>
-                          <Input
-                            type="file"
-                            accept="video/*"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0]
-                              if (file) {
-                                setBuilderResponses({
-                                  ...builderResponses,
-                                  [question.id]: file.name
-                                })
-                              }
-                            }}
-                            className="text-sm"
-                          />
-                        </div>
-                      )}
-
-                      {/* Display current response */}
-                      {builderResponses[question.id] && (
-                        <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                          <Label className="text-sm font-medium text-blue-800 mb-1 block">Your Response:</Label>
-                          <p className="text-sm text-blue-900 whitespace-pre-wrap">{builderResponses[question.id]}</p>
-                        </div>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-center text-gray-500 py-8">
-                    No questions added yet. Go to Form Builder to add questions.
-                  </div>
-                )}
-
-                {editingForm.questions && editingForm.questions.length > 0 && (
-                  <div className="flex gap-3 pt-4">
-                    <Button
-                      onClick={() => {
-                        toast({
-                          title: "Responses Saved",
-                          description: "Your responses have been saved locally.",
-                        })
-                      }}
-                      className="bg-green-600 hover:bg-green-700"
-                    >
-                      <Save className="h-4 w-4 mr-2" />
-                      Save Responses
-                    </Button>
-                    <Button
-                      onClick={() => {
-                        setBuilderResponses({})
-                        toast({
-                          title: "Responses Cleared",
-                          description: "All responses have been cleared.",
-                        })
-                      }}
-                      variant="outline"
-                    >
-                      Clear All Responses
-                    </Button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
           )}
         </TabsContent>
       </Tabs>
