@@ -60,7 +60,7 @@ class JobSerializer(serializers.ModelSerializer):
     class Meta:
         model = Job
         fields = [
-            'id', 'title', 'department', 'description', 'requirements', 'responsibilities',
+            'id', 'job_id', 'title', 'department', 'description', 'requirements', 'responsibilities',
             'job_type', 'experience_level', 'experience_range', 'min_experience_years', 'max_experience_years',
             'location', 'work_type', 'is_remote',
             'salary_min', 'salary_max', 'salary_currency', 'show_salary', 'salary_range_display',
@@ -78,7 +78,7 @@ class JobCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Job
         fields = [
-            'title', 'department', 'description', 'requirements', 'responsibilities',
+            'job_id', 'title', 'department', 'description', 'requirements', 'responsibilities',
             'job_type', 'experience_level', 'experience_range', 'min_experience_years', 'max_experience_years',
             'location', 'work_type', 'is_remote',
             'salary_min', 'salary_max', 'salary_currency', 'show_salary',
@@ -110,7 +110,7 @@ class JobUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Job
         fields = [
-            'title', 'department', 'description', 'requirements', 'responsibilities',
+            'job_id', 'title', 'department', 'description', 'requirements', 'responsibilities',
             'job_type', 'experience_level', 'experience_range', 'min_experience_years', 'max_experience_years',
             'location', 'work_type', 'is_remote',
             'salary_min', 'salary_max', 'salary_currency', 'show_salary',

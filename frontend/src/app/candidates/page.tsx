@@ -1640,26 +1640,25 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
                         <div className="text-xs text-gray-600 mb-1">Skill Match</div>
                         <div className="text-lg font-bold text-green-600">
                           {(() => {
-                            const jdText = `${selectedJob.title} ${selectedJob.description || ''} ${selectedJob.requirements || ''} ${selectedJob.department?.name || ''}`.toLowerCase()
-                            const resumeText = `${candidateForComparison.jobTitle} ${candidateForComparison.resumeText || ''} ${candidateForComparison.skillExperience?.map(s => s.skill).join(' ') || ''}`.toLowerCase()
-                            const allKeywords = ['javascript', 'python', 'java', 'react', 'angular', 'vue', 'node', 'nodejs', 'typescript', 'html', 'css', 'sql', 'mongodb', 'postgresql', 'mysql', 'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'git', 'api', 'rest', 'agile', 'scrum', 'devops', 'ci/cd', 'jenkins', 'testing', 'junit', 'frontend', 'backend', 'fullstack', 'full stack', 'mobile', 'android', 'ios', 'machine learning', 'ai', 'data', 'analytics', 'cloud', 'microservices', 'leadership', 'management', 'team lead', 'communication', 'problem solving', 'design', 'ui', 'ux', 'figma', 'photoshop', 'sketch', 'express', 'django', 'spring', 'redis', 'elasticsearch', 'graphql', 'webpack', 'redux', 'terraform', 'ansible', 'linux', 'bash', 'shell']
+                            // Use same comprehensive analysis as modal
+                            const jdFullText = `${selectedJob.title || ''} ${selectedJob.description || ''} ${selectedJob.requirements || ''} ${selectedJob.responsibilities || ''} ${selectedJob.department?.name || ''} ${selectedJob.required_skills || ''} ${selectedJob.preferred_skills || ''}`.toLowerCase()
+                            const resumeFullText = `${candidateForComparison.name || ''} ${candidateForComparison.jobTitle || ''} ${candidateForComparison.resumeText || ''} ${candidateForComparison.skillExperience?.map(s => s.skill + ' ' + s.description).join(' ') || ''}`.toLowerCase()
+
+                            const jdWords = jdFullText.match(/\b[a-z0-9+#\.]{3,}\b/g) || []
+                            const allKeywords = new Set(jdWords)
+
                             const matchingKeywords: string[] = []
                             const missingInResume: string[] = []
+
                             allKeywords.forEach(keyword => {
-                              const inJD = jdText.includes(keyword)
-                              const inResume = resumeText.includes(keyword)
-                              if (inJD && inResume) {
+                              const inResume = resumeFullText.includes(keyword)
+                              if (inResume) {
                                 matchingKeywords.push(keyword)
-                              } else if (inJD && !inResume) {
+                              } else {
                                 missingInResume.push(keyword)
                               }
                             })
-                            candidateForComparison.skillExperience?.forEach(skill => {
-                              const skillLower = skill.skill.toLowerCase()
-                              if (jdText.includes(skillLower) && !matchingKeywords.some(k => k.toLowerCase() === skillLower)) {
-                                matchingKeywords.push(skill.skill)
-                              }
-                            })
+
                             return Math.round((matchingKeywords.length / (matchingKeywords.length + missingInResume.length)) * 100) || 0
                           })()}%
                         </div>
@@ -1677,32 +1676,86 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
 
                 {/* Extract matching keywords only */}
                 {(() => {
-                  // Extract keywords from JD and Resume
-                  const jdText = `${selectedJob.title} ${selectedJob.description || ''} ${selectedJob.requirements || ''} ${selectedJob.department?.name || ''}`.toLowerCase()
-                  const resumeText = `${candidateForComparison.jobTitle} ${candidateForComparison.resumeText || ''} ${candidateForComparison.skillExperience?.map(s => s.skill).join(' ') || ''}`.toLowerCase()
+                  // Extract full text from JD (all fields combined)
+                  const jdFullText = `
+                    ${selectedJob.title || ''}
+                    ${selectedJob.description || ''}
+                    ${selectedJob.requirements || ''}
+                    ${selectedJob.responsibilities || ''}
+                    ${selectedJob.department?.name || ''}
+                    ${selectedJob.required_skills || ''}
+                    ${selectedJob.preferred_skills || ''}
+                    ${selectedJob.job_type || ''}
+                    ${selectedJob.experience_level || ''}
+                  `.toLowerCase()
 
-                  // Common technical and professional keywords
+                  // Extract full text from Resume (all fields combined)
+                  const resumeFullText = `
+                    ${candidateForComparison.name || ''}
+                    ${candidateForComparison.jobTitle || ''}
+                    ${candidateForComparison.resumeText || ''}
+                    ${candidateForComparison.skillExperience?.map(s => s.skill + ' ' + s.description).join(' ') || ''}
+                    ${candidateForComparison.education?.map(e => e.degree + ' ' + e.institution + ' ' + e.field_of_study).join(' ') || ''}
+                    ${candidateForComparison.certifications?.join(' ') || ''}
+                  `.toLowerCase()
+
+                  // Extended technical and professional keywords library
                   const allKeywords = [
-                    'javascript', 'python', 'java', 'react', 'angular', 'vue', 'node', 'nodejs',
-                    'typescript', 'html', 'css', 'sql', 'mongodb', 'postgresql', 'mysql',
-                    'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'git', 'api', 'rest',
-                    'agile', 'scrum', 'devops', 'ci/cd', 'jenkins', 'testing', 'junit',
-                    'frontend', 'backend', 'fullstack', 'full stack', 'mobile', 'android', 'ios',
-                    'machine learning', 'ai', 'data', 'analytics', 'cloud', 'microservices',
-                    'leadership', 'management', 'team lead', 'communication', 'problem solving',
-                    'design', 'ui', 'ux', 'figma', 'photoshop', 'sketch', 'express', 'django',
-                    'spring', 'redis', 'elasticsearch', 'graphql', 'webpack', 'redux',
-                    'terraform', 'ansible', 'linux', 'bash', 'shell'
+                    // Programming Languages
+                    'javascript', 'python', 'java', 'c++', 'c#', 'php', 'ruby', 'go', 'golang', 'rust', 'swift', 'kotlin', 'scala', 'r', 'matlab', 'perl', 'typescript',
+
+                    // Frontend
+                    'react', 'angular', 'vue', 'svelte', 'next.js', 'nextjs', 'nuxt', 'gatsby', 'html', 'css', 'sass', 'scss', 'less', 'tailwind', 'bootstrap', 'material-ui', 'mui', 'chakra ui', 'webpack', 'vite', 'redux', 'mobx', 'recoil', 'zustand',
+
+                    // Backend
+                    'node', 'nodejs', 'express', 'django', 'flask', 'fastapi', 'spring', 'spring boot', 'laravel', 'rails', 'ruby on rails', 'asp.net', '.net', 'dotnet', 'nestjs', 'koa', 'gin', 'echo',
+
+                    // Databases
+                    'sql', 'mysql', 'postgresql', 'postgres', 'mongodb', 'redis', 'elasticsearch', 'cassandra', 'dynamodb', 'oracle', 'sql server', 'sqlite', 'mariadb', 'couchdb', 'neo4j', 'firebase', 'firestore',
+
+                    // Cloud & DevOps
+                    'aws', 'azure', 'gcp', 'google cloud', 'docker', 'kubernetes', 'k8s', 'jenkins', 'ci/cd', 'github actions', 'gitlab ci', 'circleci', 'terraform', 'ansible', 'puppet', 'chef', 'cloudformation', 'helm', 'istio', 'prometheus', 'grafana', 'datadog', 'new relic',
+
+                    // API & Architecture
+                    'api', 'rest', 'restful', 'graphql', 'grpc', 'websocket', 'microservices', 'monolith', 'serverless', 'lambda', 'soa', 'event-driven', 'message queue', 'rabbitmq', 'kafka', 'mqtt',
+
+                    // Testing & Quality
+                    'testing', 'unit testing', 'integration testing', 'e2e', 'jest', 'mocha', 'chai', 'jasmine', 'pytest', 'junit', 'selenium', 'cypress', 'playwright', 'tdd', 'bdd', 'test automation',
+
+                    // Mobile
+                    'mobile', 'android', 'ios', 'react native', 'flutter', 'xamarin', 'ionic', 'cordova', 'swift ui', 'jetpack compose',
+
+                    // Data & AI/ML
+                    'machine learning', 'ml', 'ai', 'artificial intelligence', 'deep learning', 'neural networks', 'tensorflow', 'pytorch', 'keras', 'scikit-learn', 'pandas', 'numpy', 'data science', 'data analysis', 'data analytics', 'big data', 'hadoop', 'spark', 'etl', 'data warehouse', 'bi', 'power bi', 'tableau', 'nlp', 'computer vision', 'opencv',
+
+                    // Methodologies
+                    'agile', 'scrum', 'kanban', 'waterfall', 'devops', 'devsecops', 'lean', 'six sigma', 'continuous integration', 'continuous deployment', 'continuous delivery',
+
+                    // Tools & Platforms
+                    'git', 'github', 'gitlab', 'bitbucket', 'jira', 'confluence', 'slack', 'trello', 'asana', 'figma', 'sketch', 'photoshop', 'illustrator', 'xd', 'invision', 'zeplin', 'postman', 'swagger', 'insomnia',
+
+                    // Concepts & Skills
+                    'frontend', 'backend', 'fullstack', 'full stack', 'full-stack', 'devops', 'sre', 'site reliability', 'cloud', 'leadership', 'management', 'team lead', 'architect', 'communication', 'problem solving', 'analytical', 'debugging', 'troubleshooting', 'documentation', 'code review', 'mentoring', 'collaboration', 'design', 'ui', 'ux', 'ui/ux', 'responsive', 'accessibility', 'security', 'authentication', 'authorization', 'oauth', 'jwt', 'encryption', 'performance', 'optimization', 'scalability', 'load balancing', 'caching', 'cdn',
+
+                    // Operating Systems
+                    'linux', 'unix', 'ubuntu', 'centos', 'debian', 'windows', 'macos', 'bash', 'shell', 'powershell', 'command line', 'cli'
                   ]
+
+                  // Dynamically extract keywords from JD text (words 3+ chars, alphanumeric)
+                  const jdWords = jdFullText.match(/\b[a-z0-9+#\.]{3,}\b/g) || []
+                  const resumeWords = resumeFullText.match(/\b[a-z0-9+#\.]{3,}\b/g) || []
+
+                  // Create comprehensive keyword set
+                  const comprehensiveKeywords = new Set([...allKeywords, ...jdWords, ...resumeWords])
 
                   // Categorize all keywords with comparison
                   const matchingKeywords: string[] = []
                   const missingInResume: string[] = []
                   const extraInResume: string[] = []
 
-                  allKeywords.forEach(keyword => {
-                    const inJD = jdText.includes(keyword)
-                    const inResume = resumeText.includes(keyword)
+                  comprehensiveKeywords.forEach(keyword => {
+                    const inJD = jdFullText.includes(keyword)
+                    const inResume = resumeFullText.includes(keyword)
 
                     if (inJD && inResume) {
                       matchingKeywords.push(keyword)
@@ -1716,9 +1769,9 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
                   // Add candidate skills to appropriate categories
                   candidateForComparison.skillExperience?.forEach(skill => {
                     const skillLower = skill.skill.toLowerCase()
-                    if (jdText.includes(skillLower) && !matchingKeywords.some(k => k.toLowerCase() === skillLower)) {
+                    if (jdFullText.includes(skillLower) && !matchingKeywords.some(k => k.toLowerCase() === skillLower)) {
                       matchingKeywords.push(skill.skill)
-                    } else if (!jdText.includes(skillLower) && !extraInResume.some(k => k.toLowerCase() === skillLower)) {
+                    } else if (!jdFullText.includes(skillLower) && !extraInResume.some(k => k.toLowerCase() === skillLower)) {
                       extraInResume.push(skill.skill)
                     }
                   })

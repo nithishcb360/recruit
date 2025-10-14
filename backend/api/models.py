@@ -129,6 +129,7 @@ class Job(models.Model):
     ]
 
     # Basic job information
+    job_id = models.CharField(max_length=100, blank=True, null=True, unique=True, help_text='Custom job ID (e.g., JOB-2024-001)')
     title = models.CharField(max_length=200)
     department = models.ForeignKey(Department, on_delete=models.CASCADE, related_name='jobs')
     description = models.TextField()

@@ -40,6 +40,7 @@ interface OrganizationSettings {
 }
 
 interface FormData {
+  jobId: string;
   jobTitle: string;
   department: string;
   experienceLevel: string;
@@ -111,6 +112,7 @@ interface JobPostingFormProps {
 
 export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isModal = false, editingJob = null }: JobPostingFormProps) {
   const [formData, setFormData] = useState<FormData>({
+    jobId: '',
     jobTitle: '',
     department: '',
     experienceLevel: '',
@@ -318,6 +320,7 @@ Make the description inclusive and avoid any language that might discourage dive
   useEffect(() => {
     if (editingJob) {
       setFormData({
+        jobId: (editingJob as any).job_id || '',
         jobTitle: editingJob.title || '',
         department: editingJob.department.id.toString() || '',
         experienceLevel: (editingJob as any).experience_level || '',
@@ -325,7 +328,7 @@ Make the description inclusive and avoid any language that might discourage dive
         workType: ((editingJob as any).job_type || '').replace('_', '-'), // Convert 'full_time' to 'full-time'
         minSalary: (editingJob as any).salary_min || 80000,
         maxSalary: (editingJob as any).salary_max || 120000,
-        experienceRange: '',
+        experienceRange: (editingJob as any).experience_range || '',
         jobDescription: editingJob.description || '',
         requirements: editingJob.requirements || '',
         responsibilities: editingJob.responsibilities || '',
@@ -583,6 +586,7 @@ Make the description inclusive and avoid any language that might discourage dive
     
     try {
       const jobData: JobCreateData = {
+        job_id: formData.jobId || undefined,
         title: formData.jobTitle,
         department: parseInt(formData.department),
         description: formData.jobDescription,
@@ -590,6 +594,7 @@ Make the description inclusive and avoid any language that might discourage dive
         responsibilities: formData.responsibilities || '',
         job_type: formData.workType.replace('-', '_'), // Convert 'full-time' to 'full_time'
         experience_level: formData.experienceLevel,
+        experience_range: formData.experienceRange || undefined,
         location: formData.location,
         work_type: 'remote', // Default to remote, could be made configurable
         is_remote: formData.location.toLowerCase().includes('remote'),
@@ -624,6 +629,7 @@ Make the description inclusive and avoid any language that might discourage dive
       
       // Reset form
       setFormData({
+        jobId: '',
         jobTitle: '',
         department: '',
         experienceLevel: '',
@@ -1742,9 +1748,24 @@ ${preferredQuals.map(qual => `• ${qual}`).join('\n')}`
 
           {activeStep === 1 && (
           <div className="space-y-8">
-            {/* Job Title - Full Width */}
-            <div className="grid grid-cols-1">
+            {/* Job ID and Job Title */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Job ID
+                  <span className="text-xs font-normal text-gray-500 ml-2">(Optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.jobId}
+                  onChange={(e) => handleInputChange('jobId', e.target.value)}
+                  onFocus={() => handleFieldFocus('jobId')}
+                  onBlur={() => handleFieldBlur('jobId')}
+                  className={getInputClasses('jobId')}
+                  placeholder="e.g., JOB-2024-001"
+                />
+              </div>
+              <div className="md:col-span-2">
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Job Title
                 </label>
