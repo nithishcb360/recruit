@@ -499,7 +499,8 @@ export default function ScreeningPage() {
       // Map assignee ID to email
       const assigneeMap: Record<string, string> = {
         'jaikar': 'jaikar.s@cloudberry360.com',
-        'yadhendra': 'yadhendra.kannan@cloudberry360.com'
+        'yadhendra': 'yadhendra.kannan@cloudberry360.com',
+        'nithishkumar': 'nithish.kumar@cloudberry360.com'
       }
       assigneeEmail = assigneeMap[webdeskStage.assignee] || null
     }

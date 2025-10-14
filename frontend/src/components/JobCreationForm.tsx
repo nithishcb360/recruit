@@ -190,6 +190,7 @@ Make the description inclusive and avoid any language that might discourage dive
   const assignees = [
     { id: 'jaikar', name: 'Jaikar', role: 'jaikar.s@cloudberry360.com' },
     { id: 'yadhendra', name: 'Yadhendra', role: 'yadhendra.kannan@cloudberry360.com' },
+    { id: 'nithishkumar', name: 'Nithishkumar', role: 'nithish.kumar@cloudberry360.com' },
   ];
 
   const steps = [
