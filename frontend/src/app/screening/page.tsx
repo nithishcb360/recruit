@@ -851,15 +851,11 @@ export default function ScreeningPage() {
 
   // Initiate automatic call for a candidate
   const initiateAutomaticCall = async (candidate: ScreeningCandidateData) => {
-    // Check if it's within working hours
-    if (!isWithinWorkingHours()) {
-      console.log(`Outside working hours. Skipping call for ${candidate.name}`)
-      return
-    }
+    console.log(`🔔 Attempting to initiate automatic call for ${candidate.name}`)
 
     // Check if candidate has a phone number
     if (!candidate.phone) {
-      console.log(`No phone number for ${candidate.name}. Skipping call.`)
+      console.log(`❌ No phone number for ${candidate.name}. Skipping call.`)
       return
     }
 
@@ -968,55 +964,36 @@ export default function ScreeningPage() {
     // Only proceed if we have candidates in the screening list
     if (movedCandidatesList.length === 0) return
 
-    // Only proceed if within working hours
-    if (!isWithinWorkingHours()) {
-      console.log('Outside working hours. Automatic calls will not be initiated.')
-      return
-    }
+    console.log(`🔔 Screening page loaded with ${movedCandidatesList.length} candidates`)
 
-    // Check localStorage to see if calls were already made for these candidates
-    const callsAlreadyMade = JSON.parse(localStorage.getItem('screening_calls_made') || '[]')
-
-    // Iterate through candidates and initiate calls ONLY for new ones
+    // Iterate through candidates and initiate calls
     movedCandidatesList.forEach(candidate => {
       // FIRST CHECK: Skip if we already processed this candidate in this session
       if (processedCandidateIdsRef.current.has(candidate.id)) {
         return // Already processed, don't log (avoid spam)
       }
 
-      // Mark as processed immediately to prevent duplicate calls
+      // Mark as processed immediately to prevent duplicate calls in this session
       processedCandidateIdsRef.current.add(candidate.id)
-
-      // Skip if call was already made for this candidate (persisted across sessions)
-      if (callsAlreadyMade.includes(candidate.id)) {
-        console.log(`Call already made for ${candidate.name} (found in localStorage), skipping.`)
-        return
-      }
 
       // Skip if call is already scheduled or in progress (current session)
       if (autoCallScheduled.has(candidate.id) || autoCallInProgress.has(candidate.id)) {
-        console.log(`Call already scheduled/in progress for ${candidate.name}, skipping.`)
+        console.log(`⏳ Call already scheduled/in progress for ${candidate.name}, skipping.`)
         return
       }
 
       // Skip if we already have a call ID for this candidate (call was already initiated)
       if (initiatedCallIds.has(candidate.id)) {
-        console.log(`Call already initiated for ${candidate.name} (has call ID), skipping.`)
+        console.log(`📞 Call already initiated for ${candidate.name} (has call ID), skipping.`)
         return
       }
 
-      console.log(`✅ Initiating automatic call for NEW candidate: ${candidate.name}`)
+      console.log(`✅ Initiating automatic call for candidate: ${candidate.name}`)
 
       // Add a small delay to stagger calls
       const delay = Math.random() * 5000 // Random delay up to 5 seconds
       setTimeout(() => {
         initiateAutomaticCall(candidate)
-        // Mark call as made in localStorage
-        const updatedCalls = JSON.parse(localStorage.getItem('screening_calls_made') || '[]')
-        if (!updatedCalls.includes(candidate.id)) {
-          updatedCalls.push(candidate.id)
-          localStorage.setItem('screening_calls_made', JSON.stringify(updatedCalls))
-        }
       }, delay)
     })
   }, [movedCandidatesList]) // Trigger when list changes, but ref prevents duplicates
@@ -2715,9 +2692,7 @@ ${fromEmail}`
                     <CardTitle className="text-base text-blue-900">
                       Candidates for Screening ({movedCandidatesList.length})
                     </CardTitle>
-                    <CardDescription className="text-blue-700">
-                      Select a job below to screen these candidates
-                    </CardDescription>
+                   
                   </div>
                 </div>
                 <div className="flex gap-2">
