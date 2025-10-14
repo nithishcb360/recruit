@@ -976,19 +976,25 @@ export default function ScreeningPage() {
       // Mark as processed immediately to prevent duplicate calls in this session
       processedCandidateIdsRef.current.add(candidate.id)
 
+      // Skip if candidate already has a Retell call ID from database (already called before)
+      if (candidate.retell_call_id) {
+        console.log(`📞 ${candidate.name} already has a call ID (${candidate.retell_call_id}), skipping automatic call.`)
+        return
+      }
+
       // Skip if call is already scheduled or in progress (current session)
       if (autoCallScheduled.has(candidate.id) || autoCallInProgress.has(candidate.id)) {
         console.log(`⏳ Call already scheduled/in progress for ${candidate.name}, skipping.`)
         return
       }
 
-      // Skip if we already have a call ID for this candidate (call was already initiated)
+      // Skip if we already have a call ID for this candidate (call was already initiated in this session)
       if (initiatedCallIds.has(candidate.id)) {
-        console.log(`📞 Call already initiated for ${candidate.name} (has call ID), skipping.`)
+        console.log(`📞 Call already initiated for ${candidate.name} (has call ID in session), skipping.`)
         return
       }
 
-      console.log(`✅ Initiating automatic call for candidate: ${candidate.name}`)
+      console.log(`✅ Initiating automatic call for NEW candidate: ${candidate.name}`)
 
       // Add a small delay to stagger calls
       const delay = Math.random() * 5000 // Random delay up to 5 seconds
