@@ -89,7 +89,7 @@ export default function FeedbackFormBuilder() {
   const [isGeneratingAI, setIsGeneratingAI] = useState(false)
   const [aiTopic, setAiTopic] = useState("")
   const [aiNumQuestions, setAiNumQuestions] = useState(5)
-  const [aiQuestionTypes, setAiQuestionTypes] = useState<Array<'text' | 'textarea' | 'audio' | 'video' | 'multiple_choice' | 'code'>>(['text', 'textarea'])
+  const [aiQuestionTypes, setAiQuestionTypes] = useState<Array<'text' | 'textarea' | 'audio' | 'video'>>(['text', 'textarea'])
   const [aiConfig, setAiConfig] = useState<{provider: string; apiKey: string; customPrompt?: string} | null>(null)
   const [customPrompt, setCustomPrompt] = useState("")
   const [isEditingPrompt, setIsEditingPrompt] = useState(false)
@@ -1617,7 +1617,7 @@ export default function FeedbackFormBuilder() {
                         Question Types (select multiple)
                       </Label>
                       <div className="flex flex-wrap gap-3">
-                        {(['text', 'textarea', 'audio', 'video', 'code', 'multiple_choice'] as const).map((type) => (
+                        {(['text', 'textarea', 'audio', 'video'] as const).map((type) => (
                           <div key={type} className="flex items-center space-x-2">
                             <Checkbox
                               id={`ai-type-${type}`}
