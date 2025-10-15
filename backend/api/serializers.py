@@ -60,8 +60,9 @@ class JobSerializer(serializers.ModelSerializer):
     class Meta:
         model = Job
         fields = [
-            'id', 'title', 'department', 'description', 'requirements', 'responsibilities',
-            'job_type', 'experience_level', 'location', 'work_type', 'is_remote',
+            'id', 'job_id', 'title', 'department', 'description', 'requirements', 'responsibilities',
+            'job_type', 'experience_level', 'experience_range', 'min_experience_years', 'max_experience_years',
+            'location', 'work_type', 'is_remote',
             'salary_min', 'salary_max', 'salary_currency', 'show_salary', 'salary_range_display',
             'required_skills', 'preferred_skills',
             'status', 'urgency', 'openings', 'sla_days',
@@ -77,24 +78,29 @@ class JobCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Job
         fields = [
-            'title', 'department', 'description', 'requirements', 'responsibilities',
-            'job_type', 'experience_level', 'location', 'work_type', 'is_remote',
+            'job_id', 'title', 'department', 'description', 'requirements', 'responsibilities',
+            'job_type', 'experience_level', 'experience_range', 'min_experience_years', 'max_experience_years',
+            'location', 'work_type', 'is_remote',
             'salary_min', 'salary_max', 'salary_currency', 'show_salary',
             'required_skills', 'preferred_skills',
             'status', 'urgency', 'openings', 'sla_days',
             'publish_internal', 'publish_external', 'publish_company_website',
             'screening_questions', 'interview_stages'
         ]
-    
+
     def validate(self, data):
         """Validate job data"""
         if data.get('salary_min') and data.get('salary_max'):
             if data['salary_min'] > data['salary_max']:
                 raise serializers.ValidationError("Minimum salary cannot be greater than maximum salary")
-        
+
+        if data.get('min_experience_years') and data.get('max_experience_years'):
+            if data['min_experience_years'] > data['max_experience_years']:
+                raise serializers.ValidationError("Minimum experience years cannot be greater than maximum experience years")
+
         if data.get('openings', 0) <= 0:
             raise serializers.ValidationError("Number of openings must be greater than 0")
-            
+
         return data
 
 
@@ -104,30 +110,38 @@ class JobUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Job
         fields = [
-            'title', 'department', 'description', 'requirements', 'responsibilities',
-            'job_type', 'experience_level', 'location', 'work_type', 'is_remote',
+            'job_id', 'title', 'department', 'description', 'requirements', 'responsibilities',
+            'job_type', 'experience_level', 'experience_range', 'min_experience_years', 'max_experience_years',
+            'location', 'work_type', 'is_remote',
             'salary_min', 'salary_max', 'salary_currency', 'show_salary',
             'required_skills', 'preferred_skills',
             'status', 'urgency', 'openings', 'sla_days',
             'publish_internal', 'publish_external', 'publish_company_website',
             'screening_questions', 'interview_stages'
         ]
-    
+
     def validate(self, data):
         """Validate job data"""
         instance = self.instance
-        
+
         # Get current values if not provided in update
         salary_min = data.get('salary_min', instance.salary_min if instance else None)
         salary_max = data.get('salary_max', instance.salary_max if instance else None)
-        
+
         if salary_min and salary_max and salary_min > salary_max:
             raise serializers.ValidationError("Minimum salary cannot be greater than maximum salary")
-        
+
+        # Validate experience years range
+        min_exp = data.get('min_experience_years', instance.min_experience_years if instance else None)
+        max_exp = data.get('max_experience_years', instance.max_experience_years if instance else None)
+
+        if min_exp and max_exp and min_exp > max_exp:
+            raise serializers.ValidationError("Minimum experience years cannot be greater than maximum experience years")
+
         openings = data.get('openings', instance.openings if instance else 1)
         if openings <= 0:
             raise serializers.ValidationError("Number of openings must be greater than 0")
-            
+
         return data
 
 

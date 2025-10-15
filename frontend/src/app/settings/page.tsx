@@ -1848,6 +1848,7 @@ Format your response as valid JSON with this structure:
                         <SelectItem value="anthropic" className="text-black hover:bg-gray-100">Anthropic (Claude)</SelectItem>
                         <SelectItem value="openai" className="text-black hover:bg-gray-100">OpenAI (GPT)</SelectItem>
                         <SelectItem value="groq" className="text-black hover:bg-gray-100">Groq (Free - No Card!)</SelectItem>
+                        <SelectItem value="grok" className="text-black hover:bg-gray-100">Grok (xAI)</SelectItem>
                         <SelectItem value="google" className="text-black hover:bg-gray-100">Google (Gemini)</SelectItem>
                         <SelectItem value="perplexity" className="text-black hover:bg-gray-100">Perplexity AI</SelectItem>
                         <SelectItem value="azure" className="text-black hover:bg-gray-100">Azure OpenAI</SelectItem>

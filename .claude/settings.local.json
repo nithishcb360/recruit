@@ -49,7 +49,10 @@
       "Bash(git -C \"D:/recruit\" diff \"frontend/src/app/screening/page.tsx\")",
       "Bash(where ngrok)",
       "Bash(timeout:*)",
-      "Bash(pip show:*)"
+      "Bash(pip show:*)",
+      "Bash(d:/recruit/venv/Scripts/pip.exe install openai)",
+      "Bash(d:/recruit/venv/Scripts/python.exe -m pip install:*)",
+      "Bash(d:/recruit/venv/Scripts/python.exe:*)"
     ]
   }
 }

@@ -12,6 +12,7 @@ export interface DepartmentCreateData {
 }
 
 export interface JobCreateData {
+  job_id?: string
   title: string
   department: number
   description: string
@@ -19,6 +20,7 @@ export interface JobCreateData {
   responsibilities: string
   job_type: string
   experience_level: string
+  experience_range?: string
   location: string
   work_type: string
   is_remote: boolean
@@ -53,11 +55,13 @@ export interface JobCreateData {
 
 export interface Job {
   id: number
+  job_id?: string
   title: string
   department: Department
   description: string
   requirements: string
   responsibilities?: string
+  experience_range?: string
   created_at: string
   status: string
   published_to_linkedin?: boolean
