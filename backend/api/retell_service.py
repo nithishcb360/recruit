@@ -9,7 +9,8 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 RETELL_API_KEY = os.getenv('RETELL_API_KEY', '')
-RETELL_API_URL = 'https://api.retellai.com/v1'
+RETELL_API_URL = 'https://api.retellai.com'
+RETELL_LLM_ID = os.getenv('RETELL_LLM_ID', '')
 
 
 def trigger_screening_call(candidate):
@@ -70,4 +71,111 @@ def trigger_screening_call(candidate):
 
     except Exception as e:
         logger.error(f"Error triggering Retell call for candidate {candidate.id}: {e}")
+        return None
+
+
+def get_retell_llm(llm_id=None):
+    """
+    Get Retell AI LLM details including general_prompt
+
+    Args:
+        llm_id: Optional LLM ID, defaults to RETELL_LLM_ID from env
+
+    Returns:
+        dict: LLM details including general_prompt, or None on error
+    """
+    if not RETELL_API_KEY:
+        logger.warning("RETELL_API_KEY not configured")
+        return None
+
+    if not llm_id:
+        llm_id = RETELL_LLM_ID
+
+    if not llm_id:
+        logger.warning("No llm_id provided and RETELL_LLM_ID not set")
+        return None
+
+    try:
+        headers = {
+            "Authorization": f"Bearer {RETELL_API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        response = requests.get(
+            f"{RETELL_API_URL}/get-retell-llm/{llm_id}",
+            headers=headers,
+            timeout=10
+        )
+
+        if response.status_code == 200:
+            llm_data = response.json()
+            logger.info(f"Successfully retrieved LLM {llm_id}")
+            return llm_data
+        else:
+            logger.error(f"Retell API error getting LLM: {response.status_code} - {response.text}")
+            return None
+
+    except Exception as e:
+        logger.error(f"Error getting Retell LLM {llm_id}: {e}")
+        return None
+
+
+def update_retell_llm_prompt(llm_id, general_prompt=None, begin_message=None):
+    """
+    Update Retell AI LLM's prompt
+
+    Args:
+        llm_id: Retell LLM ID
+        general_prompt: The main LLM prompt/instructions
+        begin_message: Optional opening message for the agent
+
+    Returns:
+        dict: Updated LLM details, or None on error
+    """
+    if not RETELL_API_KEY:
+        logger.warning("RETELL_API_KEY not configured")
+        return None
+
+    if not llm_id:
+        llm_id = RETELL_LLM_ID
+
+    if not llm_id:
+        logger.warning("No llm_id provided and RETELL_LLM_ID not set")
+        return None
+
+    try:
+        headers = {
+            "Authorization": f"Bearer {RETELL_API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        # Build update payload
+        update_data = {}
+
+        if general_prompt is not None:
+            update_data['general_prompt'] = general_prompt
+        if begin_message is not None:
+            update_data['begin_message'] = begin_message
+
+        if not update_data:  # No actual update data
+            logger.warning("No data to update")
+            return None
+
+        response = requests.patch(
+            f"{RETELL_API_URL}/update-retell-llm/{llm_id}",
+            json=update_data,
+            headers=headers,
+            timeout=10
+        )
+
+        if response.status_code == 200:
+            llm_data = response.json()
+            logger.info(f"Successfully updated LLM {llm_id} prompt")
+            return llm_data
+        else:
+            logger.error(f"Retell API error updating LLM: {response.status_code} - {response.text}")
+            return None
+
+    except Exception as e:
+        logger.error(f"Error updating Retell LLM {llm_id}: {e}")
         return None

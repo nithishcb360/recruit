@@ -28,5 +28,8 @@ urlpatterns = [
     # AI generation endpoints (server-side)
     path('ai/generate-job-description/', views.generate_job_description_ai, name='ai-generate-job-description'),
     path('ai/generate-questions/', views.generate_questions_ai, name='ai-generate-questions'),
+    # Retell AI agent management
+    path('retell/agent/prompt/', views.get_retell_agent_prompt, name='get-retell-agent-prompt'),
+    path('retell/agent/prompt/update/', views.update_retell_agent_prompt, name='update-retell-agent-prompt'),
     path('', include(router.urls)),
 ]

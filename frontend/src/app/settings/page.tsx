@@ -360,6 +360,31 @@ Format your response as valid JSON with this structure:
     }
   ]
 }`
+        },
+        retellAgent: {
+          name: "Retell AI Agent Prompt",
+          prompt: `You are an AI recruiter conducting initial phone screening calls. Be professional, friendly, and conversational.
+
+Your goals:
+- Assess candidate fit for the role
+- Gauge interest and availability
+- Schedule technical interviews if qualified
+- Collect relevant experience information
+
+Conversation Flow:
+1. Introduce yourself and the company
+2. Confirm candidate's interest in the position
+3. Ask about relevant experience and skills
+4. Discuss availability for interviews
+5. Schedule next steps if interested
+
+Always be:
+- Professional and respectful
+- Clear and concise
+- Empathetic to candidate's time
+- Positive about the opportunity
+
+If candidate is not interested or has accepted another offer, thank them gracefully and end the call.`
         }
       }
     },
@@ -922,6 +947,31 @@ Format your response as valid JSON with this structure:
     }
   ]
 }`
+            },
+            retellAgent: {
+              name: "Retell AI Agent Prompt",
+              prompt: `You are an AI recruiter conducting initial phone screening calls. Be professional, friendly, and conversational.
+
+Your goals:
+- Assess candidate fit for the role
+- Gauge interest and availability
+- Schedule technical interviews if qualified
+- Collect relevant experience information
+
+Conversation Flow:
+1. Introduce yourself and the company
+2. Confirm candidate's interest in the position
+3. Ask about relevant experience and skills
+4. Discuss availability for interviews
+5. Schedule next steps if interested
+
+Always be:
+- Professional and respectful
+- Clear and concise
+- Empathetic to candidate's time
+- Positive about the opportunity
+
+If candidate is not interested or has accepted another offer, thank them gracefully and end the call.`
             }
           };
           parsedSettings.ai.selectedImplementation = parsedSettings.ai.selectedImplementation || "jobDescription";
@@ -953,6 +1003,35 @@ Format your response as valid JSON with this structure:
     }
   ]
 }`
+          };
+        }
+
+        // Ensure retellAgent implementation exists (for existing settings)
+        if (parsedSettings.ai && parsedSettings.ai.implementations && !parsedSettings.ai.implementations.retellAgent) {
+          parsedSettings.ai.implementations.retellAgent = {
+            name: "Retell AI Agent Prompt",
+            prompt: `You are an AI recruiter conducting initial phone screening calls. Be professional, friendly, and conversational.
+
+Your goals:
+- Assess candidate fit for the role
+- Gauge interest and availability
+- Schedule technical interviews if qualified
+- Collect relevant experience information
+
+Conversation Flow:
+1. Introduce yourself and the company
+2. Confirm candidate's interest in the position
+3. Ask about relevant experience and skills
+4. Discuss availability for interviews
+5. Schedule next steps if interested
+
+Always be:
+- Professional and respectful
+- Clear and concise
+- Empathetic to candidate's time
+- Positive about the opportunity
+
+If candidate is not interested or has accepted another offer, thank them gracefully and end the call.`
           };
         }
 
@@ -2878,6 +2957,77 @@ Make sure the requirements field contains properly formatted text, not JSON stru
                         <Save className="h-4 w-4 mr-2" />
                         {isLoading ? 'Saving...' : 'Save & Update API'}
                       </Button>
+
+                      {/* Retell AI specific buttons */}
+                      {orgSettings.ai.selectedImplementation === 'retellAgent' && (
+                        <>
+                          <Button
+                            variant="outline"
+                            className="border-purple-500 text-purple-600 hover:bg-purple-50"
+                            onClick={async () => {
+                              try {
+                                const response = await fetch('http://localhost:8000/api/retell/agent/prompt/')
+                                if (!response.ok) throw new Error('Failed to fetch from Retell API')
+
+                                const data = await response.json()
+                                const newImplementations = {
+                                  ...orgSettings.ai.implementations,
+                                  retellAgent: {
+                                    ...orgSettings.ai.implementations.retellAgent,
+                                    prompt: data.general_prompt || ''
+                                  }
+                                }
+                                handleSettingsChange('ai', 'implementations', newImplementations)
+                                toast({
+                                  title: "Fetched from Retell",
+                                  description: "Current prompt loaded from Retell AI agent",
+                                  variant: "default"
+                                })
+                              } catch (error) {
+                                toast({
+                                  title: "Error",
+                                  description: "Failed to fetch prompt from Retell API",
+                                  variant: "destructive"
+                                })
+                              }
+                            }}
+                          >
+                            <Download className="h-4 w-4 mr-2" />
+                            Fetch from Retell
+                          </Button>
+
+                          <Button
+                            className="bg-purple-600 hover:bg-purple-700 text-white"
+                            onClick={async () => {
+                              try {
+                                const response = await fetch('http://localhost:8000/api/retell/agent/prompt/update/', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    general_prompt: orgSettings.ai.implementations.retellAgent?.prompt
+                                  })
+                                })
+                                if (!response.ok) throw new Error('Failed to update Retell agent')
+
+                                toast({
+                                  title: "Updated Retell Agent",
+                                  description: "Prompt has been updated in Retell AI",
+                                  variant: "default"
+                                })
+                              } catch (error) {
+                                toast({
+                                  title: "Error",
+                                  description: "Failed to update Retell agent prompt",
+                                  variant: "destructive"
+                                })
+                              }
+                            }}
+                          >
+                            <Upload className="h-4 w-4 mr-2" />
+                            Save to Retell
+                          </Button>
+                        </>
+                      )}
 
                       <Button
                         variant="outline"

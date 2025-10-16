@@ -907,7 +907,23 @@ class CandidateViewSet(viewsets.ModelViewSet):
                     'found another position',
                     'took another job',
                     'expressed disinterest',
-                    'disinterest'
+                    'disinterest',
+                    'cannot travel',
+                    'can\'t travel',
+                    'unable to travel',
+                    'not able to travel',
+                    'cannot relocate',
+                    'can\'t relocate',
+                    'not available',
+                    'no longer available',
+                    'pursuing other',
+                    'polite exchange',
+                    'call ended with a polite',
+                    'expressed that he cannot',
+                    'expressed that she cannot',
+                    'not moving forward',
+                    'won\'t be moving forward',
+                    'will not be moving forward'
                 ]
 
                 for indicator in rejection_indicators:
@@ -944,11 +960,20 @@ class CandidateViewSet(viewsets.ModelViewSet):
             candidate.save()
 
             # Send WebDesk email automatically after call ends if interview is scheduled
-            # BUT NOT if candidate is rejected
+            # BUT NOT if candidate is rejected OR if date/time not provided
             email_sent = False
             if candidate.retell_call_status == 'ended' and candidate.retell_interview_scheduled and candidate.status != 'rejected':
-                logger.info(f"Attempting to send WebDesk email to candidate {candidate.id}")
-                email_sent = send_webdesk_email(candidate)
+                # Check if date and time are provided
+                has_date = bool(candidate.retell_scheduled_date and candidate.retell_scheduled_date.strip())
+                has_time = bool(candidate.retell_scheduled_time and candidate.retell_scheduled_time.strip())
+
+                if has_date and has_time:
+                    logger.info(f"Attempting to send WebDesk email to candidate {candidate.id}")
+                    logger.info(f"Interview scheduled: {candidate.retell_scheduled_date} at {candidate.retell_scheduled_time}")
+                    email_sent = send_webdesk_email(candidate)
+                else:
+                    logger.warning(f"Skipping WebDesk email for candidate {candidate.id} - Date/Time not provided")
+                    logger.warning(f"  Date: '{candidate.retell_scheduled_date}' | Time: '{candidate.retell_scheduled_time}'")
             elif candidate.status == 'rejected':
                 logger.info(f"Skipping WebDesk email for candidate {candidate.id} - status is rejected")
 
@@ -2853,5 +2878,105 @@ Please respond with valid JSON containing an array of questions."""
         logger.error(f"Questions generation error: {e}")
         return Response(
             {'error': f'Failed to generate questions: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+def get_retell_agent_prompt(request):
+    """
+    Get Retell AI LLM prompt from Retell API
+
+    Query params:
+        llm_id (optional): Retell LLM ID, defaults to env var
+    """
+    try:
+        from .retell_service import get_retell_llm
+        import os
+
+        llm_id = request.query_params.get('llm_id') or os.getenv('RETELL_LLM_ID', '')
+
+        if not llm_id:
+            return Response(
+                {'error': 'No llm_id provided and RETELL_LLM_ID not set in environment'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        llm_data = get_retell_llm(llm_id)
+
+        if llm_data:
+            return Response({
+                'success': True,
+                'llm_id': llm_id,
+                'general_prompt': llm_data.get('general_prompt', ''),
+                'begin_message': llm_data.get('begin_message', ''),
+                'model': llm_data.get('model', ''),
+            })
+        else:
+            return Response(
+                {'error': 'Failed to fetch LLM from Retell API'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    except Exception as e:
+        logger.error(f"Error fetching Retell LLM: {e}")
+        return Response(
+            {'error': f'Failed to fetch Retell LLM: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+def update_retell_agent_prompt(request):
+    """
+    Update Retell AI LLM prompt via Retell API
+
+    POST body:
+    {
+        "llm_id": "llm_xxx" (optional, uses env var if not provided),
+        "general_prompt": "Your new prompt here",
+        "begin_message": "Opening message" (optional)
+    }
+    """
+    try:
+        from .retell_service import update_retell_llm_prompt
+        import os
+
+        llm_id = request.data.get('llm_id') or os.getenv('RETELL_LLM_ID', '')
+        general_prompt = request.data.get('general_prompt')
+        begin_message = request.data.get('begin_message')
+
+        if not llm_id:
+            return Response(
+                {'error': 'No llm_id provided and RETELL_LLM_ID not set in environment'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not general_prompt and not begin_message:
+            return Response(
+                {'error': 'At least one of general_prompt or begin_message must be provided'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        result = update_retell_llm_prompt(llm_id, general_prompt, begin_message)
+
+        if result:
+            return Response({
+                'success': True,
+                'message': 'LLM prompt updated successfully',
+                'llm_id': llm_id,
+                'general_prompt': result.get('general_prompt', ''),
+                'begin_message': result.get('begin_message', ''),
+            })
+        else:
+            return Response(
+                {'error': 'Failed to update LLM in Retell API'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    except Exception as e:
+        logger.error(f"Error updating Retell LLM: {e}")
+        return Response(
+            {'error': f'Failed to update Retell LLM: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
