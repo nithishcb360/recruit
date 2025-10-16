@@ -851,19 +851,106 @@ class CandidateViewSet(viewsets.ModelViewSet):
                     if 'additional_notes' in custom_data:
                         candidate.retell_additional_notes = custom_data['additional_notes']
 
-                    # Update candidate status based on call outcome
-                    if candidate.retell_interview_scheduled:
-                        candidate.status = 'interviewing'
-                    elif candidate.retell_call_outcome == 'Not Interested':
-                        candidate.status = 'rejected'
+            # IMPORTANT: Check for rejection AFTER processing all data (outside custom_data block)
+            # This ensures rejection detection works even if custom_analysis_data is missing
+            logger.info(f"=== REJECTION CHECK START for candidate {candidate.id} ===")
+            logger.info(f"Interview scheduled: {candidate.retell_interview_scheduled}")
+            logger.info(f"Call summary exists: {bool(candidate.retell_call_summary)}")
+            logger.info(f"Call outcome: {candidate.retell_call_outcome}")
+
+            # Update candidate status based on call outcome OR call summary
+            # IMPORTANT: Check for rejection FIRST, regardless of interview_scheduled status!
+            is_rejected = False
+            rejection_source = None
+
+            # Check call outcome first
+            if candidate.retell_call_outcome:
+                rejection_outcomes = ['Not Interested', 'Accepted Another Offer', 'Not Proceeding', 'Declined']
+                outcome_lower = candidate.retell_call_outcome.lower()
+
+                is_rejected = (
+                    candidate.retell_call_outcome in rejection_outcomes or
+                    'not interested' in outcome_lower or
+                    'another offer' in outcome_lower or
+                    'accepted offer' in outcome_lower or
+                    'not proceeding' in outcome_lower or
+                    'not proceed' in outcome_lower or
+                    'declined' in outcome_lower or
+                    'withdraw' in outcome_lower or
+                    'decided not to' in outcome_lower
+                )
+                if is_rejected:
+                    rejection_source = candidate.retell_call_outcome
+                    logger.info(f"Rejection found in call outcome: {candidate.retell_call_outcome}")
+
+            # Also check call summary for rejection indicators
+            if not is_rejected and candidate.retell_call_summary:
+                summary_lower = candidate.retell_call_summary.lower()
+                logger.info(f"Checking call summary for rejection keywords...")
+                logger.info(f"Summary (first 200 chars): {candidate.retell_call_summary[:200]}")
+
+                rejection_indicators = [
+                    'not interested',
+                    'another offer',
+                    'accepted offer',
+                    'accepted another',
+                    'not proceeding',
+                    'not proceed',
+                    'decided not to',
+                    'does not wish to proceed',
+                    'doesn\'t wish to proceed',
+                    'not wish to proceed',
+                    'declined',
+                    'withdraw',
+                    'no longer interested',
+                    'already accepted',
+                    'found another position',
+                    'took another job',
+                    'expressed disinterest',
+                    'disinterest'
+                ]
+
+                for indicator in rejection_indicators:
+                    if indicator in summary_lower:
+                        is_rejected = True
+                        rejection_source = 'Candidate not interested (from call summary)'
+                        logger.info(f"[REJECTION] Found keyword '{indicator}' in summary for candidate {candidate.id}")
+                        break
+
+                if not is_rejected:
+                    logger.info(f"No rejection keywords found in summary")
+
+            # Apply rejection if detected (TAKES PRIORITY over interview_scheduled!)
+            if is_rejected:
+                candidate.status = 'rejected'
+                # Set rejection reason if not already set
+                if not candidate.retell_rejection_reason:
+                    candidate.retell_rejection_reason = rejection_source or 'Not Interested'
+                # Set outcome if not already set
+                if not candidate.retell_call_outcome:
+                    candidate.retell_call_outcome = 'Not Interested'
+                # Clear interview scheduled flag since candidate is not interested
+                candidate.retell_interview_scheduled = False
+                logger.info(f"[REJECTED] Candidate {candidate.id} marked as REJECTED. Reason: {candidate.retell_rejection_reason}")
+            elif candidate.retell_interview_scheduled:
+                # Only set to interviewing if NOT rejected
+                candidate.status = 'interviewing'
+                logger.info(f"Setting status to 'interviewing' (interview scheduled)")
+            else:
+                logger.info(f"Candidate {candidate.id} - no special status change")
+
+            logger.info(f"=== REJECTION CHECK END - Final status: {candidate.status} ===")
 
             candidate.save()
 
             # Send WebDesk email automatically after call ends if interview is scheduled
+            # BUT NOT if candidate is rejected
             email_sent = False
-            if candidate.retell_call_status == 'ended' and candidate.retell_interview_scheduled:
+            if candidate.retell_call_status == 'ended' and candidate.retell_interview_scheduled and candidate.status != 'rejected':
                 logger.info(f"Attempting to send WebDesk email to candidate {candidate.id}")
                 email_sent = send_webdesk_email(candidate)
+            elif candidate.status == 'rejected':
+                logger.info(f"Skipping WebDesk email for candidate {candidate.id} - status is rejected")
 
             serializer = self.get_serializer(candidate)
             response_data = {

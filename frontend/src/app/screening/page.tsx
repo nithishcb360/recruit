@@ -2720,7 +2720,14 @@ ${fromEmail}`
                     )
                   })
                   .map((candidate, index) => (
-                  <div key={candidate.id} className="border border-slate-200 rounded-lg p-4 bg-white/50">
+                  <div
+                    key={candidate.id}
+                    className={`border rounded-lg p-4 ${
+                      candidate.status === 'rejected'
+                        ? 'border-red-500 border-2 bg-red-50/50'
+                        : 'border-slate-200 bg-white/50'
+                    }`}
+                  >
                     {/* Candidate Info */}
                     <div>
                       <div className="flex items-center justify-between">
@@ -3178,9 +3185,33 @@ ${fromEmail}`
 
                           {/* Call Outcome */}
                           {candidate.retell_call_outcome && (
-                            <p className="text-xs text-purple-700">
-                              <strong>Outcome:</strong> {candidate.retell_call_outcome}
-                            </p>
+                            <div className="flex items-center gap-2">
+                              <p className="text-xs text-purple-700">
+                                <strong>Outcome:</strong>
+                              </p>
+                              <Badge
+                                variant={
+                                  candidate.retell_call_outcome.toLowerCase().includes('not interested') ||
+                                  candidate.retell_call_outcome.toLowerCase().includes('another offer') ||
+                                  candidate.retell_call_outcome.toLowerCase().includes('declined') ||
+                                  candidate.status === 'rejected' ? 'destructive' :
+                                  candidate.retell_call_outcome === 'Interview Scheduled' ? 'default' :
+                                  'secondary'
+                                }
+                                className="text-xs"
+                              >
+                                {candidate.retell_call_outcome}
+                              </Badge>
+                            </div>
+                          )}
+
+                          {/* Rejection Reason */}
+                          {candidate.retell_rejection_reason && candidate.status === 'rejected' && (
+                            <div className="bg-red-50 border border-red-200 rounded p-2 mt-2">
+                              <p className="text-xs text-red-800">
+                                <strong className="text-red-900">❌ Rejection Reason:</strong> {candidate.retell_rejection_reason}
+                              </p>
+                            </div>
                           )}
 
                           {/* Interest Level */}
