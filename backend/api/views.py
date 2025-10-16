@@ -86,6 +86,11 @@ def send_webdesk_email(candidate):
     Email includes credentials and scheduled interview time
     """
     try:
+        # Check if email was already sent
+        if candidate.webdesk_email_sent:
+            logger.info(f"WebDesk email already sent to candidate {candidate.id} at {candidate.webdesk_email_sent_at}")
+            return False
+
         # Check if candidate has email
         if not candidate.email:
             logger.warning(f"Candidate {candidate.id} has no email address")
@@ -169,6 +174,12 @@ Recruitment Team
             recipient_list=[candidate.email],
             fail_silently=False,
         )
+
+        # Mark email as sent
+        from django.utils import timezone
+        candidate.webdesk_email_sent = True
+        candidate.webdesk_email_sent_at = timezone.now()
+        candidate.save()
 
         logger.info(f"✅ WebDesk email sent to {candidate.email} (Candidate ID: {candidate.id})")
         return True

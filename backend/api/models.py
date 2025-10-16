@@ -337,6 +337,10 @@ class Candidate(models.Model):
     video_interview_score = models.IntegerField(null=True, blank=True, help_text='Overall interview score 0-100')
     video_interview_analysis = models.TextField(blank=True, help_text='AI analysis of interview performance')
 
+    # WebDesk Email Tracking
+    webdesk_email_sent = models.BooleanField(default=False, help_text='Whether WebDesk assessment email has been sent')
+    webdesk_email_sent_at = models.DateTimeField(null=True, blank=True, help_text='When WebDesk email was sent')
+
     # Metadata
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
