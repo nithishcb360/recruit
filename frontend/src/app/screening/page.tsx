@@ -2106,13 +2106,6 @@ Name: ${candidate.name}
 Email: ${candidate.email}
 Phone: ${candidate.phone || 'N/A'}
 
-Assessment Details:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Score: ${candidate.assessment_score}%
-Status: ${candidate.assessment_disqualified ? 'DISQUALIFIED' : 'PASSED'}
-Tab Switches: ${candidate.assessment_tab_switches || 0}
-Time Taken: ${candidate.assessment_time_taken ? Math.round(candidate.assessment_time_taken / 60) : 'N/A'} minutes
-
 ${candidate.assessment_responses && candidate.assessment_responses.questions ? `Assessment Responses:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📄 Detailed responses PDF attached: assessment_responses_${candidate.id}.pdf
