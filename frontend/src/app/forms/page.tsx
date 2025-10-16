@@ -125,18 +125,21 @@ export default function FeedbackFormBuilder() {
         const questionPrompt = settings.ai?.implementations?.questionGeneration?.prompt
 
         if (aiProvider && aiApiKey) {
+          console.log('Loading AI config from organizationSettings:', { provider: aiProvider, hasKey: !!aiApiKey })
           setAiConfig({
             provider: aiProvider,
             apiKey: aiApiKey,
             customPrompt: questionPrompt
           })
           setCustomPrompt(questionPrompt || "")
+          return // Exit early if organization settings found
         }
       }
 
       // Fallback to old ai-config if organization settings not found
       const storedConfig = localStorage.getItem('ai-config')
-      if (storedConfig && !aiConfig) {
+      if (storedConfig) {
+        console.log('Loading AI config from ai-config fallback')
         setAiConfig(JSON.parse(storedConfig))
       }
     } catch (error) {
@@ -276,38 +279,8 @@ export default function FeedbackFormBuilder() {
   }, [toast])
  
   const handleCreateNewForm = () => {
-    // Create default questions based on form type
-    let defaultQuestions: Question[] = []
-
-    if (selectedFormType === 'question_with_answer' || selectedFormType === 'ai_question_with_answer') {
-      // Add default questions with sample answers for question_with_answer type
-      defaultQuestions = [
-        {
-          id: Date.now(),
-          text: "What are your key strengths for this role?",
-          type: "textarea",
-          required: true,
-          order: 1,
-          sample_answer: "I bring strong technical skills in [relevant technologies], excellent problem-solving abilities, and proven experience in [specific area]. My background includes [key achievements] which directly align with this position's requirements."
-        },
-        {
-          id: Date.now() + 1,
-          text: "Describe a challenging project you worked on and how you overcame obstacles.",
-          type: "textarea",
-          required: true,
-          order: 2,
-          sample_answer: "In my previous role, I led a project to [project description]. We faced challenges with [specific obstacle], which I addressed by [solution]. The result was [positive outcome], demonstrating my ability to [relevant skill]."
-        },
-        {
-          id: Date.now() + 2,
-          text: "Why are you interested in this position?",
-          type: "textarea",
-          required: true,
-          order: 3,
-          sample_answer: "I'm excited about this opportunity because [specific reasons related to company/role]. My experience in [relevant area] aligns well with your needs, and I'm particularly drawn to [specific aspect of the role/company]."
-        }
-      ]
-    }
+    // Start with empty questions - use AI to generate questions
+    const defaultQuestions: Question[] = []
 
     setEditingForm({
       id: 0, // New form
@@ -1624,7 +1597,7 @@ export default function FeedbackFormBuilder() {
                         Question Types (select multiple)
                       </Label>
                       <div className="flex flex-wrap gap-3">
-                        {(['text', 'textarea', 'audio', 'video', 'code', 'multiple_choice'] as const).map((type) => (
+                        {(['text', 'textarea', 'multiple_choice', 'code', 'audio', 'video'] as const).map((type) => (
                           <div key={type} className="flex items-center space-x-2">
                             <Checkbox
                               id={`ai-type-${type}`}
@@ -1687,37 +1660,157 @@ export default function FeedbackFormBuilder() {
                       )}
                     </div>
 
-                    {!aiConfig && (
-                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    {aiConfig && aiConfig.apiKey !== 'demo-key' && (
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                         <div className="flex items-start justify-between">
                           <div>
-                            <p className="text-sm text-amber-700">
-                              <strong>AI Configuration Missing:</strong> Configure your AI provider in settings for full functionality.
+                            <p className="text-sm font-semibold text-green-900 mb-1">
+                              ✓ AI Provider Configured
                             </p>
-                            <p className="text-xs text-amber-600 mt-1">
-                              For demo purposes, you can use the built-in fallback mode with limited capabilities.
+                            <p className="text-xs text-green-700">
+                              Provider: {aiConfig.provider} | API Key: {aiConfig.apiKey.substring(0, 10)}...
                             </p>
                           </div>
                           <Button
                             size="sm"
+                            variant="outline"
                             onClick={() => {
-                              // Set up demo config
-                              const demoConfig = {
-                                provider: 'anthropic',
-                                apiKey: 'demo-key'
-                              };
-                              localStorage.setItem('ai-config', JSON.stringify(demoConfig));
-                              setAiConfig(demoConfig);
+                              localStorage.removeItem('organizationSettings');
+                              localStorage.removeItem('ai-config');
+                              setAiConfig(null);
                               toast({
-                                title: "Demo Mode Enabled",
-                                description: "Using demo AI configuration. Configure proper API keys in settings for full functionality.",
+                                title: "AI Configuration Removed",
+                                description: "You can reconfigure it anytime",
                                 variant: "default"
                               });
                             }}
-                            className="bg-amber-600 hover:bg-amber-700 text-white text-xs"
+                            className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
                           >
-                            Enable Demo
+                            Remove
                           </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {!aiConfig && (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <div className="space-y-3">
+                          <div>
+                            <p className="text-sm font-semibold text-blue-900 mb-1">
+                              Configure AI Provider
+                            </p>
+                            <p className="text-xs text-blue-700">
+                              Enter your Anthropic API key to generate AI-powered questions.
+                            </p>
+                          </div>
+
+                          {!showApiKeyConfig ? (
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                onClick={() => setShowApiKeyConfig(true)}
+                                className="bg-blue-600 hover:bg-blue-700 text-white"
+                              >
+                                Configure API Key
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  const demoConfig = {
+                                    provider: 'anthropic',
+                                    apiKey: 'demo-key'
+                                  };
+                                  localStorage.setItem('ai-config', JSON.stringify(demoConfig));
+                                  setAiConfig(demoConfig);
+                                  toast({
+                                    title: "Demo Mode Enabled",
+                                    description: "Using fallback questions. Configure a real API key for AI generation.",
+                                    variant: "default"
+                                  });
+                                }}
+                                className="text-xs"
+                              >
+                                Use Demo Mode
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              <div className="space-y-2">
+                                <Label className="text-sm text-blue-900">Anthropic API Key</Label>
+                                <Input
+                                  type="password"
+                                  placeholder="sk-ant-..."
+                                  value={apiKeyInput}
+                                  onChange={(e) => setApiKeyInput(e.target.value)}
+                                  className="font-mono text-sm"
+                                />
+                                <p className="text-xs text-blue-600">
+                                  Get your API key from{" "}
+                                  <a
+                                    href="https://console.anthropic.com/"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="underline hover:text-blue-800"
+                                  >
+                                    console.anthropic.com
+                                  </a>
+                                </p>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  onClick={() => {
+                                    if (!apiKeyInput.trim()) {
+                                      toast({
+                                        title: "API Key Required",
+                                        description: "Please enter your Anthropic API key",
+                                        variant: "destructive"
+                                      });
+                                      return;
+                                    }
+
+                                    const newConfig = {
+                                      provider: 'anthropic',
+                                      apiKey: apiKeyInput.trim()
+                                    };
+
+                                    const orgSettings = {
+                                      general: {
+                                        aiProvider: 'anthropic',
+                                        aiApiKey: apiKeyInput.trim()
+                                      }
+                                    };
+                                    localStorage.setItem('organizationSettings', JSON.stringify(orgSettings));
+                                    localStorage.setItem('ai-config', JSON.stringify(newConfig));
+
+                                    setAiConfig(newConfig);
+                                    setShowApiKeyConfig(false);
+                                    setApiKeyInput("");
+
+                                    toast({
+                                      title: "API Key Configured",
+                                      description: "You can now use AI to generate questions",
+                                      variant: "default"
+                                    });
+                                  }}
+                                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                                >
+                                  Save API Key
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setShowApiKeyConfig(false);
+                                    setApiKeyInput("");
+                                  }}
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}

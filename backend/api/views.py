@@ -2553,16 +2553,25 @@ Requirements:
 - Questions should be professional and unbiased
 - {'Provide sample answers for each question' if include_answers else 'Only provide the questions'}
 
+For question types:
+- "multiple_choice": Include an "options" array with 4-5 answer choices
+- "code": Include a "language" field (e.g., "python", "javascript", "java")
+- Other types: "text", "textarea", "audio", "video"
+
 Format your response as valid JSON with this structure:
 {{
   "questions": [
     {{
       "text": "Your question here",
       "type": "text",
-      "required": true{', "answer": "Sample answer here"' if include_answers else ''}
+      "required": true{', "answer": "Sample answer here"' if include_answers else ''},
+      "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
+      "language": "python"
     }}
   ]
-}}"""
+}}
+
+Note: Only include "options" for multiple_choice questions, and "language" for code questions."""
 
         final_system_prompt = system_prompt if system_prompt else default_system_prompt
 
@@ -2702,8 +2711,19 @@ Please respond with valid JSON containing an array of questions."""
                                 'required': q.get('required', True),
                                 'ai_generated': True
                             }
+
+                            # Add options for multiple_choice questions
+                            if formatted_q['type'] == 'multiple_choice' and 'options' in q:
+                                formatted_q['options'] = q['options']
+
+                            # Add language for code questions
+                            if formatted_q['type'] == 'code' and 'language' in q:
+                                formatted_q['language'] = q['language']
+
+                            # Add answer if requested
                             if include_answers and 'answer' in q:
                                 formatted_q['answer'] = q['answer']
+
                             formatted_questions.append(formatted_q)
 
                         return Response({'questions': formatted_questions})
