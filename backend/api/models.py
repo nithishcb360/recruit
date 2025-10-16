@@ -504,3 +504,20 @@ class InterviewRound(models.Model):
 
     def __str__(self):
         return f"{self.flow.name} - {self.name}"
+
+class EmailSettings(models.Model):
+    """Store email configuration settings"""
+    email_user = models.EmailField(blank=True)
+    email_password = models.CharField(max_length=500, blank=True)  # Should be encrypted in production
+    email_host = models.CharField(max_length=200, default='smtp.gmail.com')
+    email_port = models.IntegerField(default=587)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Email Settings"
+        verbose_name_plural = "Email Settings"
+
+    def __str__(self):
+        return f"Email Settings - {self.email_user}"

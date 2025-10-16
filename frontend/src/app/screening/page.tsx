@@ -1033,6 +1033,22 @@ export default function ScreeningPage() {
     refreshMovedCandidatesData(screeningList)
   }, [])
 
+  // Auto-refresh candidates data every 5 seconds to show real-time updates
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      // Silently fetch updated candidate data
+      fetchCandidates()
+      // Also refresh moved candidates list to get latest status
+      const screeningList = getScreeningCandidatesList()
+      if (screeningList.length > 0) {
+        refreshMovedCandidatesData(screeningList)
+      }
+    }, 5000) // Refresh every 5 seconds
+
+    // Cleanup interval on component unmount
+    return () => clearInterval(intervalId)
+  }, [])
+
   // Function to refresh moved candidates data from API
   const refreshMovedCandidatesData = async (candidatesList: ScreeningCandidateData[]) => {
     if (candidatesList.length === 0) return

@@ -31,5 +31,8 @@ urlpatterns = [
     # Retell AI agent management
     path('retell/agent/prompt/', views.get_retell_agent_prompt, name='get-retell-agent-prompt'),
     path('retell/agent/prompt/update/', views.update_retell_agent_prompt, name='update-retell-agent-prompt'),
+    # Email settings management
+    path('settings/email/', views.get_email_settings, name='get-email-settings'),
+    path('settings/email/update/', views.update_email_settings, name='update-email-settings'),
     path('', include(router.urls)),
 ]

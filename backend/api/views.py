@@ -166,14 +166,46 @@ Best regards,
 Recruitment Team
 """
 
-        # Send email
-        send_mail(
-            subject=subject,
-            message=message,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[candidate.email],
-            fail_silently=False,
-        )
+        # Get email settings from database first, fallback to environment variables
+        from .models import EmailSettings
+        email_settings = EmailSettings.objects.filter(is_active=True).order_by('-updated_at').first()
+
+        if email_settings:
+            email_user = email_settings.email_user
+            email_password = email_settings.email_password
+            email_host = email_settings.email_host
+            email_port = email_settings.email_port
+        else:
+            # Fallback to environment variables
+            email_user = os.getenv('EMAIL_USER', os.getenv('EMAIL_HOST_USER', ''))
+            email_password = os.getenv('EMAIL_PASSWORD', os.getenv('EMAIL_HOST_PASSWORD', ''))
+            email_host = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+            email_port = int(os.getenv('EMAIL_PORT', '587'))
+
+        if not email_user or not email_password:
+            logger.error("Email credentials not configured. Please set EMAIL_USER and EMAIL_PASSWORD in Settings page.")
+            return False
+
+        # Send email using SMTP
+        import smtplib
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+
+        msg = MIMEMultipart()
+        msg['From'] = email_user
+        msg['To'] = candidate.email
+        msg['Subject'] = subject
+        msg.attach(MIMEText(message, 'plain'))
+
+        try:
+            with smtplib.SMTP(email_host, email_port) as server:
+                server.starttls()
+                server.login(email_user, email_password)
+                server.send_message(msg)
+                logger.info(f"Email sent successfully to {candidate.email}")
+        except Exception as e:
+            logger.error(f"Failed to send email: {e}")
+            return False
 
         # Mark email as sent
         from django.utils import timezone
@@ -2978,5 +3010,95 @@ def update_retell_agent_prompt(request):
         logger.error(f"Error updating Retell LLM: {e}")
         return Response(
             {'error': f'Failed to update Retell LLM: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+@api_view(['GET'])
+def get_email_settings(request):
+    """
+    Get current email settings from database
+    """
+    try:
+        from .models import EmailSettings
+
+        # Get the latest active email settings
+        email_settings = EmailSettings.objects.filter(is_active=True).order_by('-updated_at').first()
+
+        if email_settings:
+            return Response({
+                'success': True,
+                'emailUser': email_settings.email_user,
+                'emailHost': email_settings.email_host,
+                'emailPort': str(email_settings.email_port),
+            })
+        else:
+            # Fallback to environment variables
+            return Response({
+                'success': True,
+                'emailUser': os.getenv('EMAIL_USER', os.getenv('EMAIL_HOST_USER', '')),
+                'emailHost': os.getenv('EMAIL_HOST', 'smtp.gmail.com'),
+                'emailPort': os.getenv('EMAIL_PORT', '587'),
+            })
+    except Exception as e:
+        logger.error(f"Error getting email settings: {e}")
+        return Response(
+            {'error': f'Failed to get email settings: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+def update_email_settings(request):
+    """
+    Update email settings in .env file
+    
+    POST body:
+    {
+        "emailUser": "your-email@gmail.com",
+        "emailPassword": "your-app-password",
+        "emailHost": "smtp.gmail.com",
+        "emailPort": "587"
+    }
+    """
+    try:
+        from .models import EmailSettings
+
+        email_user = request.data.get('emailUser')
+        email_password = request.data.get('emailPassword')
+        email_host = request.data.get('emailHost', 'smtp.gmail.com')
+        email_port = request.data.get('emailPort', '587')
+
+        if not email_user or not email_password:
+            return Response(
+                {'error': 'Email user and password are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Deactivate all existing settings
+        EmailSettings.objects.all().update(is_active=False)
+
+        # Create new active settings
+        email_settings = EmailSettings.objects.create(
+            email_user=email_user,
+            email_password=email_password,
+            email_host=email_host,
+            email_port=int(email_port),
+            is_active=True
+        )
+
+        logger.info(f"Email settings saved to database for {email_user}")
+
+        return Response({
+            'success': True,
+            'message': 'Email settings updated successfully',
+            'emailUser': email_user,
+            'emailHost': email_host,
+            'emailPort': email_port,
+        })
+
+    except Exception as e:
+        logger.error(f"Error updating email settings: {e}")
+        return Response(
+            {'error': f'Failed to update email settings: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
