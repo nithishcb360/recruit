@@ -72,6 +72,10 @@ interface OrganizationSettings {
     locale: string
     aiProvider: string
     aiApiKey: string
+    emailUser: string
+    emailPassword: string
+    emailHost: string
+    emailPort: string
   }
   ai: {
     selectedImplementation: string
@@ -300,7 +304,11 @@ export default function ClientOrganizationSettings() {
       timezone: "America/Los_Angeles",
       locale: "en-US",
       aiProvider: "anthropic",
-      aiApiKey: ""
+      aiApiKey: "",
+      emailUser: "",
+      emailPassword: "",
+      emailHost: "smtp.gmail.com",
+      emailPort: "587"
     },
     ai: {
       selectedImplementation: "jobDescription",
@@ -360,6 +368,31 @@ Format your response as valid JSON with this structure:
     }
   ]
 }`
+        },
+        retellAgent: {
+          name: "Retell AI Agent Prompt",
+          prompt: `You are an AI recruiter conducting initial phone screening calls. Be professional, friendly, and conversational.
+
+Your goals:
+- Assess candidate fit for the role
+- Gauge interest and availability
+- Schedule technical interviews if qualified
+- Collect relevant experience information
+
+Conversation Flow:
+1. Introduce yourself and the company
+2. Confirm candidate's interest in the position
+3. Ask about relevant experience and skills
+4. Discuss availability for interviews
+5. Schedule next steps if interested
+
+Always be:
+- Professional and respectful
+- Clear and concise
+- Empathetic to candidate's time
+- Positive about the opportunity
+
+If candidate is not interested or has accepted another offer, thank them gracefully and end the call.`
         }
       }
     },
@@ -922,6 +955,31 @@ Format your response as valid JSON with this structure:
     }
   ]
 }`
+            },
+            retellAgent: {
+              name: "Retell AI Agent Prompt",
+              prompt: `You are an AI recruiter conducting initial phone screening calls. Be professional, friendly, and conversational.
+
+Your goals:
+- Assess candidate fit for the role
+- Gauge interest and availability
+- Schedule technical interviews if qualified
+- Collect relevant experience information
+
+Conversation Flow:
+1. Introduce yourself and the company
+2. Confirm candidate's interest in the position
+3. Ask about relevant experience and skills
+4. Discuss availability for interviews
+5. Schedule next steps if interested
+
+Always be:
+- Professional and respectful
+- Clear and concise
+- Empathetic to candidate's time
+- Positive about the opportunity
+
+If candidate is not interested or has accepted another offer, thank them gracefully and end the call.`
             }
           };
           parsedSettings.ai.selectedImplementation = parsedSettings.ai.selectedImplementation || "jobDescription";
@@ -956,6 +1014,35 @@ Format your response as valid JSON with this structure:
           };
         }
 
+        // Ensure retellAgent implementation exists (for existing settings)
+        if (parsedSettings.ai && parsedSettings.ai.implementations && !parsedSettings.ai.implementations.retellAgent) {
+          parsedSettings.ai.implementations.retellAgent = {
+            name: "Retell AI Agent Prompt",
+            prompt: `You are an AI recruiter conducting initial phone screening calls. Be professional, friendly, and conversational.
+
+Your goals:
+- Assess candidate fit for the role
+- Gauge interest and availability
+- Schedule technical interviews if qualified
+- Collect relevant experience information
+
+Conversation Flow:
+1. Introduce yourself and the company
+2. Confirm candidate's interest in the position
+3. Ask about relevant experience and skills
+4. Discuss availability for interviews
+5. Schedule next steps if interested
+
+Always be:
+- Professional and respectful
+- Clear and concise
+- Empathetic to candidate's time
+- Positive about the opportunity
+
+If candidate is not interested or has accepted another offer, thank them gracefully and end the call.`
+          };
+        }
+
         setOrgSettings(prevSettings => ({
           ...prevSettings,
           ...parsedSettings
@@ -971,6 +1058,32 @@ Format your response as valid JSON with this structure:
   useEffect(() => {
     fetchInterviewFlows();
     fetchFeedbackForms();
+  }, []);
+
+  // Load email settings from backend on component mount
+  useEffect(() => {
+    const fetchEmailSettings = async () => {
+      try {
+        const response = await fetch('http://localhost:8000/api/settings/email/');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success) {
+            setOrgSettings(prev => ({
+              ...prev,
+              general: {
+                ...prev.general,
+                emailUser: data.emailUser || '',
+                emailHost: data.emailHost || 'smtp.gmail.com',
+                emailPort: data.emailPort || '587',
+              }
+            }));
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch email settings:', error);
+      }
+    };
+    fetchEmailSettings();
   }, []);
 
   // Handle settings changes with proper typing
@@ -1891,6 +2004,157 @@ Format your response as valid JSON with this structure:
                       {orgSettings.general.aiApiKey ? "Configured" : "Not set"}
                     </Badge>
                   </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Email Configuration Card - Full Width */}
+          <div className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Mail className="h-5 w-5 mr-2" />
+                  Email Configuration
+                </CardTitle>
+                <CardDescription>Configure SMTP settings for sending emails</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="email-user">Email Address</Label>
+                    <Input
+                      id="email-user"
+                      type="email"
+                      value={orgSettings.general.emailUser}
+                      onChange={(e) => handleSettingsChange('general', 'emailUser', e.target.value)}
+                      placeholder="your-email@gmail.com"
+                    />
+                    <p className="text-xs text-gray-500">
+                      The email address used to send emails
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="email-password">Email Password / App Password</Label>
+                    <div className="relative">
+                      <Input
+                        id="email-password"
+                        type="password"
+                        value={orgSettings.general.emailPassword}
+                        onChange={(e) => handleSettingsChange('general', 'emailPassword', e.target.value)}
+                        placeholder="Enter app password"
+                      />
+                      <Key className="absolute right-3 top-3 h-4 w-4 text-gray-400" />
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      For Gmail, use an App Password instead of your account password
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="email-host">SMTP Host</Label>
+                    <Input
+                      id="email-host"
+                      value={orgSettings.general.emailHost}
+                      onChange={(e) => handleSettingsChange('general', 'emailHost', e.target.value)}
+                      placeholder="smtp.gmail.com"
+                    />
+                    <p className="text-xs text-gray-500">
+                      Common: smtp.gmail.com, smtp.office365.com
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="email-port">SMTP Port</Label>
+                    <Input
+                      id="email-port"
+                      value={orgSettings.general.emailPort}
+                      onChange={(e) => handleSettingsChange('general', 'emailPort', e.target.value)}
+                      placeholder="587"
+                    />
+                    <p className="text-xs text-gray-500">
+                      Common ports: 587 (TLS), 465 (SSL)
+                    </p>
+                  </div>
+                </div>
+                <div className="pt-2 border-t border-gray-100">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-600">Email Status:</span>
+                    <Badge variant={orgSettings.general.emailUser && orgSettings.general.emailPassword ? "default" : "destructive"}>
+                      {orgSettings.general.emailUser && orgSettings.general.emailPassword ? "Configured" : "Not configured"}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="flex gap-2 pt-4">
+                  <Button
+                    onClick={async () => {
+                      // Validate required fields
+                      if (!orgSettings.general.emailUser || !orgSettings.general.emailUser.trim()) {
+                        toast({
+                          title: "Validation Error",
+                          description: "Email address is required",
+                          variant: "destructive"
+                        });
+                        return;
+                      }
+
+                      if (!orgSettings.general.emailPassword || !orgSettings.general.emailPassword.trim()) {
+                        toast({
+                          title: "Validation Error",
+                          description: "Email password is required",
+                          variant: "destructive"
+                        });
+                        return;
+                      }
+
+                      // Validate email format
+                      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                      if (!emailRegex.test(orgSettings.general.emailUser)) {
+                        toast({
+                          title: "Validation Error",
+                          description: "Please enter a valid email address",
+                          variant: "destructive"
+                        });
+                        return;
+                      }
+
+                      try {
+                        const response = await fetch('http://localhost:8000/api/settings/email/update/', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            emailUser: orgSettings.general.emailUser,
+                            emailPassword: orgSettings.general.emailPassword,
+                            emailHost: orgSettings.general.emailHost,
+                            emailPort: orgSettings.general.emailPort,
+                          })
+                        });
+                        const data = await response.json();
+                        if (data.success) {
+                          toast({
+                            title: "Success",
+                            description: "Email settings updated successfully!",
+                          });
+                        } else {
+                          toast({
+                            title: "Error",
+                            description: data.error || "Failed to update email settings",
+                            variant: "destructive"
+                          });
+                        }
+                      } catch (error) {
+                        toast({
+                          title: "Error",
+                          description: "Failed to update email settings",
+                          variant: "destructive"
+                        });
+                      }
+                    }}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    Save Email Settings
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -2878,6 +3142,77 @@ Make sure the requirements field contains properly formatted text, not JSON stru
                         <Save className="h-4 w-4 mr-2" />
                         {isLoading ? 'Saving...' : 'Save & Update API'}
                       </Button>
+
+                      {/* Retell AI specific buttons */}
+                      {orgSettings.ai.selectedImplementation === 'retellAgent' && (
+                        <>
+                          <Button
+                            variant="outline"
+                            className="border-purple-500 text-purple-600 hover:bg-purple-50"
+                            onClick={async () => {
+                              try {
+                                const response = await fetch('http://localhost:8000/api/retell/agent/prompt/')
+                                if (!response.ok) throw new Error('Failed to fetch from Retell API')
+
+                                const data = await response.json()
+                                const newImplementations = {
+                                  ...orgSettings.ai.implementations,
+                                  retellAgent: {
+                                    ...orgSettings.ai.implementations.retellAgent,
+                                    prompt: data.general_prompt || ''
+                                  }
+                                }
+                                handleSettingsChange('ai', 'implementations', newImplementations)
+                                toast({
+                                  title: "Fetched from Retell",
+                                  description: "Current prompt loaded from Retell AI agent",
+                                  variant: "default"
+                                })
+                              } catch (error) {
+                                toast({
+                                  title: "Error",
+                                  description: "Failed to fetch prompt from Retell API",
+                                  variant: "destructive"
+                                })
+                              }
+                            }}
+                          >
+                            <Download className="h-4 w-4 mr-2" />
+                            Fetch from Retell
+                          </Button>
+
+                          <Button
+                            className="bg-purple-600 hover:bg-purple-700 text-white"
+                            onClick={async () => {
+                              try {
+                                const response = await fetch('http://localhost:8000/api/retell/agent/prompt/update/', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    general_prompt: orgSettings.ai.implementations.retellAgent?.prompt
+                                  })
+                                })
+                                if (!response.ok) throw new Error('Failed to update Retell agent')
+
+                                toast({
+                                  title: "Updated Retell Agent",
+                                  description: "Prompt has been updated in Retell AI",
+                                  variant: "default"
+                                })
+                              } catch (error) {
+                                toast({
+                                  title: "Error",
+                                  description: "Failed to update Retell agent prompt",
+                                  variant: "destructive"
+                                })
+                              }
+                            }}
+                          >
+                            <Upload className="h-4 w-4 mr-2" />
+                            Save to Retell
+                          </Button>
+                        </>
+                      )}
 
                       <Button
                         variant="outline"

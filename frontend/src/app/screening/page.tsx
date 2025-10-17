@@ -1033,6 +1033,22 @@ export default function ScreeningPage() {
     refreshMovedCandidatesData(screeningList)
   }, [])
 
+  // Auto-refresh candidates data every 5 seconds to show real-time updates
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      // Silently fetch updated candidate data
+      fetchCandidates()
+      // Also refresh moved candidates list to get latest status
+      const screeningList = getScreeningCandidatesList()
+      if (screeningList.length > 0) {
+        refreshMovedCandidatesData(screeningList)
+      }
+    }, 5000) // Refresh every 5 seconds
+
+    // Cleanup interval on component unmount
+    return () => clearInterval(intervalId)
+  }, [])
+
   // Function to refresh moved candidates data from API
   const refreshMovedCandidatesData = async (candidatesList: ScreeningCandidateData[]) => {
     if (candidatesList.length === 0) return
@@ -2679,7 +2695,19 @@ ${fromEmail}`
         </div>
 
         {/* Screening Candidates List Section */}
-        {movedCandidatesList.length > 0 && (
+        {movedCandidatesList.length === 0 ? (
+          <Card className="border-2 border-gray-200 bg-gray-50/30">
+            <CardContent className="py-16">
+              <div className="flex flex-col items-center justify-center text-center">
+                <User className="h-16 w-16 text-gray-300 mb-4" />
+                <h3 className="text-xl font-semibold text-gray-600 mb-2">No Candidates in Screening</h3>
+                <p className="text-gray-500 max-w-md">
+                  No candidates have been moved to screening yet. Move candidates from the Candidates page to start the screening process.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
           <Card className="border-2 border-blue-200 bg-blue-50/30">
             <CardHeader className="pb-4">
               <div className="flex items-center justify-between">
@@ -2720,7 +2748,14 @@ ${fromEmail}`
                     )
                   })
                   .map((candidate, index) => (
-                  <div key={candidate.id} className="border border-slate-200 rounded-lg p-4 bg-white/50">
+                  <div
+                    key={candidate.id}
+                    className={`border rounded-lg p-4 ${
+                      candidate.status === 'rejected'
+                        ? 'border-red-500 border-2 bg-red-50/50'
+                        : 'border-slate-200 bg-white/50'
+                    }`}
+                  >
                     {/* Candidate Info */}
                     <div>
                       <div className="flex items-center justify-between">
@@ -3178,9 +3213,33 @@ ${fromEmail}`
 
                           {/* Call Outcome */}
                           {candidate.retell_call_outcome && (
-                            <p className="text-xs text-purple-700">
-                              <strong>Outcome:</strong> {candidate.retell_call_outcome}
-                            </p>
+                            <div className="flex items-center gap-2">
+                              <p className="text-xs text-purple-700">
+                                <strong>Outcome:</strong>
+                              </p>
+                              <Badge
+                                variant={
+                                  candidate.retell_call_outcome.toLowerCase().includes('not interested') ||
+                                  candidate.retell_call_outcome.toLowerCase().includes('another offer') ||
+                                  candidate.retell_call_outcome.toLowerCase().includes('declined') ||
+                                  candidate.status === 'rejected' ? 'destructive' :
+                                  candidate.retell_call_outcome === 'Interview Scheduled' ? 'default' :
+                                  'secondary'
+                                }
+                                className="text-xs"
+                              >
+                                {candidate.retell_call_outcome}
+                              </Badge>
+                            </div>
+                          )}
+
+                          {/* Rejection Reason */}
+                          {candidate.retell_rejection_reason && candidate.status === 'rejected' && (
+                            <div className="bg-red-50 border border-red-200 rounded p-2 mt-2">
+                              <p className="text-xs text-red-800">
+                                <strong className="text-red-900">❌ Rejection Reason:</strong> {candidate.retell_rejection_reason}
+                              </p>
+                            </div>
                           )}
 
                           {/* Interest Level */}
@@ -3649,7 +3708,8 @@ ${fromEmail}`
               </div>
             </CardContent>
           </Card>
-        )}
+        )
+        }
 
         {/* Screening Results Section */}
         { !isLoading && filteredResults.length > 0 && (
