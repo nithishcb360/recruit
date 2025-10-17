@@ -24,7 +24,8 @@ class SimpleComprehensiveParser:
 
     def __init__(self):
         self.email_pattern = re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b')
-        self.phone_pattern = re.compile(r'(?:\+?1[-.\s]?)?(?:\(?[0-9]{3}\)?[-.\s]?)?[0-9]{3}[-.\s]?[0-9]{4}')
+        # Updated phone pattern to support international country codes like +91, +1, etc.
+        self.phone_pattern = re.compile(r'(?:\+\d{1,4}[-.\s]?)?(?:\(?[0-9]{3}\)?[-.\s]?)?[0-9]{3}[-.\s]?[0-9]{4}')
         self.linkedin_pattern = re.compile(r'(?:https?://)?(?:www\.)?linkedin\.com/in/[\w\-_]+/?', re.IGNORECASE)
         self.github_pattern = re.compile(r'(?:https?://)?(?:www\.)?github\.com/[\w\-_]+/?', re.IGNORECASE)
 

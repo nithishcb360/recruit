@@ -676,8 +676,9 @@ class EnhancedResumeParser:
         return emails[0] if emails else ''
 
     def _extract_phone_basic(self, text: str) -> str:
-        """Basic phone extraction."""
-        phone_pattern = r'[\+]?[1-9]?[\d\s\(\)-]{8,15}\d'
+        """Basic phone extraction with country code support."""
+        # Supports formats like: +91 9345863300, +1-123-456-7890, (123) 456-7890, etc.
+        phone_pattern = r'[\+]?[1-9]{1,4}?[-.\s]?[\d\s\(\)-]{8,15}\d'
         phones = re.findall(phone_pattern, text)
         return phones[0].strip() if phones else ''
 

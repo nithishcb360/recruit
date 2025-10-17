@@ -143,19 +143,23 @@ class ResumeParser:
         return emails[0] if emails else ''
 
     def _extract_phone(self, text: str) -> str:
-        """Extract phone number from resume text."""
+        """Extract phone number from resume text with country code support."""
         phone_patterns = [
+            r'\+\d{1,4}[-.\s]?\d{10}',  # +91 9345863300 or +1-1234567890
+            r'\+\d{1,4}[-.\s]?\d{3}[-.\s]?\d{3}[-.\s]?\d{4}',  # +91-934-586-3300
+            r'\+\d{1,4}[-.\s]?\(\d{3}\)[-.\s]?\d{3}[-.\s]?\d{4}',  # +1 (123) 456-7890
             r'\b\d{3}-\d{3}-\d{4}\b',  # 123-456-7890
             r'\b\(\d{3}\)\s*\d{3}-\d{4}\b',  # (123) 456-7890
             r'\b\d{3}\.\d{3}\.\d{4}\b',  # 123.456.7890
             r'\b\d{10}\b',  # 1234567890
         ]
-        
+
         for pattern in phone_patterns:
             phones = re.findall(pattern, text)
             if phones:
-                return phones[0]
-        
+                # Return phone with country code if present
+                return phones[0].strip()
+
         return ''
 
     def _extract_skills(self, text: str) -> List[str]:
