@@ -2695,7 +2695,19 @@ ${fromEmail}`
         </div>
 
         {/* Screening Candidates List Section */}
-        {movedCandidatesList.length > 0 && (
+        {movedCandidatesList.length === 0 ? (
+          <Card className="border-2 border-gray-200 bg-gray-50/30">
+            <CardContent className="py-16">
+              <div className="flex flex-col items-center justify-center text-center">
+                <User className="h-16 w-16 text-gray-300 mb-4" />
+                <h3 className="text-xl font-semibold text-gray-600 mb-2">No Candidates in Screening</h3>
+                <p className="text-gray-500 max-w-md">
+                  No candidates have been moved to screening yet. Move candidates from the Candidates page to start the screening process.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
           <Card className="border-2 border-blue-200 bg-blue-50/30">
             <CardHeader className="pb-4">
               <div className="flex items-center justify-between">
@@ -3696,7 +3708,8 @@ ${fromEmail}`
               </div>
             </CardContent>
           </Card>
-        )}
+        )
+        }
 
         {/* Screening Results Section */}
         { !isLoading && filteredResults.length > 0 && (

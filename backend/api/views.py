@@ -3024,21 +3024,31 @@ def get_email_settings(request):
         # Get the latest active email settings
         email_settings = EmailSettings.objects.filter(is_active=True).order_by('-updated_at').first()
 
+        # Check if request needs password (for email sending)
+        include_password = request.GET.get('include_password', 'false').lower() == 'true'
+
         if email_settings:
-            return Response({
+            response_data = {
                 'success': True,
                 'emailUser': email_settings.email_user,
                 'emailHost': email_settings.email_host,
                 'emailPort': str(email_settings.email_port),
-            })
+            }
+            # Include password only when explicitly requested (for email sending operations)
+            if include_password:
+                response_data['emailPassword'] = email_settings.email_password
+            return Response(response_data)
         else:
             # Fallback to environment variables
-            return Response({
+            response_data = {
                 'success': True,
                 'emailUser': os.getenv('EMAIL_USER', os.getenv('EMAIL_HOST_USER', '')),
                 'emailHost': os.getenv('EMAIL_HOST', 'smtp.gmail.com'),
                 'emailPort': os.getenv('EMAIL_PORT', '587'),
-            })
+            }
+            if include_password:
+                response_data['emailPassword'] = os.getenv('EMAIL_PASSWORD', os.getenv('EMAIL_HOST_PASSWORD', ''))
+            return Response(response_data)
     except Exception as e:
         logger.error(f"Error getting email settings: {e}")
         return Response(
