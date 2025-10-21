@@ -17,12 +17,43 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get email configuration from environment
-    const emailUser = process.env.EMAIL_USER;
-    const emailPassword = process.env.EMAIL_PASSWORD;
-    const emailHost = process.env.EMAIL_HOST || 'smtp.gmail.com';
-    const emailPort = parseInt(process.env.EMAIL_PORT || '587');
-    const emailFrom = process.env.NEXT_PUBLIC_COMPANY_EMAIL || process.env.EMAIL_USER;
+    // Get email configuration from backend API (Settings page) with password
+    let emailUser = '';
+    let emailPassword = '';
+    let emailHost = 'smtp.gmail.com';
+    let emailPort = 587;
+
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+      // Request password for email sending operation
+      const settingsResponse = await fetch(`${backendUrl}/api/settings/email/?include_password=true`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (settingsResponse.ok) {
+        const settingsData = await settingsResponse.json();
+        if (settingsData.success) {
+          emailUser = settingsData.emailUser || '';
+          emailPassword = settingsData.emailPassword || '';
+          emailHost = settingsData.emailHost || 'smtp.gmail.com';
+          emailPort = parseInt(settingsData.emailPort || '587');
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching email settings:', error);
+    }
+
+    // Fallback to environment variables if not configured in Settings
+    if (!emailUser || !emailPassword) {
+      emailUser = emailUser || process.env.EMAIL_USER || '';
+      emailPassword = emailPassword || process.env.EMAIL_PASSWORD || '';
+      emailHost = emailHost || process.env.EMAIL_HOST || 'smtp.gmail.com';
+      emailPort = emailPort || parseInt(process.env.EMAIL_PORT || '587');
+    }
+    const emailFrom = process.env.NEXT_PUBLIC_COMPANY_EMAIL || emailUser;
 
     // Check if email is configured
     if (!emailUser || !emailPassword) {
@@ -32,7 +63,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         demo: true,
-        message: 'Email sending not configured. Set EMAIL_USER and EMAIL_PASSWORD in .env.local',
+        message: 'Email sending not configured. Please configure email settings in Settings page → Email Configuration',
         previewData: { to, subject, from: emailFrom }
       });
     }

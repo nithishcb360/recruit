@@ -86,6 +86,11 @@ def send_webdesk_email(candidate):
     Email includes credentials and scheduled interview time
     """
     try:
+        # Check if email was already sent
+        if candidate.webdesk_email_sent:
+            logger.info(f"WebDesk email already sent to candidate {candidate.id} at {candidate.webdesk_email_sent_at}")
+            return False
+
         # Check if candidate has email
         if not candidate.email:
             logger.warning(f"Candidate {candidate.id} has no email address")
@@ -161,14 +166,52 @@ Best regards,
 Recruitment Team
 """
 
-        # Send email
-        send_mail(
-            subject=subject,
-            message=message,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[candidate.email],
-            fail_silently=False,
-        )
+        # Get email settings from database first, fallback to environment variables
+        from .models import EmailSettings
+        email_settings = EmailSettings.objects.filter(is_active=True).order_by('-updated_at').first()
+
+        if email_settings:
+            email_user = email_settings.email_user
+            email_password = email_settings.email_password
+            email_host = email_settings.email_host
+            email_port = email_settings.email_port
+        else:
+            # Fallback to environment variables
+            email_user = os.getenv('EMAIL_USER', os.getenv('EMAIL_HOST_USER', ''))
+            email_password = os.getenv('EMAIL_PASSWORD', os.getenv('EMAIL_HOST_PASSWORD', ''))
+            email_host = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+            email_port = int(os.getenv('EMAIL_PORT', '587'))
+
+        if not email_user or not email_password:
+            logger.error("Email credentials not configured. Please set EMAIL_USER and EMAIL_PASSWORD in Settings page.")
+            return False
+
+        # Send email using SMTP
+        import smtplib
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+
+        msg = MIMEMultipart()
+        msg['From'] = email_user
+        msg['To'] = candidate.email
+        msg['Subject'] = subject
+        msg.attach(MIMEText(message, 'plain'))
+
+        try:
+            with smtplib.SMTP(email_host, email_port) as server:
+                server.starttls()
+                server.login(email_user, email_password)
+                server.send_message(msg)
+                logger.info(f"Email sent successfully to {candidate.email}")
+        except Exception as e:
+            logger.error(f"Failed to send email: {e}")
+            return False
+
+        # Mark email as sent
+        from django.utils import timezone
+        candidate.webdesk_email_sent = True
+        candidate.webdesk_email_sent_at = timezone.now()
+        candidate.save()
 
         logger.info(f"✅ WebDesk email sent to {candidate.email} (Candidate ID: {candidate.id})")
         return True
@@ -840,19 +883,131 @@ class CandidateViewSet(viewsets.ModelViewSet):
                     if 'additional_notes' in custom_data:
                         candidate.retell_additional_notes = custom_data['additional_notes']
 
-                    # Update candidate status based on call outcome
-                    if candidate.retell_interview_scheduled:
-                        candidate.status = 'interviewing'
-                    elif candidate.retell_call_outcome == 'Not Interested':
-                        candidate.status = 'rejected'
+            # IMPORTANT: Check for rejection AFTER processing all data (outside custom_data block)
+            # This ensures rejection detection works even if custom_analysis_data is missing
+            logger.info(f"=== REJECTION CHECK START for candidate {candidate.id} ===")
+            logger.info(f"Interview scheduled: {candidate.retell_interview_scheduled}")
+            logger.info(f"Call summary exists: {bool(candidate.retell_call_summary)}")
+            logger.info(f"Call outcome: {candidate.retell_call_outcome}")
+
+            # Update candidate status based on call outcome OR call summary
+            # IMPORTANT: Check for rejection FIRST, regardless of interview_scheduled status!
+            is_rejected = False
+            rejection_source = None
+
+            # Check call outcome first
+            if candidate.retell_call_outcome:
+                rejection_outcomes = ['Not Interested', 'Accepted Another Offer', 'Not Proceeding', 'Declined']
+                outcome_lower = candidate.retell_call_outcome.lower()
+
+                is_rejected = (
+                    candidate.retell_call_outcome in rejection_outcomes or
+                    'not interested' in outcome_lower or
+                    'another offer' in outcome_lower or
+                    'accepted offer' in outcome_lower or
+                    'not proceeding' in outcome_lower or
+                    'not proceed' in outcome_lower or
+                    'declined' in outcome_lower or
+                    'withdraw' in outcome_lower or
+                    'decided not to' in outcome_lower
+                )
+                if is_rejected:
+                    rejection_source = candidate.retell_call_outcome
+                    logger.info(f"Rejection found in call outcome: {candidate.retell_call_outcome}")
+
+            # Also check call summary for rejection indicators
+            if not is_rejected and candidate.retell_call_summary:
+                summary_lower = candidate.retell_call_summary.lower()
+                logger.info(f"Checking call summary for rejection keywords...")
+                logger.info(f"Summary (first 200 chars): {candidate.retell_call_summary[:200]}")
+
+                rejection_indicators = [
+                    'not interested',
+                    'another offer',
+                    'accepted offer',
+                    'accepted another',
+                    'not proceeding',
+                    'not proceed',
+                    'decided not to',
+                    'does not wish to proceed',
+                    'doesn\'t wish to proceed',
+                    'not wish to proceed',
+                    'declined',
+                    'withdraw',
+                    'no longer interested',
+                    'already accepted',
+                    'found another position',
+                    'took another job',
+                    'expressed disinterest',
+                    'disinterest',
+                    'cannot travel',
+                    'can\'t travel',
+                    'unable to travel',
+                    'not able to travel',
+                    'cannot relocate',
+                    'can\'t relocate',
+                    'not available',
+                    'no longer available',
+                    'pursuing other',
+                    'polite exchange',
+                    'call ended with a polite',
+                    'expressed that he cannot',
+                    'expressed that she cannot',
+                    'not moving forward',
+                    'won\'t be moving forward',
+                    'will not be moving forward'
+                ]
+
+                for indicator in rejection_indicators:
+                    if indicator in summary_lower:
+                        is_rejected = True
+                        rejection_source = 'Candidate not interested (from call summary)'
+                        logger.info(f"[REJECTION] Found keyword '{indicator}' in summary for candidate {candidate.id}")
+                        break
+
+                if not is_rejected:
+                    logger.info(f"No rejection keywords found in summary")
+
+            # Apply rejection if detected (TAKES PRIORITY over interview_scheduled!)
+            if is_rejected:
+                candidate.status = 'rejected'
+                # Set rejection reason if not already set
+                if not candidate.retell_rejection_reason:
+                    candidate.retell_rejection_reason = rejection_source or 'Not Interested'
+                # Set outcome if not already set
+                if not candidate.retell_call_outcome:
+                    candidate.retell_call_outcome = 'Not Interested'
+                # Clear interview scheduled flag since candidate is not interested
+                candidate.retell_interview_scheduled = False
+                logger.info(f"[REJECTED] Candidate {candidate.id} marked as REJECTED. Reason: {candidate.retell_rejection_reason}")
+            elif candidate.retell_interview_scheduled:
+                # Only set to interviewing if NOT rejected
+                candidate.status = 'interviewing'
+                logger.info(f"Setting status to 'interviewing' (interview scheduled)")
+            else:
+                logger.info(f"Candidate {candidate.id} - no special status change")
+
+            logger.info(f"=== REJECTION CHECK END - Final status: {candidate.status} ===")
 
             candidate.save()
 
             # Send WebDesk email automatically after call ends if interview is scheduled
+            # BUT NOT if candidate is rejected OR if date/time not provided
             email_sent = False
-            if candidate.retell_call_status == 'ended' and candidate.retell_interview_scheduled:
-                logger.info(f"Attempting to send WebDesk email to candidate {candidate.id}")
-                email_sent = send_webdesk_email(candidate)
+            if candidate.retell_call_status == 'ended' and candidate.retell_interview_scheduled and candidate.status != 'rejected':
+                # Check if date and time are provided
+                has_date = bool(candidate.retell_scheduled_date and candidate.retell_scheduled_date.strip())
+                has_time = bool(candidate.retell_scheduled_time and candidate.retell_scheduled_time.strip())
+
+                if has_date and has_time:
+                    logger.info(f"Attempting to send WebDesk email to candidate {candidate.id}")
+                    logger.info(f"Interview scheduled: {candidate.retell_scheduled_date} at {candidate.retell_scheduled_time}")
+                    email_sent = send_webdesk_email(candidate)
+                else:
+                    logger.warning(f"Skipping WebDesk email for candidate {candidate.id} - Date/Time not provided")
+                    logger.warning(f"  Date: '{candidate.retell_scheduled_date}' | Time: '{candidate.retell_scheduled_time}'")
+            elif candidate.status == 'rejected':
+                logger.info(f"Skipping WebDesk email for candidate {candidate.id} - status is rejected")
 
             serializer = self.get_serializer(candidate)
             response_data = {
@@ -2553,16 +2708,25 @@ Requirements:
 - Questions should be professional and unbiased
 - {'Provide sample answers for each question' if include_answers else 'Only provide the questions'}
 
+For question types:
+- "multiple_choice": Include an "options" array with 4-5 answer choices
+- "code": Include a "language" field (e.g., "python", "javascript", "java")
+- Other types: "text", "textarea", "audio", "video"
+
 Format your response as valid JSON with this structure:
 {{
   "questions": [
     {{
       "text": "Your question here",
       "type": "text",
-      "required": true{', "answer": "Sample answer here"' if include_answers else ''}
+      "required": true{', "answer": "Sample answer here"' if include_answers else ''},
+      "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
+      "language": "python"
     }}
   ]
-}}"""
+}}
+
+Note: Only include "options" for multiple_choice questions, and "language" for code questions."""
 
         final_system_prompt = system_prompt if system_prompt else default_system_prompt
 
@@ -2702,8 +2866,19 @@ Please respond with valid JSON containing an array of questions."""
                                 'required': q.get('required', True),
                                 'ai_generated': True
                             }
+
+                            # Add options for multiple_choice questions
+                            if formatted_q['type'] == 'multiple_choice' and 'options' in q:
+                                formatted_q['options'] = q['options']
+
+                            # Add language for code questions
+                            if formatted_q['type'] == 'code' and 'language' in q:
+                                formatted_q['language'] = q['language']
+
+                            # Add answer if requested
                             if include_answers and 'answer' in q:
                                 formatted_q['answer'] = q['answer']
+
                             formatted_questions.append(formatted_q)
 
                         return Response({'questions': formatted_questions})
@@ -2735,5 +2910,205 @@ Please respond with valid JSON containing an array of questions."""
         logger.error(f"Questions generation error: {e}")
         return Response(
             {'error': f'Failed to generate questions: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+def get_retell_agent_prompt(request):
+    """
+    Get Retell AI LLM prompt from Retell API
+
+    Query params:
+        llm_id (optional): Retell LLM ID, defaults to env var
+    """
+    try:
+        from .retell_service import get_retell_llm
+        import os
+
+        llm_id = request.query_params.get('llm_id') or os.getenv('RETELL_LLM_ID', '')
+
+        if not llm_id:
+            return Response(
+                {'error': 'No llm_id provided and RETELL_LLM_ID not set in environment'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        llm_data = get_retell_llm(llm_id)
+
+        if llm_data:
+            return Response({
+                'success': True,
+                'llm_id': llm_id,
+                'general_prompt': llm_data.get('general_prompt', ''),
+                'begin_message': llm_data.get('begin_message', ''),
+                'model': llm_data.get('model', ''),
+            })
+        else:
+            return Response(
+                {'error': 'Failed to fetch LLM from Retell API'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    except Exception as e:
+        logger.error(f"Error fetching Retell LLM: {e}")
+        return Response(
+            {'error': f'Failed to fetch Retell LLM: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+def update_retell_agent_prompt(request):
+    """
+    Update Retell AI LLM prompt via Retell API
+
+    POST body:
+    {
+        "llm_id": "llm_xxx" (optional, uses env var if not provided),
+        "general_prompt": "Your new prompt here",
+        "begin_message": "Opening message" (optional)
+    }
+    """
+    try:
+        from .retell_service import update_retell_llm_prompt
+        import os
+
+        llm_id = request.data.get('llm_id') or os.getenv('RETELL_LLM_ID', '')
+        general_prompt = request.data.get('general_prompt')
+        begin_message = request.data.get('begin_message')
+
+        if not llm_id:
+            return Response(
+                {'error': 'No llm_id provided and RETELL_LLM_ID not set in environment'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not general_prompt and not begin_message:
+            return Response(
+                {'error': 'At least one of general_prompt or begin_message must be provided'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        result = update_retell_llm_prompt(llm_id, general_prompt, begin_message)
+
+        if result:
+            return Response({
+                'success': True,
+                'message': 'LLM prompt updated successfully',
+                'llm_id': llm_id,
+                'general_prompt': result.get('general_prompt', ''),
+                'begin_message': result.get('begin_message', ''),
+            })
+        else:
+            return Response(
+                {'error': 'Failed to update LLM in Retell API'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    except Exception as e:
+        logger.error(f"Error updating Retell LLM: {e}")
+        return Response(
+            {'error': f'Failed to update Retell LLM: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+@api_view(['GET'])
+def get_email_settings(request):
+    """
+    Get current email settings from database
+    """
+    try:
+        from .models import EmailSettings
+
+        # Get the latest active email settings
+        email_settings = EmailSettings.objects.filter(is_active=True).order_by('-updated_at').first()
+
+        # Check if request needs password (for email sending)
+        include_password = request.GET.get('include_password', 'false').lower() == 'true'
+
+        if email_settings:
+            response_data = {
+                'success': True,
+                'emailUser': email_settings.email_user,
+                'emailHost': email_settings.email_host,
+                'emailPort': str(email_settings.email_port),
+            }
+            # Include password only when explicitly requested (for email sending operations)
+            if include_password:
+                response_data['emailPassword'] = email_settings.email_password
+            return Response(response_data)
+        else:
+            # Fallback to environment variables
+            response_data = {
+                'success': True,
+                'emailUser': os.getenv('EMAIL_USER', os.getenv('EMAIL_HOST_USER', '')),
+                'emailHost': os.getenv('EMAIL_HOST', 'smtp.gmail.com'),
+                'emailPort': os.getenv('EMAIL_PORT', '587'),
+            }
+            if include_password:
+                response_data['emailPassword'] = os.getenv('EMAIL_PASSWORD', os.getenv('EMAIL_HOST_PASSWORD', ''))
+            return Response(response_data)
+    except Exception as e:
+        logger.error(f"Error getting email settings: {e}")
+        return Response(
+            {'error': f'Failed to get email settings: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+def update_email_settings(request):
+    """
+    Update email settings in .env file
+    
+    POST body:
+    {
+        "emailUser": "your-email@gmail.com",
+        "emailPassword": "your-app-password",
+        "emailHost": "smtp.gmail.com",
+        "emailPort": "587"
+    }
+    """
+    try:
+        from .models import EmailSettings
+
+        email_user = request.data.get('emailUser')
+        email_password = request.data.get('emailPassword')
+        email_host = request.data.get('emailHost', 'smtp.gmail.com')
+        email_port = request.data.get('emailPort', '587')
+
+        if not email_user or not email_password:
+            return Response(
+                {'error': 'Email user and password are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Deactivate all existing settings
+        EmailSettings.objects.all().update(is_active=False)
+
+        # Create new active settings
+        email_settings = EmailSettings.objects.create(
+            email_user=email_user,
+            email_password=email_password,
+            email_host=email_host,
+            email_port=int(email_port),
+            is_active=True
+        )
+
+        logger.info(f"Email settings saved to database for {email_user}")
+
+        return Response({
+            'success': True,
+            'message': 'Email settings updated successfully',
+            'emailUser': email_user,
+            'emailHost': email_host,
+            'emailPort': email_port,
+        })
+
+    except Exception as e:
+        logger.error(f"Error updating email settings: {e}")
+        return Response(
+            {'error': f'Failed to update email settings: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
