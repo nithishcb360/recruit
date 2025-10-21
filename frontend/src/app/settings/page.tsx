@@ -132,6 +132,12 @@ interface OrganizationSettings {
     hris: boolean
     background_check: boolean
   }
+  emailConfig: {
+    emailAddress: string
+    password: string
+    host: string
+    port: number
+  }
 }
 
 interface ComplianceSettings {
@@ -412,6 +418,12 @@ Format your response as valid JSON with this structure:
       ats: false,
       hris: false,
       background_check: true
+    },
+    emailConfig: {
+      emailAddress: "",
+      password: "",
+      host: "smtp.gmail.com",
+      port: 587
     }
   })
 
@@ -843,6 +855,29 @@ Format your response as valid JSON with this structure:
 
   // Load settings from localStorage on component mount
   useEffect(() => {
+    // Load email settings from backend
+    const loadEmailSettings = async () => {
+      try {
+        const response = await fetch('http://127.0.0.1:8000/api/email-settings/active/')
+        if (response.ok) {
+          const emailSettings = await response.json()
+          setOrgSettings(prev => ({
+            ...prev,
+            emailConfig: {
+              emailAddress: emailSettings.email || '',
+              password: '••••••••', // Don't show actual password for security
+              host: emailSettings.host || 'smtp.gmail.com',
+              port: emailSettings.port || 587
+            }
+          }))
+        }
+      } catch (error) {
+        console.error('Error loading email settings:', error)
+      }
+    }
+
+    loadEmailSettings()
+
     try {
       const savedSettings = localStorage.getItem('organizationSettings');
       if (savedSettings) {
@@ -1447,6 +1482,82 @@ Format your response as valid JSON with this structure:
     }
   }
 
+  // Save email settings to backend
+  const handleSaveEmailSettings = async () => {
+    setIsLoading(true)
+    try {
+      // Validate email settings
+      if (!orgSettings.emailConfig.emailAddress) {
+        toast({
+          title: "Validation Error",
+          description: "Email address is required.",
+          variant: "destructive"
+        })
+        setIsLoading(false)
+        return
+      }
+
+      // Skip validation if password is masked (already saved)
+      if (!orgSettings.emailConfig.password || orgSettings.emailConfig.password === '••••••••') {
+        toast({
+          title: "Validation Error",
+          description: "Password is required. Please enter your email password.",
+          variant: "destructive"
+        })
+        setIsLoading(false)
+        return
+      }
+
+      // Save to backend API
+      const response = await fetch('http://127.0.0.1:8000/api/email-settings/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: orgSettings.emailConfig.emailAddress,
+          password: orgSettings.emailConfig.password,
+          host: orgSettings.emailConfig.host,
+          port: orgSettings.emailConfig.port,
+          use_tls: true,
+          use_ssl: false,
+          is_active: true
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to save email settings')
+      }
+
+      const data = await response.json()
+      console.log('Email settings saved:', data)
+
+      // Update state to show masked password
+      setOrgSettings(prev => ({
+        ...prev,
+        emailConfig: {
+          ...prev.emailConfig,
+          password: '••••••••'
+        }
+      }))
+
+      toast({
+        title: "Email Settings Saved",
+        description: "Email configuration has been updated successfully.",
+        variant: "default"
+      })
+    } catch (error) {
+      console.error('Error saving email settings:', error)
+      toast({
+        title: "Error",
+        description: "Failed to save email settings. Please try again.",
+        variant: "destructive"
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   // Save settings
   const handleSaveSettings = async () => {
     setIsLoading(true)
@@ -1891,6 +2002,128 @@ Format your response as valid JSON with this structure:
                       {orgSettings.general.aiApiKey ? "Configured" : "Not set"}
                     </Badge>
                   </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Email Configuration Card */}
+          <div className="mt-6">
+            <Card className="bg-white/80 backdrop-blur-sm border-slate-200 shadow-lg hover:shadow-xl transition-all duration-300">
+              <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-t-lg border-b border-slate-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center text-base font-semibold text-slate-800">
+                      <div className="p-2 bg-purple-100 rounded-lg mr-3">
+                        <Mail className="h-5 w-5 text-purple-600" />
+                      </div>
+                      Email Configuration
+                    </CardTitle>
+                    <CardDescription className="text-slate-600 mt-2">
+                      Configure SMTP settings for email notifications
+                    </CardDescription>
+                  </div>
+                  <div>
+                    {orgSettings.emailConfig.emailAddress ? (
+                      <Badge className="bg-green-100 text-green-700 border-green-300">
+                        <CheckCircle className="h-3 w-3 mr-1" />
+                        Configured
+                      </Badge>
+                    ) : (
+                      <Badge variant="destructive" className="bg-red-100 text-red-700 border-red-300">
+                        <AlertTriangle className="h-3 w-3 mr-1" />
+                        Not Configured
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-6 p-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="space-y-3">
+                    <Label htmlFor="email-address" className="text-sm font-medium text-slate-700">
+                      Email Address
+                    </Label>
+                    <Input
+                      id="email-address"
+                      type="email"
+                      value={orgSettings.emailConfig.emailAddress}
+                      onChange={(e) => handleSettingsChange('emailConfig', 'emailAddress', e.target.value)}
+                      className="border-slate-300 focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200"
+                      placeholder="your-email@gmail.com"
+                    />
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label htmlFor="email-password" className="text-sm font-medium text-slate-700">
+                      Password
+                    </Label>
+                    <Input
+                      id="email-password"
+                      type="password"
+                      value={orgSettings.emailConfig.password}
+                      onChange={(e) => handleSettingsChange('emailConfig', 'password', e.target.value)}
+                      className="border-slate-300 focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200"
+                      placeholder="App password or account password"
+                    />
+                    <p className="text-xs text-slate-500">
+                      For Gmail, use an App Password. For other providers, use your account password.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label htmlFor="email-host" className="text-sm font-medium text-slate-700">
+                      SMTP Host
+                    </Label>
+                    <Input
+                      id="email-host"
+                      value={orgSettings.emailConfig.host}
+                      onChange={(e) => handleSettingsChange('emailConfig', 'host', e.target.value)}
+                      className="border-slate-300 focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200"
+                      placeholder="smtp.gmail.com"
+                    />
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label htmlFor="email-port" className="text-sm font-medium text-slate-700">
+                      SMTP Port
+                    </Label>
+                    <Input
+                      id="email-port"
+                      type="number"
+                      value={orgSettings.emailConfig.port}
+                      onChange={(e) => handleSettingsChange('emailConfig', 'port', parseInt(e.target.value))}
+                      className="border-slate-300 focus:border-blue-500 focus:ring-blue-500 transition-colors duration-200"
+                      placeholder="587"
+                    />
+                  </div>
+                </div>
+
+                {orgSettings.emailConfig.emailAddress && (
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <div className="flex items-start">
+                      <CheckCircle className="h-5 w-5 text-green-600 mr-3 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-green-800">Email is configured</p>
+                        <p className="text-xs text-green-600 mt-1">
+                          All emails will be sent using: <span className="font-semibold">{orgSettings.emailConfig.emailAddress}</span>
+                        </p>
+                        <p className="text-xs text-green-600 mt-1">
+                          SMTP: {orgSettings.emailConfig.host}:{orgSettings.emailConfig.port}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="pt-4 border-t border-slate-200">
+                  <Button
+                    onClick={handleSaveEmailSettings}
+                    className="w-full bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white shadow-md hover:shadow-lg transition-all duration-200"
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    Save Email Settings
+                  </Button>
                 </div>
               </CardContent>
             </Card>

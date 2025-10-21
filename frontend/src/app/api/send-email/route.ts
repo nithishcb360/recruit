@@ -17,12 +17,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get email configuration from environment
-    const emailUser = process.env.EMAIL_USER;
-    const emailPassword = process.env.EMAIL_PASSWORD;
-    const emailHost = process.env.EMAIL_HOST || 'smtp.gmail.com';
-    const emailPort = parseInt(process.env.EMAIL_PORT || '587');
-    const emailFrom = process.env.NEXT_PUBLIC_COMPANY_EMAIL || process.env.EMAIL_USER;
+    // Get email configuration from database settings API
+    let emailSettings = null;
+    try {
+      const settingsResponse = await fetch('http://127.0.0.1:8000/api/email-settings/active/', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (settingsResponse.ok) {
+        emailSettings = await settingsResponse.json();
+      }
+    } catch (error) {
+      console.error('Error fetching email settings from database:', error);
+    }
+
+    // Fallback to environment variables if database settings not found
+    const emailUser = emailSettings?.email || process.env.EMAIL_USER;
+    const emailPassword = emailSettings?.password || process.env.EMAIL_PASSWORD;
+    const emailHost = emailSettings?.host || process.env.EMAIL_HOST || 'smtp.gmail.com';
+    const emailPort = emailSettings?.port || parseInt(process.env.EMAIL_PORT || '587');
+    const emailFrom = emailSettings?.from_name || process.env.NEXT_PUBLIC_COMPANY_EMAIL || emailUser;
+    const useTLS = emailSettings?.use_tls !== undefined ? emailSettings.use_tls : true;
+    const useSSL = emailSettings?.use_ssl !== undefined ? emailSettings.use_ssl : false;
 
     // Check if email is configured
     if (!emailUser || !emailPassword) {
@@ -32,7 +51,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         demo: true,
-        message: 'Email sending not configured. Set EMAIL_USER and EMAIL_PASSWORD in .env.local',
+        message: 'Email sending not configured. Please configure email settings in Settings → General tab',
         previewData: { to, subject, from: emailFrom }
       });
     }
@@ -41,16 +60,19 @@ export async function POST(request: NextRequest) {
     const transporter = nodemailer.createTransport({
       host: emailHost,
       port: emailPort,
-      secure: emailPort === 465, // true for 465, false for other ports
+      secure: useSSL, // true for 465 (SSL), false for other ports (TLS)
       auth: {
         user: emailUser,
         pass: emailPassword,
       },
+      tls: useTLS ? {
+        rejectUnauthorized: false
+      } : undefined,
     });
 
     // Send email
     const info = await transporter.sendMail({
-      from: `"Recruitment Team" <${emailFrom}>`,
+      from: emailFrom ? `"${emailFrom}" <${emailUser}>` : emailUser,
       to,
       subject,
       text,
@@ -64,7 +86,8 @@ export async function POST(request: NextRequest) {
       success: true,
       demo: false,
       messageId: info.messageId,
-      message: 'Email sent successfully'
+      message: `Email sent successfully using ${emailSettings ? 'database settings' : 'environment variables'}`,
+      configuredFrom: emailSettings ? 'database' : 'environment'
     });
 
   } catch (error) {

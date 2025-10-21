@@ -505,3 +505,27 @@ class InterviewRound(models.Model):
 
     def __str__(self):
         return f"{self.flow.name} - {self.name}"
+
+
+class EmailSettings(models.Model):
+    """Model for storing email configuration settings"""
+    email = models.EmailField(help_text='Email address for sending emails')
+    password = models.CharField(max_length=255, help_text='Email password or app password')
+    host = models.CharField(max_length=255, default='smtp.gmail.com', help_text='SMTP host')
+    port = models.IntegerField(default=587, help_text='SMTP port')
+    use_tls = models.BooleanField(default=True, help_text='Use TLS encryption')
+    use_ssl = models.BooleanField(default=False, help_text='Use SSL encryption')
+    from_name = models.CharField(max_length=255, blank=True, help_text='Display name for sender')
+
+    is_active = models.BooleanField(default=True, help_text='Whether this email configuration is active')
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Email Settings'
+        verbose_name_plural = 'Email Settings'
+
+    def __str__(self):
+        return f"Email Settings - {self.email}"

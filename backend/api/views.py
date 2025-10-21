@@ -9,7 +9,7 @@ from datetime import timedelta
 from django_filters.rest_framework import DjangoFilterBackend
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
-from .models import DashboardStats, Task, ActivityLog, Department, Job, Candidate, JobApplication, FeedbackTemplate, InterviewFlow, InterviewRound
+from .models import DashboardStats, Task, ActivityLog, Department, Job, Candidate, JobApplication, FeedbackTemplate, InterviewFlow, InterviewRound, EmailSettings
 from .serializers import (
     DashboardStatsSerializer, TaskSerializer, TaskCreateSerializer,
     ActivityLogSerializer, DashboardOverviewSerializer,
@@ -18,7 +18,8 @@ from .serializers import (
     CandidateCreateSerializer, CandidateListSerializer, ResumeParseSerializer,
     JobApplicationSerializer, JobApplicationCreateSerializer,
     FeedbackTemplateSerializer, FeedbackTemplateCreateSerializer, FeedbackTemplateUpdateSerializer,
-    InterviewFlowSerializer, InterviewFlowCreateSerializer, InterviewFlowUpdateSerializer, InterviewRoundSerializer
+    InterviewFlowSerializer, InterviewFlowCreateSerializer, InterviewFlowUpdateSerializer, InterviewRoundSerializer,
+    EmailSettingsSerializer, EmailSettingsCreateSerializer, EmailSettingsUpdateSerializer
 )
 from .utils.enhanced_resume_parser import EnhancedResumeParser
 from .utils.resume_parser import ResumeParser
@@ -84,11 +85,18 @@ def send_webdesk_email(candidate):
     """
     Send WebDesk assessment email to candidate after call ends
     Email includes credentials and scheduled interview time
+    Uses email settings from database instead of .env
     """
     try:
         # Check if candidate has email
         if not candidate.email:
             logger.warning(f"Candidate {candidate.id} has no email address")
+            return False
+
+        # Get active email settings from database
+        email_settings = EmailSettings.objects.filter(is_active=True).first()
+        if not email_settings:
+            logger.error("No active email settings found in database")
             return False
 
         # Generate credentials if not already generated
@@ -161,14 +169,30 @@ Best regards,
 Recruitment Team
 """
 
-        # Send email
-        send_mail(
-            subject=subject,
-            message=message,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[candidate.email],
+        # Send email using settings from database
+        from django.core.mail import EmailMessage
+        from django.core.mail.backends.smtp import EmailBackend
+
+        # Create a custom SMTP backend with database settings
+        backend = EmailBackend(
+            host=email_settings.host,
+            port=email_settings.port,
+            username=email_settings.email,
+            password=email_settings.password,
+            use_tls=email_settings.use_tls,
+            use_ssl=email_settings.use_ssl,
             fail_silently=False,
         )
+
+        # Create and send email
+        email = EmailMessage(
+            subject=subject,
+            body=message,
+            from_email=email_settings.from_name if email_settings.from_name else email_settings.email,
+            to=[candidate.email],
+            connection=backend,
+        )
+        email.send()
 
         logger.info(f"✅ WebDesk email sent to {candidate.email} (Candidate ID: {candidate.id})")
         return True
@@ -2171,6 +2195,58 @@ class InterviewRoundViewSet(viewsets.ModelViewSet):
     search_fields = ['name', 'description']
     ordering_fields = ['order', 'name', 'created_at']
     ordering = ['flow', 'order']
+
+
+class EmailSettingsViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing email settings
+    """
+    queryset = EmailSettings.objects.all()
+    serializer_class = EmailSettingsSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['created_at', 'updated_at']
+    ordering = ['-created_at']
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return EmailSettingsCreateSerializer
+        elif self.action in ['update', 'partial_update']:
+            return EmailSettingsUpdateSerializer
+        return EmailSettingsSerializer
+
+    def perform_create(self, serializer):
+        # Deactivate all existing email settings when creating a new one
+        if serializer.validated_data.get('is_active', True):
+            EmailSettings.objects.filter(is_active=True).update(is_active=False)
+        serializer.save(created_by=self.request.user if self.request.user.is_authenticated else None)
+
+    def perform_update(self, serializer):
+        # If this setting is being activated, deactivate all others
+        if serializer.validated_data.get('is_active', False):
+            EmailSettings.objects.filter(is_active=True).exclude(id=self.get_object().id).update(is_active=False)
+        serializer.save()
+
+    @action(detail=False, methods=['get'])
+    def active(self, request):
+        """Get the currently active email settings - includes password for backend use"""
+        active_settings = EmailSettings.objects.filter(is_active=True).first()
+        if active_settings:
+            # Return full data including password for backend use
+            data = {
+                'id': active_settings.id,
+                'email': active_settings.email,
+                'password': active_settings.password,  # Include password for backend
+                'host': active_settings.host,
+                'port': active_settings.port,
+                'use_tls': active_settings.use_tls,
+                'use_ssl': active_settings.use_ssl,
+                'from_name': active_settings.from_name,
+                'is_active': active_settings.is_active,
+                'created_at': active_settings.created_at,
+                'updated_at': active_settings.updated_at,
+            }
+            return Response(data)
+        return Response({'detail': 'No active email settings found'}, status=status.HTTP_404_NOT_FOUND)
 
 
 @csrf_exempt
