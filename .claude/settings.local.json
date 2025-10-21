@@ -52,7 +52,8 @@
       "Bash(pip show:*)",
       "Bash(d:/recruit/venv/Scripts/pip.exe install openai)",
       "Bash(d:/recruit/venv/Scripts/python.exe -m pip install:*)",
-      "Bash(d:/recruit/venv/Scripts/python.exe:*)"
+      "Bash(d:/recruit/venv/Scripts/python.exe:*)",
+      "Bash(d:recruitvenvScriptspython.exe manage.py sqlmigrate api 0020)"
     ]
   }
 }

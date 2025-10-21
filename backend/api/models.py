@@ -284,6 +284,8 @@ class Candidate(models.Model):
     assessment_audio_url = models.URLField(blank=True, help_text='Audio recording URL from WebDesk assessment')
     assessment_screen_url = models.URLField(blank=True, help_text='Screen recording URL from WebDesk assessment')
     assessment_responses = models.JSONField(default=dict, blank=True, help_text='Full assessment question responses with answers')
+    webdesk_email_sent = models.BooleanField(default=False, help_text='Whether WebDesk assessment email has been sent')
+    webdesk_email_sent_at = models.DateTimeField(null=True, blank=True, help_text='Timestamp when WebDesk email was sent')
 
     # Retell AI Call fields
     retell_call_id = models.CharField(max_length=100, blank=True, help_text='Retell AI call ID')
@@ -323,6 +325,9 @@ class Candidate(models.Model):
     retell_end_timestamp = models.BigIntegerField(null=True, blank=True, help_text='Call end timestamp (ms)')
     retell_public_log_url = models.URLField(blank=True, help_text='Public URL for call logs')
     retell_additional_notes = models.TextField(blank=True, help_text='Additional notes from call analysis')
+    retell_retry_count = models.IntegerField(default=0, help_text='Number of call retry attempts')
+    retell_last_call_attempt = models.DateTimeField(null=True, blank=True, help_text='Timestamp of last call attempt')
+    retell_next_retry_time = models.DateTimeField(null=True, blank=True, help_text='Scheduled time for next retry attempt')
 
     # AI Video Interview
     video_interview_link = models.URLField(blank=True, help_text='Link to AI video interview')
