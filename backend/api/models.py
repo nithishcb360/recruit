@@ -326,6 +326,7 @@ class Candidate(models.Model):
     retell_retry_count = models.IntegerField(default=0, help_text='Number of call retry attempts')
     retell_last_call_attempt = models.DateTimeField(null=True, blank=True, help_text='Last call attempt timestamp')
     retell_next_retry_time = models.DateTimeField(null=True, blank=True, help_text='Next scheduled retry time')
+    retell_email_sent = models.BooleanField(default=False, help_text='Whether assessment email has been sent after call')
 
     # AI Video Interview
     video_interview_link = models.URLField(blank=True, help_text='Link to AI video interview')

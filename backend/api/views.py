@@ -172,10 +172,10 @@ Recruitment Team
         email_settings = EmailSettings.objects.filter(is_active=True).order_by('-updated_at').first()
 
         if email_settings:
-            email_user = email_settings.email_user
-            email_password = email_settings.email_password
-            email_host = email_settings.email_host
-            email_port = email_settings.email_port
+            email_user = email_settings.email
+            email_password = email_settings.password
+            email_host = email_settings.host
+            email_port = email_settings.port
         else:
             # Fallback to environment variables
             email_user = os.getenv('EMAIL_USER', os.getenv('EMAIL_HOST_USER', ''))
@@ -1043,9 +1043,9 @@ class CandidateViewSet(viewsets.ModelViewSet):
             candidate.save()
 
             # Send WebDesk email automatically after call ends if interview is scheduled
-            # BUT NOT if candidate is rejected OR if date/time not provided
+            # BUT NOT if candidate is rejected OR if date/time not provided OR if email already sent
             email_sent = False
-            if candidate.retell_call_status == 'ended' and candidate.retell_interview_scheduled and candidate.status != 'rejected':
+            if candidate.retell_call_status == 'ended' and candidate.retell_interview_scheduled and candidate.status != 'rejected' and not candidate.retell_email_sent:
                 # Check if date and time are provided
                 has_date = bool(candidate.retell_scheduled_date and candidate.retell_scheduled_date.strip())
                 has_time = bool(candidate.retell_scheduled_time and candidate.retell_scheduled_time.strip())
@@ -1054,9 +1054,15 @@ class CandidateViewSet(viewsets.ModelViewSet):
                     logger.info(f"Attempting to send WebDesk email to candidate {candidate.id}")
                     logger.info(f"Interview scheduled: {candidate.retell_scheduled_date} at {candidate.retell_scheduled_time}")
                     email_sent = send_webdesk_email(candidate)
+                    if email_sent:
+                        candidate.retell_email_sent = True
+                        candidate.save()
+                        logger.info(f"WebDesk email sent successfully to candidate {candidate.id}, flag set to prevent duplicates")
                 else:
                     logger.warning(f"Skipping WebDesk email for candidate {candidate.id} - Date/Time not provided")
                     logger.warning(f"  Date: '{candidate.retell_scheduled_date}' | Time: '{candidate.retell_scheduled_time}'")
+            elif candidate.retell_email_sent:
+                logger.info(f"Skipping WebDesk email for candidate {candidate.id} - email already sent")
             elif candidate.status == 'rejected':
                 logger.info(f"Skipping WebDesk email for candidate {candidate.id} - status is rejected")
 
