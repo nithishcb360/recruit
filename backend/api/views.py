@@ -884,6 +884,56 @@ class CandidateViewSet(viewsets.ModelViewSet):
                     if 'additional_notes' in custom_data:
                         candidate.retell_additional_notes = custom_data['additional_notes']
 
+                    # SMART DATE PARSING: Handle relative dates like "tomorrow", "next Monday"
+                    if 'scheduled_date' in custom_data:
+                        date_str = custom_data['scheduled_date']
+                        # Check if it's a relative date expression
+                        from .utils.date_parser import parse_relative_date
+                        parsed_date = parse_relative_date(date_str)
+                        if parsed_date:
+                            candidate.retell_scheduled_date = parsed_date['date']
+                            # If time not already set, use the parsed default time
+                            if not candidate.retell_scheduled_time and parsed_date.get('time'):
+                                candidate.retell_scheduled_time = parsed_date['time']
+                            if parsed_date.get('iso'):
+                                candidate.retell_scheduled_datetime_iso = parsed_date['iso']
+                            logger.info(f"Parsed relative date '{date_str}' to {parsed_date['date']}")
+
+                    # CALLBACK SCHEDULING: Handle "call me after 10 minutes", "call later", etc.
+                    callback_time_str = custom_data.get('callback_time') or custom_data.get('preferred_callback_time')
+                    if callback_time_str:
+                        from .utils.date_parser import parse_callback_time
+                        from .utils.retell_scheduler import schedule_retell_callback
+
+                        callback_datetime = parse_callback_time(callback_time_str)
+                        if callback_datetime:
+                            schedule_retell_callback(
+                                candidate,
+                                callback_datetime,
+                                f"Candidate requested: {callback_time_str}"
+                            )
+                            logger.info(f"Scheduled callback for {callback_datetime} based on '{callback_time_str}'")
+
+                    # Check if callback should be scheduled based on call outcome
+                    if candidate.retell_call_outcome:
+                        from .utils.date_parser import should_schedule_callback, parse_callback_time
+                        from .utils.retell_scheduler import schedule_retell_callback
+
+                        if should_schedule_callback(candidate.retell_call_outcome, custom_data):
+                            # Try to extract callback time from outcome or notes
+                            callback_text = candidate.retell_call_outcome
+                            if candidate.retell_additional_notes:
+                                callback_text += " " + candidate.retell_additional_notes
+
+                            callback_datetime = parse_callback_time(callback_text)
+                            if callback_datetime:
+                                schedule_retell_callback(
+                                    candidate,
+                                    callback_datetime,
+                                    "Callback requested during call"
+                                )
+                                logger.info(f"Auto-scheduled callback based on call outcome")
+
             # IMPORTANT: Check for rejection AFTER processing all data (outside custom_data block)
             # This ensures rejection detection works even if custom_analysis_data is missing
             logger.info(f"=== REJECTION CHECK START for candidate {candidate.id} ===")
@@ -3163,5 +3213,52 @@ def update_email_settings(request):
         logger.error(f"Error updating email settings: {e}")
         return Response(
             {'error': f'Failed to update email settings: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@csrf_exempt
+@api_view(['POST', 'GET'])
+def execute_retell_callbacks(request):
+    """
+    Execute pending Retell AI callbacks
+    GET: Return count of pending callbacks
+    POST: Execute all pending callbacks
+
+    Returns:
+        {
+            "pending_count": 5,
+            "executed_count": 3,
+            "callbacks": [...]
+        }
+    """
+    try:
+        from .utils.retell_scheduler import execute_pending_callbacks, get_pending_callbacks_count
+
+        if request.method == 'GET':
+            # Just return the count
+            pending_count = get_pending_callbacks_count()
+            return Response({
+                'success': True,
+                'pending_count': pending_count,
+                'message': f'{pending_count} callbacks pending'
+            })
+
+        elif request.method == 'POST':
+            # Execute pending callbacks
+            executed_count = execute_pending_callbacks()
+            pending_count = get_pending_callbacks_count()
+
+            return Response({
+                'success': True,
+                'executed_count': executed_count,
+                'pending_count': pending_count,
+                'message': f'Executed {executed_count} callbacks, {pending_count} still pending'
+            })
+
+    except Exception as e:
+        logger.error(f"Error executing retell callbacks: {e}")
+        return Response(
+            {'error': f'Failed to execute callbacks: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
