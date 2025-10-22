@@ -9,7 +9,7 @@ from datetime import timedelta
 from django_filters.rest_framework import DjangoFilterBackend
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
-from .models import DashboardStats, Task, ActivityLog, Department, Job, Candidate, JobApplication, FeedbackTemplate, InterviewFlow, InterviewRound
+from .models import DashboardStats, Task, ActivityLog, Department, Job, Candidate, JobApplication, FeedbackTemplate, InterviewFlow, InterviewRound, EmailSettings
 from .serializers import (
     DashboardStatsSerializer, TaskSerializer, TaskCreateSerializer,
     ActivityLogSerializer, DashboardOverviewSerializer,
@@ -18,7 +18,8 @@ from .serializers import (
     CandidateCreateSerializer, CandidateListSerializer, ResumeParseSerializer,
     JobApplicationSerializer, JobApplicationCreateSerializer,
     FeedbackTemplateSerializer, FeedbackTemplateCreateSerializer, FeedbackTemplateUpdateSerializer,
-    InterviewFlowSerializer, InterviewFlowCreateSerializer, InterviewFlowUpdateSerializer, InterviewRoundSerializer
+    InterviewFlowSerializer, InterviewFlowCreateSerializer, InterviewFlowUpdateSerializer, InterviewRoundSerializer,
+    EmailSettingsSerializer, EmailSettingsCreateSerializer, EmailSettingsUpdateSerializer
 )
 from .utils.enhanced_resume_parser import EnhancedResumeParser
 from .utils.resume_parser import ResumeParser
@@ -2326,6 +2327,58 @@ class InterviewRoundViewSet(viewsets.ModelViewSet):
     search_fields = ['name', 'description']
     ordering_fields = ['order', 'name', 'created_at']
     ordering = ['flow', 'order']
+
+
+class EmailSettingsViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing email settings
+    """
+    queryset = EmailSettings.objects.all()
+    serializer_class = EmailSettingsSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['created_at', 'updated_at']
+    ordering = ['-created_at']
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return EmailSettingsCreateSerializer
+        elif self.action in ['update', 'partial_update']:
+            return EmailSettingsUpdateSerializer
+        return EmailSettingsSerializer
+
+    def perform_create(self, serializer):
+        # Deactivate all existing email settings when creating a new one
+        if serializer.validated_data.get('is_active', True):
+            EmailSettings.objects.filter(is_active=True).update(is_active=False)
+        serializer.save(created_by=self.request.user if self.request.user.is_authenticated else None)
+
+    def perform_update(self, serializer):
+        # If this setting is being activated, deactivate all others
+        if serializer.validated_data.get('is_active', False):
+            EmailSettings.objects.filter(is_active=True).exclude(id=self.get_object().id).update(is_active=False)
+        serializer.save()
+
+    @action(detail=False, methods=['get'])
+    def active(self, request):
+        """Get the currently active email settings - includes password for backend use"""
+        active_settings = EmailSettings.objects.filter(is_active=True).first()
+        if active_settings:
+            # Return full data including password for backend use
+            data = {
+                'id': active_settings.id,
+                'email': active_settings.email,
+                'password': active_settings.password,  # Include password for backend
+                'host': active_settings.host,
+                'port': active_settings.port,
+                'use_tls': active_settings.use_tls,
+                'use_ssl': active_settings.use_ssl,
+                'from_name': active_settings.from_name,
+                'is_active': active_settings.is_active,
+                'created_at': active_settings.created_at,
+                'updated_at': active_settings.updated_at,
+            }
+            return Response(data)
+        return Response({'detail': 'No active email settings found'}, status=status.HTTP_404_NOT_FOUND)
 
 
 @csrf_exempt

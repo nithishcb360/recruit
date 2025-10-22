@@ -25,8 +25,8 @@ export async function POST(request: NextRequest) {
 
     try {
       const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
-      // Request password for email sending operation
-      const settingsResponse = await fetch(`${backendUrl}/api/settings/email/?include_password=true`, {
+      // Get active email settings (includes password for sending)
+      const settingsResponse = await fetch(`${backendUrl}/api/email-settings/active/`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -35,12 +35,10 @@ export async function POST(request: NextRequest) {
 
       if (settingsResponse.ok) {
         const settingsData = await settingsResponse.json();
-        if (settingsData.success) {
-          emailUser = settingsData.emailUser || '';
-          emailPassword = settingsData.emailPassword || '';
-          emailHost = settingsData.emailHost || 'smtp.gmail.com';
-          emailPort = parseInt(settingsData.emailPort || '587');
-        }
+        emailUser = settingsData.email || '';
+        emailPassword = settingsData.password || '';
+        emailHost = settingsData.host || 'smtp.gmail.com';
+        emailPort = parseInt(settingsData.port || '587');
       }
     } catch (error) {
       console.error('Error fetching email settings:', error);

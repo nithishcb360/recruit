@@ -1064,20 +1064,19 @@ If candidate is not interested or has accepted another offer, thank them gracefu
   useEffect(() => {
     const fetchEmailSettings = async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/settings/email/');
+        const response = await fetch('http://127.0.0.1:8000/api/email-settings/active/');
         if (response.ok) {
           const data = await response.json();
-          if (data.success) {
-            setOrgSettings(prev => ({
-              ...prev,
-              general: {
-                ...prev.general,
-                emailUser: data.emailUser || '',
-                emailHost: data.emailHost || 'smtp.gmail.com',
-                emailPort: data.emailPort || '587',
-              }
-            }));
-          }
+          setOrgSettings(prev => ({
+            ...prev,
+            general: {
+              ...prev.general,
+              emailUser: data.email || '',
+              emailPassword: '••••••••', // Don't show actual password
+              emailHost: data.host || 'smtp.gmail.com',
+              emailPort: data.port?.toString() || '587',
+            }
+          }));
         }
       } catch (error) {
         console.error('Failed to fetch email settings:', error);
@@ -2009,33 +2008,91 @@ If candidate is not interested or has accepted another offer, thank them gracefu
             </Card>
           </div>
 
-          {/* Email Configuration Card - Full Width */}
+          {/* Email Configuration Card - Full Width - Enhanced */}
           <div className="mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Mail className="h-5 w-5 mr-2" />
-                  Email Configuration
-                </CardTitle>
-                <CardDescription>Configure SMTP settings for sending emails</CardDescription>
+            <Card className="bg-gradient-to-br from-purple-50 via-white to-pink-50 border-2 border-purple-200 shadow-xl hover:shadow-2xl transition-all duration-500 overflow-hidden">
+              {/* Animated background decoration */}
+              <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-purple-200/20 to-pink-200/20 rounded-full blur-3xl -z-10"></div>
+              <div className="absolute bottom-0 left-0 w-48 h-48 bg-gradient-to-tr from-blue-200/20 to-purple-200/20 rounded-full blur-3xl -z-10"></div>
+
+              <CardHeader className="bg-gradient-to-r from-purple-50 via-pink-50 to-purple-50 border-b-2 border-purple-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-gradient-to-br from-purple-100 to-pink-100 rounded-xl shadow-lg ring-2 ring-purple-200 transition-transform hover:scale-110 duration-300">
+                      <Mail className="h-6 w-6 text-black drop-shadow-sm" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-black text-xl font-bold flex items-center gap-2">
+                        Email Configuration
+                        <Zap className="h-5 w-5 text-yellow-500 animate-pulse" />
+                      </CardTitle>
+                      <CardDescription className="text-slate-600 mt-1 font-medium">
+                        Configure SMTP settings for automated email notifications
+                      </CardDescription>
+                    </div>
+                  </div>
+                  <Badge className={`${orgSettings.general.emailUser && orgSettings.general.emailPassword ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'} text-white shadow-lg px-4 py-2 text-sm font-semibold transition-all duration-300`}>
+                    {orgSettings.general.emailUser && orgSettings.general.emailPassword ? (
+                      <div className="flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4 animate-pulse" />
+                        <span>Configured</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4 animate-bounce" />
+                        <span>Not Configured</span>
+                      </div>
+                    )}
+                  </Badge>
+                </div>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="email-user">Email Address</Label>
-                    <Input
-                      id="email-user"
-                      type="email"
-                      value={orgSettings.general.emailUser}
-                      onChange={(e) => handleSettingsChange('general', 'emailUser', e.target.value)}
-                      placeholder="your-email@gmail.com"
-                    />
-                    <p className="text-xs text-gray-500">
+              <CardContent className="space-y-6 p-8">
+                {/* Info Alert when Not Configured */}
+                {(!orgSettings.general.emailUser || !orgSettings.general.emailPassword) && (
+                  <div className="p-4 bg-amber-50 border-l-4 border-amber-500 rounded-lg">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <h4 className="text-amber-800 font-semibold text-sm mb-1">Email Not Configured</h4>
+                        <p className="text-amber-700 text-xs">
+                          Please enter your email credentials below and click "Save Email Settings" to enable email notifications.
+                          Without this configuration, the system cannot send automated emails to candidates.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Email Address Field */}
+                  <div className="space-y-3 group">
+                    <Label htmlFor="email-user" className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                      <Mail className="h-4 w-4 text-purple-500" />
+                      Email Address
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        id="email-user"
+                        type="email"
+                        value={orgSettings.general.emailUser}
+                        onChange={(e) => handleSettingsChange('general', 'emailUser', e.target.value)}
+                        placeholder="your-email@gmail.com"
+                        className="pl-4 pr-4 py-6 border-2 border-purple-200 focus:border-purple-500 focus:ring-4 focus:ring-purple-200 rounded-xl transition-all duration-300 bg-white/80 backdrop-blur-sm hover:bg-white shadow-sm hover:shadow-md"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-r from-purple-500/0 via-purple-500/5 to-pink-500/0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
+                    </div>
+                    <p className="text-xs text-slate-500 flex items-center gap-1">
+                      <span className="inline-block w-1.5 h-1.5 bg-purple-400 rounded-full"></span>
                       The email address used to send emails
                     </p>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="email-password">Email Password / App Password</Label>
+
+                  {/* Password Field */}
+                  <div className="space-y-3 group">
+                    <Label htmlFor="email-password" className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                      <Key className="h-4 w-4 text-pink-500" />
+                      Email Password / App Password
+                    </Label>
                     <div className="relative">
                       <Input
                         id="email-password"
@@ -2043,67 +2100,89 @@ If candidate is not interested or has accepted another offer, thank them gracefu
                         value={orgSettings.general.emailPassword}
                         onChange={(e) => handleSettingsChange('general', 'emailPassword', e.target.value)}
                         placeholder="Enter app password"
+                        className="pl-4 pr-12 py-6 border-2 border-pink-200 focus:border-pink-500 focus:ring-4 focus:ring-pink-200 rounded-xl transition-all duration-300 bg-white/80 backdrop-blur-sm hover:bg-white shadow-sm hover:shadow-md"
                       />
-                      <Key className="absolute right-3 top-3 h-4 w-4 text-gray-400" />
+                      <Lock className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-pink-400" />
+                      <div className="absolute inset-0 bg-gradient-to-r from-pink-500/0 via-pink-500/5 to-purple-500/0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
                     </div>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-slate-500 flex items-center gap-1">
+                      <span className="inline-block w-1.5 h-1.5 bg-pink-400 rounded-full"></span>
                       For Gmail, use an App Password instead of your account password
                     </p>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="email-host">SMTP Host</Label>
-                    <Input
-                      id="email-host"
-                      value={orgSettings.general.emailHost}
-                      onChange={(e) => handleSettingsChange('general', 'emailHost', e.target.value)}
-                      placeholder="smtp.gmail.com"
-                    />
-                    <p className="text-xs text-gray-500">
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* SMTP Host Field */}
+                  <div className="space-y-3 group">
+                    <Label htmlFor="email-host" className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                      <Server className="h-4 w-4 text-blue-500" />
+                      SMTP Host
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        id="email-host"
+                        value={orgSettings.general.emailHost}
+                        onChange={(e) => handleSettingsChange('general', 'emailHost', e.target.value)}
+                        placeholder="smtp.gmail.com"
+                        className="pl-4 pr-4 py-6 border-2 border-blue-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-200 rounded-xl transition-all duration-300 bg-white/80 backdrop-blur-sm hover:bg-white shadow-sm hover:shadow-md"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-r from-blue-500/0 via-blue-500/5 to-cyan-500/0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
+                    </div>
+                    <p className="text-xs text-slate-500 flex items-center gap-1">
+                      <span className="inline-block w-1.5 h-1.5 bg-blue-400 rounded-full"></span>
                       Common: smtp.gmail.com, smtp.office365.com
                     </p>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="email-port">SMTP Port</Label>
-                    <Input
-                      id="email-port"
-                      value={orgSettings.general.emailPort}
-                      onChange={(e) => handleSettingsChange('general', 'emailPort', e.target.value)}
-                      placeholder="587"
-                    />
-                    <p className="text-xs text-gray-500">
+
+                  {/* SMTP Port Field */}
+                  <div className="space-y-3 group">
+                    <Label htmlFor="email-port" className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                      <Database className="h-4 w-4 text-indigo-500" />
+                      SMTP Port
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        id="email-port"
+                        value={orgSettings.general.emailPort}
+                        onChange={(e) => handleSettingsChange('general', 'emailPort', e.target.value)}
+                        placeholder="587"
+                        className="pl-4 pr-4 py-6 border-2 border-indigo-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-200 rounded-xl transition-all duration-300 bg-white/80 backdrop-blur-sm hover:bg-white shadow-sm hover:shadow-md"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/0 via-indigo-500/5 to-purple-500/0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
+                    </div>
+                    <p className="text-xs text-slate-500 flex items-center gap-1">
+                      <span className="inline-block w-1.5 h-1.5 bg-indigo-400 rounded-full"></span>
                       Common ports: 587 (TLS), 465 (SSL)
                     </p>
                   </div>
                 </div>
-                <div className="pt-2 border-t border-gray-100">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600">Email Status:</span>
-                    <Badge variant={orgSettings.general.emailUser && orgSettings.general.emailPassword ? "default" : "destructive"}>
-                      {orgSettings.general.emailUser && orgSettings.general.emailPassword ? "Configured" : "Not configured"}
-                    </Badge>
-                  </div>
-                </div>
-                <div className="flex gap-2 pt-4">
+
+                <div className="flex gap-3 pt-6 border-t border-purple-100">
                   <Button
+                    disabled={isLoading}
                     onClick={async () => {
+                      setIsLoading(true);
                       // Validate required fields
                       if (!orgSettings.general.emailUser || !orgSettings.general.emailUser.trim()) {
                         toast({
-                          title: "Validation Error",
+                          title: "❌ Validation Error",
                           description: "Email address is required",
-                          variant: "destructive"
+                          variant: "destructive",
+                          duration: 5000,
                         });
+                        setIsLoading(false);
                         return;
                       }
 
-                      if (!orgSettings.general.emailPassword || !orgSettings.general.emailPassword.trim()) {
+                      if (!orgSettings.general.emailPassword || !orgSettings.general.emailPassword.trim() || orgSettings.general.emailPassword === '••••••••') {
                         toast({
-                          title: "Validation Error",
-                          description: "Email password is required",
-                          variant: "destructive"
+                          title: "❌ Validation Error",
+                          description: "Email password is required. Please enter your password to save changes.",
+                          variant: "destructive",
+                          duration: 5000,
                         });
+                        setIsLoading(false);
                         return;
                       }
 
@@ -2111,49 +2190,70 @@ If candidate is not interested or has accepted another offer, thank them gracefu
                       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
                       if (!emailRegex.test(orgSettings.general.emailUser)) {
                         toast({
-                          title: "Validation Error",
+                          title: "❌ Validation Error",
                           description: "Please enter a valid email address",
-                          variant: "destructive"
+                          variant: "destructive",
+                          duration: 5000,
                         });
+                        setIsLoading(false);
                         return;
                       }
 
                       try {
-                        const response = await fetch('http://localhost:8000/api/settings/email/update/', {
+                        // Save to backend database
+                        const response = await fetch('http://127.0.0.1:8000/api/email-settings/', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
-                            emailUser: orgSettings.general.emailUser,
-                            emailPassword: orgSettings.general.emailPassword,
-                            emailHost: orgSettings.general.emailHost,
-                            emailPort: orgSettings.general.emailPort,
+                            email: orgSettings.general.emailUser,
+                            password: orgSettings.general.emailPassword,
+                            host: orgSettings.general.emailHost || 'smtp.gmail.com',
+                            port: parseInt(orgSettings.general.emailPort) || 587,
+                            use_tls: true,
+                            use_ssl: false,
+                            is_active: true
                           })
                         });
-                        const data = await response.json();
-                        if (data.success) {
-                          toast({
-                            title: "Success",
-                            description: "Email settings updated successfully!",
-                          });
-                        } else {
-                          toast({
-                            title: "Error",
-                            description: data.error || "Failed to update email settings",
-                            variant: "destructive"
-                          });
+
+                        if (!response.ok) {
+                          const errorData = await response.json().catch(() => ({}));
+                          throw new Error(errorData.detail || errorData.error || 'Failed to save email settings');
                         }
-                      } catch (error) {
+
+                        const data = await response.json();
+
                         toast({
-                          title: "Error",
-                          description: "Failed to update email settings",
-                          variant: "destructive"
+                          title: "✅ Success",
+                          description: "Email settings saved successfully! The system is now ready to send emails.",
+                          variant: "default",
+                          duration: 5000,
                         });
+
+                      } catch (error) {
+                        console.error('Error saving email settings:', error);
+                        toast({
+                          title: "❌ Error",
+                          description: error instanceof Error ? error.message : "Failed to save email settings. Please check your internet connection and try again.",
+                          variant: "destructive",
+                          duration: 7000,
+                        });
+                      } finally {
+                        setIsLoading(false);
                       }
                     }}
-                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                    className="flex-1 bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600 hover:from-purple-700 hover:via-pink-700 hover:to-purple-700 text-white font-semibold py-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <Save className="h-4 w-4 mr-2" />
-                    Save Email Settings
+                    {isLoading ? (
+                      <>
+                        <div className="h-5 w-5 mr-2 border-3 border-white border-t-transparent rounded-full animate-spin"></div>
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-5 w-5 mr-2" />
+                        Save Email Settings
+                      </>
+                    )}
                   </Button>
                 </div>
               </CardContent>

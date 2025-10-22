@@ -12,6 +12,7 @@ router.register(r'applications', views.JobApplicationViewSet)
 router.register(r'feedback-templates', views.FeedbackTemplateViewSet)
 router.register(r'interview-flows', views.InterviewFlowViewSet)
 router.register(r'interview-rounds', views.InterviewRoundViewSet)
+router.register(r'email-settings', views.EmailSettingsViewSet)
 
 urlpatterns = [
     path('', views.api_root, name='api-root'),

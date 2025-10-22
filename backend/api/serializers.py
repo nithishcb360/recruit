@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import DashboardStats, Task, ActivityLog, Department, Job, Candidate, JobApplication, FeedbackTemplate, InterviewFlow, InterviewRound
+from .models import DashboardStats, Task, ActivityLog, Department, Job, Candidate, JobApplication, FeedbackTemplate, InterviewFlow, InterviewRound, EmailSettings
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -499,3 +499,28 @@ class InterviewFlowUpdateSerializer(serializers.ModelSerializer):
 
         instance.save()
         return instance
+
+
+class EmailSettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmailSettings
+        fields = [
+            'id', 'email', 'host', 'port', 'use_tls', 'use_ssl',
+            'from_name', 'is_active', 'created_at', 'updated_at'
+        ]
+
+
+class EmailSettingsCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmailSettings
+        fields = [
+            'email', 'password', 'host', 'port', 'use_tls', 'use_ssl', 'from_name', 'is_active'
+        ]
+
+
+class EmailSettingsUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmailSettings
+        fields = [
+            'email', 'password', 'host', 'port', 'use_tls', 'use_ssl', 'from_name', 'is_active'
+        ]
