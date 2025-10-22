@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import DashboardStats, Task, ActivityLog, Department, Job, Candidate, JobApplication, FeedbackTemplate, InterviewFlow, InterviewRound, EmailSettings
+from .models import DashboardStats, Task, ActivityLog, Department, Job, Candidate, JobApplication, FeedbackTemplate, InterviewFlow, InterviewRound, EmailSettings, Notification
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -525,3 +525,15 @@ class EmailSettingsUpdateSerializer(serializers.ModelSerializer):
         fields = [
             'email', 'password', 'host', 'port', 'use_tls', 'use_ssl', 'from_name', 'is_active'
         ]
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    candidate_name = serializers.CharField(source='candidate.name', read_only=True)
+
+    class Meta:
+        model = Notification
+        fields = [
+            'id', 'candidate', 'candidate_name', 'notification_type',
+            'title', 'message', 'is_read', 'created_at'
+        ]
+        read_only_fields = ['created_at']
