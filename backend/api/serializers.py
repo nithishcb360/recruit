@@ -195,6 +195,7 @@ class CandidateSerializer(serializers.ModelSerializer):
             # Retell AI - Metadata
             'retell_metadata', 'retell_start_timestamp', 'retell_end_timestamp',
             'retell_public_log_url', 'retell_additional_notes',
+            'retell_retry_count', 'retell_last_call_attempt', 'retell_next_retry_time',
             'created_at', 'updated_at'
         ]
 
