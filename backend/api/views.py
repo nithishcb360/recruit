@@ -1084,33 +1084,59 @@ class CandidateViewSet(viewsets.ModelViewSet):
 
             # Send WebDesk email automatically after call ends if interview is scheduled
             # BUT NOT if candidate is rejected OR if date/time not provided OR if email already sent
+            # Use atomic database update to prevent race conditions
+            from django.db import transaction
+
             email_sent = False
-            if candidate.retell_call_status == 'ended' and candidate.retell_interview_scheduled and candidate.status != 'rejected' and not candidate.retell_email_sent:
+            if candidate.retell_call_status == 'ended' and candidate.retell_interview_scheduled and candidate.status != 'rejected':
                 # Check if date and time are provided
                 has_date = bool(candidate.retell_scheduled_date and candidate.retell_scheduled_date.strip())
                 has_time = bool(candidate.retell_scheduled_time and candidate.retell_scheduled_time.strip())
 
                 if has_date and has_time:
-                    logger.info(f"Attempting to send WebDesk email to candidate {candidate.id}")
-                    logger.info(f"Interview scheduled: {candidate.retell_scheduled_date} at {candidate.retell_scheduled_time}")
-                    email_sent = send_webdesk_email(candidate)
-                    if email_sent:
-                        candidate.retell_email_sent = True
-                        candidate.save()
-                        logger.info(f"WebDesk email sent successfully to candidate {candidate.id}, flag set to prevent duplicates")
+                    # Use atomic transaction with select_for_update to prevent race condition
+                    # This ensures only ONE request can send the email even if multiple requests arrive simultaneously
+                    should_send_email = False
+                    try:
+                        with transaction.atomic():
+                            # Lock the candidate row and check if email already sent
+                            candidate_locked = Candidate.objects.select_for_update().get(id=candidate.id)
 
-                        # Create notification for HR users
-                        create_notification(
-                            candidate=candidate,
-                            notification_type='retell_completed',
-                            title='Retell Call Completed',
-                            message=f'{candidate.name} has completed the Retell screening call. Interview scheduled for {candidate.retell_scheduled_date} at {candidate.retell_scheduled_time}.'
-                        )
+                            # Check BOTH flags to prevent duplicates
+                            if not candidate_locked.retell_email_sent and not candidate_locked.webdesk_email_sent:
+                                logger.info(f"Attempting to send WebDesk email to candidate {candidate.id}")
+                                logger.info(f"Interview scheduled: {candidate.retell_scheduled_date} at {candidate.retell_scheduled_time}")
+
+                                # Set the flag BEFORE sending email to prevent other threads from trying
+                                candidate_locked.retell_email_sent = True
+                                candidate_locked.save(update_fields=['retell_email_sent'])
+                                should_send_email = True
+                            else:
+                                logger.info(f"Skipping WebDesk email for candidate {candidate.id} - email already sent (retell_email_sent={candidate_locked.retell_email_sent}, webdesk_email_sent={candidate_locked.webdesk_email_sent})")
+
+                        # Send email OUTSIDE the transaction to avoid holding the lock too long
+                        if should_send_email:
+                            email_sent = send_webdesk_email(candidate)
+
+                            if email_sent:
+                                logger.info(f"WebDesk email sent successfully to candidate {candidate.id}")
+
+                                # Create notification for HR users
+                                create_notification(
+                                    candidate=candidate,
+                                    notification_type='retell_completed',
+                                    title='Retell Call Completed',
+                                    message=f'{candidate.name} has completed the Retell screening call. Interview scheduled for {candidate.retell_scheduled_date} at {candidate.retell_scheduled_time}.'
+                                )
+                            else:
+                                # If email failed, reset the flag so it can be retried
+                                Candidate.objects.filter(id=candidate.id).update(retell_email_sent=False)
+                                logger.warning(f"Email send failed, flag reset for retry")
+                    except Exception as e:
+                        logger.error(f"Error in atomic email send transaction: {e}")
                 else:
                     logger.warning(f"Skipping WebDesk email for candidate {candidate.id} - Date/Time not provided")
                     logger.warning(f"  Date: '{candidate.retell_scheduled_date}' | Time: '{candidate.retell_scheduled_time}'")
-            elif candidate.retell_email_sent:
-                logger.info(f"Skipping WebDesk email for candidate {candidate.id} - email already sent")
             elif candidate.status == 'rejected':
                 logger.info(f"Skipping WebDesk email for candidate {candidate.id} - status is rejected")
 
