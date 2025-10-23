@@ -326,6 +326,7 @@ class Candidate(models.Model):
     retell_retry_count = models.IntegerField(default=0, help_text='Number of call retry attempts')
     retell_last_call_attempt = models.DateTimeField(null=True, blank=True, help_text='Last call attempt timestamp')
     retell_next_retry_time = models.DateTimeField(null=True, blank=True, help_text='Next scheduled retry time')
+    retell_email_sent = models.BooleanField(default=False, help_text='Whether assessment email has been sent after call')
 
     # AI Video Interview
     video_interview_link = models.URLField(blank=True, help_text='Link to AI video interview')
@@ -528,3 +529,29 @@ class EmailSettings(models.Model):
 
     def __str__(self):
         return f"Email Settings - {self.email}"
+
+
+class Notification(models.Model):
+    """Store user notifications"""
+    NOTIFICATION_TYPES = [
+        ('retell_completed', 'Retell Call Completed'),
+        ('webdesk_completed', 'WebDesk Assessment Completed'),
+        ('interview_scheduled', 'Interview Scheduled'),
+        ('candidate_rejected', 'Candidate Rejected'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
+    candidate = models.ForeignKey('Candidate', on_delete=models.CASCADE, related_name='notifications')
+    notification_type = models.CharField(max_length=50, choices=NOTIFICATION_TYPES)
+    title = models.CharField(max_length=255)
+    message = models.TextField()
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        verbose_name = "Notification"
+        verbose_name_plural = "Notifications"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.title} - {self.user.username}"

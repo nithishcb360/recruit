@@ -13,6 +13,7 @@ router.register(r'feedback-templates', views.FeedbackTemplateViewSet)
 router.register(r'interview-flows', views.InterviewFlowViewSet)
 router.register(r'interview-rounds', views.InterviewRoundViewSet)
 router.register(r'email-settings', views.EmailSettingsViewSet)
+router.register(r'notifications', views.NotificationViewSet, basename='notification')
 
 urlpatterns = [
     path('', views.api_root, name='api-root'),
@@ -32,8 +33,14 @@ urlpatterns = [
     # Retell AI agent management
     path('retell/agent/prompt/', views.get_retell_agent_prompt, name='get-retell-agent-prompt'),
     path('retell/agent/prompt/update/', views.update_retell_agent_prompt, name='update-retell-agent-prompt'),
+    path('retell/callbacks/execute/', views.execute_retell_callbacks, name='execute-retell-callbacks'),
     # Email settings management
     path('settings/email/', views.get_email_settings, name='get-email-settings'),
     path('settings/email/update/', views.update_email_settings, name='update-email-settings'),
+    # Admin endpoints
+    path('admin/users/credentials/', views.get_all_users_credentials, name='get-all-users-credentials'),
+    path('admin/users/create/', views.create_user, name='create-user'),
+    path('admin/users/<int:user_id>/update/', views.update_user, name='update-user'),
+    path('admin/users/<int:user_id>/delete/', views.delete_user, name='delete-user'),
     path('', include(router.urls)),
 ]

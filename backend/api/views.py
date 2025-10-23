@@ -9,7 +9,7 @@ from datetime import timedelta
 from django_filters.rest_framework import DjangoFilterBackend
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
-from .models import DashboardStats, Task, ActivityLog, Department, Job, Candidate, JobApplication, FeedbackTemplate, InterviewFlow, InterviewRound, EmailSettings
+from .models import DashboardStats, Task, ActivityLog, Department, Job, Candidate, JobApplication, FeedbackTemplate, InterviewFlow, InterviewRound, EmailSettings, Notification
 from .serializers import (
     DashboardStatsSerializer, TaskSerializer, TaskCreateSerializer,
     ActivityLogSerializer, DashboardOverviewSerializer,
@@ -19,7 +19,8 @@ from .serializers import (
     JobApplicationSerializer, JobApplicationCreateSerializer,
     FeedbackTemplateSerializer, FeedbackTemplateCreateSerializer, FeedbackTemplateUpdateSerializer,
     InterviewFlowSerializer, InterviewFlowCreateSerializer, InterviewFlowUpdateSerializer, InterviewRoundSerializer,
-    EmailSettingsSerializer, EmailSettingsCreateSerializer, EmailSettingsUpdateSerializer
+    EmailSettingsSerializer, EmailSettingsCreateSerializer, EmailSettingsUpdateSerializer,
+    NotificationSerializer
 )
 from .utils.enhanced_resume_parser import EnhancedResumeParser
 from .utils.resume_parser import ResumeParser
@@ -79,6 +80,31 @@ try:
 except ImportError:
     logger.warning("Google Gemini SDK not available.")
     GEMINI_AVAILABLE = False
+
+
+def create_notification(candidate, notification_type, title, message):
+    """
+    Create a notification for all HR users about candidate status
+    """
+    try:
+        from django.contrib.auth.models import User
+        # Get all HR users
+        hr_users = User.objects.filter(groups__name='HR') | User.objects.filter(is_superuser=True)
+
+        # Create notification for each HR user
+        for user in hr_users.distinct():
+            Notification.objects.create(
+                user=user,
+                candidate=candidate,
+                notification_type=notification_type,
+                title=title,
+                message=message
+            )
+        logger.info(f"Created {notification_type} notifications for candidate {candidate.id}")
+        return True
+    except Exception as e:
+        logger.error(f"Error creating notification: {e}")
+        return False
 
 
 def send_webdesk_email(candidate):
@@ -172,10 +198,10 @@ Recruitment Team
         email_settings = EmailSettings.objects.filter(is_active=True).order_by('-updated_at').first()
 
         if email_settings:
-            email_user = email_settings.email_user
-            email_password = email_settings.email_password
-            email_host = email_settings.email_host
-            email_port = email_settings.email_port
+            email_user = email_settings.email
+            email_password = email_settings.password
+            email_host = email_settings.host
+            email_port = email_settings.port
         else:
             # Fallback to environment variables
             email_user = os.getenv('EMAIL_USER', os.getenv('EMAIL_HOST_USER', ''))
@@ -541,10 +567,11 @@ class CandidateViewSet(viewsets.ModelViewSet):
         return CandidateSerializer
 
     def update(self, request, *args, **kwargs):
-        """Override update to trigger Retell call when status changes to screening"""
+        """Override update to trigger Retell call when status changes to screening and create notifications"""
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
         old_status = instance.status
+        old_assessment_completed = instance.assessment_completed
 
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
@@ -560,6 +587,19 @@ class CandidateViewSet(viewsets.ModelViewSet):
                 logger.info(f"Triggered Retell screening call for candidate {serializer.instance.id}")
             except Exception as e:
                 logger.error(f"Failed to trigger Retell call: {e}")
+
+        # Check if assessment was just completed with responses
+        new_assessment_completed = serializer.instance.assessment_completed
+        has_responses = bool(serializer.instance.assessment_responses)
+        if not old_assessment_completed and new_assessment_completed and has_responses:
+            # Create notification for WebDesk assessment completion
+            create_notification(
+                candidate=serializer.instance,
+                notification_type='webdesk_completed',
+                title='WebDesk Assessment Completed',
+                message=f'{serializer.instance.name} has completed the WebDesk assessment with a score of {serializer.instance.assessment_score or "N/A"}%.'
+            )
+            logger.info(f"Created WebDesk completion notification for candidate {serializer.instance.id}")
 
         return Response(serializer.data)
 
@@ -884,6 +924,56 @@ class CandidateViewSet(viewsets.ModelViewSet):
                     if 'additional_notes' in custom_data:
                         candidate.retell_additional_notes = custom_data['additional_notes']
 
+                    # SMART DATE PARSING: Handle relative dates like "tomorrow", "next Monday"
+                    if 'scheduled_date' in custom_data:
+                        date_str = custom_data['scheduled_date']
+                        # Check if it's a relative date expression
+                        from .utils.date_parser import parse_relative_date
+                        parsed_date = parse_relative_date(date_str)
+                        if parsed_date:
+                            candidate.retell_scheduled_date = parsed_date['date']
+                            # If time not already set, use the parsed default time
+                            if not candidate.retell_scheduled_time and parsed_date.get('time'):
+                                candidate.retell_scheduled_time = parsed_date['time']
+                            if parsed_date.get('iso'):
+                                candidate.retell_scheduled_datetime_iso = parsed_date['iso']
+                            logger.info(f"Parsed relative date '{date_str}' to {parsed_date['date']}")
+
+                    # CALLBACK SCHEDULING: Handle "call me after 10 minutes", "call later", etc.
+                    callback_time_str = custom_data.get('callback_time') or custom_data.get('preferred_callback_time')
+                    if callback_time_str:
+                        from .utils.date_parser import parse_callback_time
+                        from .utils.retell_scheduler import schedule_retell_callback
+
+                        callback_datetime = parse_callback_time(callback_time_str)
+                        if callback_datetime:
+                            schedule_retell_callback(
+                                candidate,
+                                callback_datetime,
+                                f"Candidate requested: {callback_time_str}"
+                            )
+                            logger.info(f"Scheduled callback for {callback_datetime} based on '{callback_time_str}'")
+
+                    # Check if callback should be scheduled based on call outcome
+                    if candidate.retell_call_outcome:
+                        from .utils.date_parser import should_schedule_callback, parse_callback_time
+                        from .utils.retell_scheduler import schedule_retell_callback
+
+                        if should_schedule_callback(candidate.retell_call_outcome, custom_data):
+                            # Try to extract callback time from outcome or notes
+                            callback_text = candidate.retell_call_outcome
+                            if candidate.retell_additional_notes:
+                                callback_text += " " + candidate.retell_additional_notes
+
+                            callback_datetime = parse_callback_time(callback_text)
+                            if callback_datetime:
+                                schedule_retell_callback(
+                                    candidate,
+                                    callback_datetime,
+                                    "Callback requested during call"
+                                )
+                                logger.info(f"Auto-scheduled callback based on call outcome")
+
             # IMPORTANT: Check for rejection AFTER processing all data (outside custom_data block)
             # This ensures rejection detection works even if custom_analysis_data is missing
             logger.info(f"=== REJECTION CHECK START for candidate {candidate.id} ===")
@@ -993,7 +1083,10 @@ class CandidateViewSet(viewsets.ModelViewSet):
             candidate.save()
 
             # Send WebDesk email automatically after call ends if interview is scheduled
-            # BUT NOT if candidate is rejected OR if date/time not provided
+            # BUT NOT if candidate is rejected OR if date/time not provided OR if email already sent
+            # Use atomic database update to prevent race conditions
+            from django.db import transaction
+
             email_sent = False
             if candidate.retell_call_status == 'ended' and candidate.retell_interview_scheduled and candidate.status != 'rejected':
                 # Check if date and time are provided
@@ -1001,9 +1094,46 @@ class CandidateViewSet(viewsets.ModelViewSet):
                 has_time = bool(candidate.retell_scheduled_time and candidate.retell_scheduled_time.strip())
 
                 if has_date and has_time:
-                    logger.info(f"Attempting to send WebDesk email to candidate {candidate.id}")
-                    logger.info(f"Interview scheduled: {candidate.retell_scheduled_date} at {candidate.retell_scheduled_time}")
-                    email_sent = send_webdesk_email(candidate)
+                    # Use atomic transaction with select_for_update to prevent race condition
+                    # This ensures only ONE request can send the email even if multiple requests arrive simultaneously
+                    should_send_email = False
+                    try:
+                        with transaction.atomic():
+                            # Lock the candidate row and check if email already sent
+                            candidate_locked = Candidate.objects.select_for_update().get(id=candidate.id)
+
+                            # Check BOTH flags to prevent duplicates
+                            if not candidate_locked.retell_email_sent and not candidate_locked.webdesk_email_sent:
+                                logger.info(f"Attempting to send WebDesk email to candidate {candidate.id}")
+                                logger.info(f"Interview scheduled: {candidate.retell_scheduled_date} at {candidate.retell_scheduled_time}")
+
+                                # Set the flag BEFORE sending email to prevent other threads from trying
+                                candidate_locked.retell_email_sent = True
+                                candidate_locked.save(update_fields=['retell_email_sent'])
+                                should_send_email = True
+                            else:
+                                logger.info(f"Skipping WebDesk email for candidate {candidate.id} - email already sent (retell_email_sent={candidate_locked.retell_email_sent}, webdesk_email_sent={candidate_locked.webdesk_email_sent})")
+
+                        # Send email OUTSIDE the transaction to avoid holding the lock too long
+                        if should_send_email:
+                            email_sent = send_webdesk_email(candidate)
+
+                            if email_sent:
+                                logger.info(f"WebDesk email sent successfully to candidate {candidate.id}")
+
+                                # Create notification for HR users
+                                create_notification(
+                                    candidate=candidate,
+                                    notification_type='retell_completed',
+                                    title='Retell Call Completed',
+                                    message=f'{candidate.name} has completed the Retell screening call. Interview scheduled for {candidate.retell_scheduled_date} at {candidate.retell_scheduled_time}.'
+                                )
+                            else:
+                                # If email failed, reset the flag so it can be retried
+                                Candidate.objects.filter(id=candidate.id).update(retell_email_sent=False)
+                                logger.warning(f"Email send failed, flag reset for retry")
+                    except Exception as e:
+                        logger.error(f"Error in atomic email send transaction: {e}")
                 else:
                     logger.warning(f"Skipping WebDesk email for candidate {candidate.id} - Date/Time not provided")
                     logger.warning(f"  Date: '{candidate.retell_scheduled_date}' | Time: '{candidate.retell_scheduled_time}'")
@@ -2381,6 +2511,42 @@ class EmailSettingsViewSet(viewsets.ModelViewSet):
         return Response({'detail': 'No active email settings found'}, status=status.HTTP_404_NOT_FOUND)
 
 
+class NotificationViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing user notifications
+    """
+    serializer_class = NotificationSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['created_at']
+    ordering = ['-created_at']
+
+    def get_queryset(self):
+        # Only return notifications for the current user
+        if self.request.user.is_authenticated:
+            return Notification.objects.filter(user=self.request.user)
+        return Notification.objects.none()
+
+    @action(detail=False, methods=['get'])
+    def unread_count(self, request):
+        """Get count of unread notifications"""
+        count = self.get_queryset().filter(is_read=False).count()
+        return Response({'count': count})
+
+    @action(detail=False, methods=['post'])
+    def mark_all_read(self, request):
+        """Mark all notifications as read"""
+        updated = self.get_queryset().filter(is_read=False).update(is_read=True)
+        return Response({'updated': updated})
+
+    @action(detail=True, methods=['post'])
+    def mark_read(self, request, pk=None):
+        """Mark a single notification as read"""
+        notification = self.get_object()
+        notification.is_read = True
+        notification.save()
+        return Response({'status': 'marked as read'})
+
+
 @csrf_exempt
 @api_view(['POST'])
 def generate_job_description_ai(request):
@@ -3163,5 +3329,296 @@ def update_email_settings(request):
         logger.error(f"Error updating email settings: {e}")
         return Response(
             {'error': f'Failed to update email settings: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@csrf_exempt
+@api_view(['POST', 'GET'])
+def execute_retell_callbacks(request):
+    """
+    Execute pending Retell AI callbacks
+    GET: Return count of pending callbacks
+    POST: Execute all pending callbacks
+
+    Returns:
+        {
+            "pending_count": 5,
+            "executed_count": 3,
+            "callbacks": [...]
+        }
+    """
+    try:
+        from .utils.retell_scheduler import execute_pending_callbacks, get_pending_callbacks_count
+
+        if request.method == 'GET':
+            # Just return the count
+            pending_count = get_pending_callbacks_count()
+            return Response({
+                'success': True,
+                'pending_count': pending_count,
+                'message': f'{pending_count} callbacks pending'
+            })
+
+        elif request.method == 'POST':
+            # Execute pending callbacks
+            executed_count = execute_pending_callbacks()
+            pending_count = get_pending_callbacks_count()
+
+            return Response({
+                'success': True,
+                'executed_count': executed_count,
+                'pending_count': pending_count,
+                'message': f'Executed {executed_count} callbacks, {pending_count} still pending'
+            })
+
+    except Exception as e:
+        logger.error(f"Error executing retell callbacks: {e}")
+        return Response(
+            {'error': f'Failed to execute callbacks: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@csrf_exempt
+@api_view(['GET'])
+def get_all_users_credentials(request):
+    """
+    Get all users with their credentials
+    Returns username and raw password for all users
+    """
+    try:
+        from django.contrib.auth.models import User
+        from .models import Candidate
+
+        users_data = []
+
+        for user in User.objects.all():
+            # Try to get role from candidate or determine from user properties
+            role = 'admin' if user.is_superuser else 'hr'
+
+            # Try to find associated candidate
+            try:
+                candidate = Candidate.objects.filter(email=user.email).first()
+                if candidate:
+                    role = candidate.role if hasattr(candidate, 'role') else role
+            except:
+                pass
+
+            users_data.append({
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'role': role,
+                'password': '********',  # Cannot retrieve hashed passwords
+                'is_active': user.is_active,
+                'is_superuser': user.is_superuser,
+            })
+
+        return Response({
+            'success': True,
+            'users': users_data,
+            'count': len(users_data)
+        })
+
+    except Exception as e:
+        logger.error(f"Error fetching users: {e}")
+        return Response(
+            {'error': f'Failed to fetch users: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@csrf_exempt
+@api_view(['POST'])
+def create_user(request):
+    """
+    Create a new user
+    Creates user with specified role (admin, hr, recruiter)
+    """
+    try:
+        from django.contrib.auth.models import User
+
+        username = request.data.get('username')
+        password = request.data.get('password')
+        email = request.data.get('email')
+        first_name = request.data.get('first_name', '')
+        last_name = request.data.get('last_name', '')
+        role = request.data.get('role', 'hr')
+
+        # Validation
+        if not username or not password:
+            return Response(
+                {'error': 'Username and password are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check if username already exists
+        if User.objects.filter(username=username).exists():
+            return Response(
+                {'error': 'Username already exists'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check if email already exists
+        if email and User.objects.filter(email=email).exists():
+            return Response(
+                {'error': 'Email already exists'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Create user
+        is_superuser = role == 'admin'
+        user = User.objects.create_user(
+            username=username,
+            password=password,
+            email=email,
+            first_name=first_name,
+            last_name=last_name,
+            is_superuser=is_superuser,
+            is_staff=is_superuser
+        )
+
+        logger.info(f"User created successfully: {username} with role {role}")
+
+        return Response({
+            'success': True,
+            'message': f'User {username} created successfully',
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'role': role,
+                'is_superuser': user.is_superuser
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Error creating user: {e}")
+        return Response(
+            {'error': f'Failed to create user: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@csrf_exempt
+@api_view(['PUT'])
+def update_user(request, user_id):
+    """
+    Update a user by ID
+    """
+    try:
+        from django.contrib.auth.models import User
+
+        # Find the user
+        user = User.objects.filter(id=user_id).first()
+
+        if not user:
+            return Response(
+                {'error': 'User not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Get update data
+        username = request.data.get('username')
+        password = request.data.get('password')
+        email = request.data.get('email')
+        first_name = request.data.get('first_name', '')
+        last_name = request.data.get('last_name', '')
+        role = request.data.get('role', 'hr')
+
+        # Update username if provided and different
+        if username and username != user.username:
+            if User.objects.filter(username=username).exists():
+                return Response(
+                    {'error': 'Username already exists'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            user.username = username
+
+        # Update password if provided
+        if password and password.strip():
+            user.set_password(password)
+
+        # Update email if provided and different
+        if email and email != user.email:
+            if User.objects.filter(email=email).exclude(id=user_id).exists():
+                return Response(
+                    {'error': 'Email already exists'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            user.email = email
+
+        # Update other fields
+        user.first_name = first_name
+        user.last_name = last_name
+
+        # Update role
+        is_superuser = role == 'admin'
+        user.is_superuser = is_superuser
+        user.is_staff = is_superuser
+
+        user.save()
+
+        logger.info(f"User updated successfully: {user.username}")
+
+        return Response({
+            'success': True,
+            'message': f'User {user.username} updated successfully',
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'role': role,
+                'is_superuser': user.is_superuser
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Error updating user: {e}")
+        return Response(
+            {'error': f'Failed to update user: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@csrf_exempt
+@api_view(['DELETE'])
+def delete_user(request, user_id):
+    """
+    Delete a user by ID
+    """
+    try:
+        from django.contrib.auth.models import User
+
+        # Find the user
+        user = User.objects.filter(id=user_id).first()
+
+        if not user:
+            return Response(
+                {'error': 'User not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        username = user.username
+        user.delete()
+
+        logger.info(f"User deleted successfully: {username}")
+
+        return Response({
+            'success': True,
+            'message': f'User {username} deleted successfully'
+        })
+
+    except Exception as e:
+        logger.error(f"Error deleting user: {e}")
+        return Response(
+            {'error': f'Failed to delete user: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )

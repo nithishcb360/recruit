@@ -4,7 +4,8 @@
       "Bash(../venv/Scripts/python.exe manage.py migrate api --fake-initial)",
       "Bash(del d:recruitbackendapimigrations0026_emailsettings.py)",
       "Bash(../venv/Scripts/python.exe:*)",
-      "Bash(git -C \"D:/recruit\" status)"
+      "Bash(git -C \"D:/recruit\" status)",
+      "Bash(del apimigrations0027_remove_emailsettings_email_host_and_more.py)"
     ],
     "deny": [],
     "ask": []
