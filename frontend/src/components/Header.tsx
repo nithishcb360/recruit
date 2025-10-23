@@ -15,6 +15,8 @@ import {
   UserPlus,
   Trash2,
   Edit,
+  Eye,
+  EyeOff,
 } from "lucide-react"
 import { useAuth } from "@/contexts/AuthContext"
 import {
@@ -61,6 +63,8 @@ export default function Header({ onMenuClick }: HeaderProps) {
   const [showAddUserModal, setShowAddUserModal] = useState(false)
   const [showEditUserModal, setShowEditUserModal] = useState(false)
   const [editingUserId, setEditingUserId] = useState<number | null>(null)
+  const [showAddPassword, setShowAddPassword] = useState(false)
+  const [showEditPassword, setShowEditPassword] = useState(false)
   const [newUser, setNewUser] = useState({
     username: '',
     password: '',
@@ -185,7 +189,8 @@ export default function Header({ onMenuClick }: HeaderProps) {
       })
 
       if (response.ok) {
-        alert('User created successfully!')
+        const data = await response.json()
+        alert(`User created successfully!\n\nUsername: ${newUser.username}\nPassword: ${newUser.password}\n\nIMPORTANT: Save these credentials now. Passwords are encrypted and cannot be retrieved later.`)
         setShowAddUserModal(false)
         setNewUser({
           username: '',
@@ -211,7 +216,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
     setEditingUserId(u.id)
     setEditUser({
       username: u.username,
-      password: u.password || '',
+      password: '',  // Always blank - can't retrieve encrypted passwords
       email: u.email,
       first_name: u.first_name,
       last_name: u.last_name,
@@ -465,14 +470,29 @@ export default function Header({ onMenuClick }: HeaderProps) {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                <input
-                  type="text"
-                  value={editUser.password}
-                  onChange={(e) => setEditUser({...editUser, password: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter new password (leave blank to keep current)"
-                />
+                <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
+                <div className="relative">
+                  <input
+                    type={showEditPassword ? "text" : "password"}
+                    value={editUser.password}
+                    onChange={(e) => setEditUser({...editUser, password: e.target.value})}
+                    className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Enter new password (leave blank to keep current)"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowEditPassword(!showEditPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    tabIndex={-1}
+                  >
+                    {showEditPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Leave blank to keep the current password</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
@@ -563,13 +583,27 @@ export default function Header({ onMenuClick }: HeaderProps) {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                <input
-                  type="text"
-                  value={newUser.password}
-                  onChange={(e) => setNewUser({...newUser, password: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter password"
-                />
+                <div className="relative">
+                  <input
+                    type={showAddPassword ? "text" : "password"}
+                    value={newUser.password}
+                    onChange={(e) => setNewUser({...newUser, password: e.target.value})}
+                    className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Enter password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAddPassword(!showAddPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    tabIndex={-1}
+                  >
+                    {showAddPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
@@ -636,16 +670,19 @@ export default function Header({ onMenuClick }: HeaderProps) {
       {showUsersModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowUsersModal(false)}>
           <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full mx-4 max-h-[80vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="bg-white border-b px-6 py-4 flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-gray-900">All Users - Credentials</h2>
-              <button
-                onClick={() => setShowUsersModal(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+            <div className="bg-white border-b px-6 py-4">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-xl font-semibold text-gray-900">All Users - Credentials</h2>
+                <button
+                  onClick={() => setShowUsersModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <p className="text-xs text-gray-500">Note: Passwords are encrypted and cannot be displayed. Use Edit to set a new password.</p>
             </div>
             <div className="bg-white overflow-y-auto max-h-[calc(80vh-80px)]">
               <table className="w-full">

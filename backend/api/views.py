@@ -3386,7 +3386,7 @@ def get_all_users_credentials(request):
                 'first_name': user.first_name,
                 'last_name': user.last_name,
                 'role': role,
-                'password': 'admin123' if user.is_superuser else 'hr123',  # Default passwords
+                'password': '********',  # Cannot retrieve hashed passwords
                 'is_active': user.is_active,
                 'is_superuser': user.is_superuser,
             })
