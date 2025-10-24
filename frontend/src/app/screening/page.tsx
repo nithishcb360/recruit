@@ -477,6 +477,7 @@ export default function ScreeningPage() {
   const [assessmentEmailInputs, setAssessmentEmailInputs] = useState<Map<number, string>>(new Map())
   const [callRetryCount, setCallRetryCount] = useState<Map<number, number>>(new Map())
   const [pendingRetries, setPendingRetries] = useState<Map<number, NodeJS.Timeout>>(new Map())
+  const [autoSentAssessmentEmails, setAutoSentAssessmentEmails] = useState<Set<number>>(new Set())
 
   // Helper function to get WebDesk stage info from job's interview stages
   const getWebDeskStageInfo = (jobTitle: string): { assigneeEmail: string | null, feedbackFormId: string | null } => {
@@ -544,6 +545,7 @@ export default function ScreeningPage() {
 
         // Auto-fill email when assessment is completed
         if (candidate.assessment_completed && assigneeEmail && !assessmentEmailInputs.has(candidate.id)) {
+          console.log(`Auto-populating assignee email for candidate ${candidate.id}: ${assigneeEmail}`)
           setAssessmentEmailInputs(prev => {
             const newMap = new Map(prev)
             newMap.set(candidate.id, assigneeEmail)
@@ -563,6 +565,40 @@ export default function ScreeningPage() {
       }
     })
   }, [movedCandidatesList, jobs])
+
+  // Auto-send assessment email to assignee when completed
+  useEffect(() => {
+    movedCandidatesList.forEach(candidate => {
+      if (candidate.assessment_completed &&
+          assessmentEmailInputs.has(candidate.id) &&
+          !autoSentAssessmentEmails.has(candidate.id)) {
+
+        const assigneeEmail = assessmentEmailInputs.get(candidate.id)
+        if (assigneeEmail) {
+          console.log(`Auto-sending assessment results for candidate ${candidate.id} to ${assigneeEmail}`)
+
+          // Mark as sent before attempting to avoid duplicates
+          setAutoSentAssessmentEmails(prev => new Set(prev).add(candidate.id))
+
+          // Use a small delay to ensure email input state is fully updated
+          setTimeout(async () => {
+            try {
+              await handleSendAssessmentEmail(candidate.id)
+              console.log(`Successfully auto-sent email for candidate ${candidate.id}`)
+            } catch (error) {
+              console.error(`Failed to auto-send email for candidate ${candidate.id}:`, error)
+              // Remove from sent list on failure so it can retry
+              setAutoSentAssessmentEmails(prev => {
+                const newSet = new Set(prev)
+                newSet.delete(candidate.id)
+                return newSet
+              })
+            }
+          }, 1000)
+        }
+      }
+    })
+  }, [movedCandidatesList, assessmentEmailInputs, autoSentAssessmentEmails])
 
   // Update ref whenever movedCandidatesList changes
   useEffect(() => {
@@ -3464,10 +3500,19 @@ ${fromEmail}`
                                         📷 Camera Recording
                                       </div>
                                       <video
+                                        key={`camera-${candidate.id}-${candidate.assessment_video_recording}`}
                                         controls
+                                        preload="metadata"
                                         className="w-full"
-                                        style={{ maxHeight: '200px' }}
+                                        style={{ maxHeight: '200px', backgroundColor: '#000' }}
                                         onClick={(e) => e.stopPropagation()}
+                                        onError={(e) => {
+                                          console.error('Camera video error:', e)
+                                          console.error('Video src:', (e.target as HTMLVideoElement).src)
+                                        }}
+                                        onLoadedMetadata={() => {
+                                          console.log('Camera video metadata loaded for candidate', candidate.id)
+                                        }}
                                       >
                                         <source
                                           src={candidate.assessment_video_recording.startsWith('http')
@@ -3488,10 +3533,19 @@ ${fromEmail}`
                                         🖥️ Screen Recording
                                       </div>
                                       <video
+                                        key={`screen-${candidate.id}-${candidate.assessment_screen_recording}`}
                                         controls
+                                        preload="metadata"
                                         className="w-full"
-                                        style={{ maxHeight: '200px' }}
+                                        style={{ maxHeight: '200px', backgroundColor: '#000' }}
                                         onClick={(e) => e.stopPropagation()}
+                                        onError={(e) => {
+                                          console.error('Screen video error:', e)
+                                          console.error('Video src:', (e.target as HTMLVideoElement).src)
+                                        }}
+                                        onLoadedMetadata={() => {
+                                          console.log('Screen video metadata loaded for candidate', candidate.id)
+                                        }}
                                       >
                                         <source
                                           src={candidate.assessment_screen_recording.startsWith('http')

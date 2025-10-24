@@ -169,6 +169,7 @@ export default function WebDeskAssessment() {
   const [showPermissionError, setShowPermissionError] = useState(false)
   const [tabSwitchCount, setTabSwitchCount] = useState(0)
   const [showTabSwitchWarning, setShowTabSwitchWarning] = useState(false)
+  const mediaRecordingStartedRef = React.useRef(false)
 
   // Debug log for URL parameters (client-side only)
   useEffect(() => {
@@ -245,6 +246,14 @@ export default function WebDeskAssessment() {
   }
 
   const startMediaRecording = async () => {
+    // Prevent duplicate calls (e.g., from React Strict Mode in development)
+    if (mediaRecordingStartedRef.current) {
+      console.log('Media recording already started, skipping duplicate call')
+      return true
+    }
+
+    mediaRecordingStartedRef.current = true
+
     try {
       // Request camera and microphone access
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -335,6 +344,9 @@ export default function WebDeskAssessment() {
         recorder.stop()
         stream.getTracks().forEach(track => track.stop())
 
+        // Reset the ref so user can retry
+        mediaRecordingStartedRef.current = false
+
         toast({
           title: "Screen Sharing Required",
           description: "You must share your screen to take the assessment.",
@@ -347,6 +359,9 @@ export default function WebDeskAssessment() {
       console.error('Error starting media recording:', error)
       setMediaPermissionGranted(false)
       setShowPermissionError(true)
+
+      // Reset the ref so user can retry
+      mediaRecordingStartedRef.current = false
 
       toast({
         title: "Camera/Mic Access Required",
