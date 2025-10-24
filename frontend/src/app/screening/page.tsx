@@ -3500,10 +3500,19 @@ ${fromEmail}`
                                         📷 Camera Recording
                                       </div>
                                       <video
+                                        key={`camera-${candidate.id}-${candidate.assessment_video_recording}`}
                                         controls
+                                        preload="metadata"
                                         className="w-full"
-                                        style={{ maxHeight: '200px' }}
+                                        style={{ maxHeight: '200px', backgroundColor: '#000' }}
                                         onClick={(e) => e.stopPropagation()}
+                                        onError={(e) => {
+                                          console.error('Camera video error:', e)
+                                          console.error('Video src:', (e.target as HTMLVideoElement).src)
+                                        }}
+                                        onLoadedMetadata={() => {
+                                          console.log('Camera video metadata loaded for candidate', candidate.id)
+                                        }}
                                       >
                                         <source
                                           src={candidate.assessment_video_recording.startsWith('http')
@@ -3524,10 +3533,19 @@ ${fromEmail}`
                                         🖥️ Screen Recording
                                       </div>
                                       <video
+                                        key={`screen-${candidate.id}-${candidate.assessment_screen_recording}`}
                                         controls
+                                        preload="metadata"
                                         className="w-full"
-                                        style={{ maxHeight: '200px' }}
+                                        style={{ maxHeight: '200px', backgroundColor: '#000' }}
                                         onClick={(e) => e.stopPropagation()}
+                                        onError={(e) => {
+                                          console.error('Screen video error:', e)
+                                          console.error('Video src:', (e.target as HTMLVideoElement).src)
+                                        }}
+                                        onLoadedMetadata={() => {
+                                          console.log('Screen video metadata loaded for candidate', candidate.id)
+                                        }}
                                       >
                                         <source
                                           src={candidate.assessment_screen_recording.startsWith('http')
