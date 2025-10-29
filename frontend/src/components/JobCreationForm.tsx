@@ -1,0 +1,2633 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { createJob, updateJob, getDepartments, createDepartment, type JobCreateData, type Department, type Job, type DepartmentCreateData } from '@/lib/api/jobs';
+import { searchLocations, type Location } from '@/lib/api/locations';
+import { generateJobDescriptionWithAI, type AIConfig } from '@/lib/api/claude';
+import { getFeedbackTemplates, type FeedbackTemplate } from '@/lib/api/feedback-templates';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+
+// Organization settings interface
+interface OrganizationSettings {
+  general: {
+    name?: string;
+    domain?: string;
+    industry?: string;
+    size?: string;
+    website?: string;
+    address?: string;
+    contactEmail?: string;
+    phone?: string;
+    timezone?: string;
+    locale?: string;
+    aiProvider: string;
+    aiApiKey: string;
+  };
+  ai: {
+    selectedImplementation: string;
+    implementations: {
+      [key: string]: {
+        name: string;
+        prompt: string;
+      };
+    };
+  };
+}
+
+interface FormData {
+  jobId: string;
+  jobTitle: string;
+  department: string;
+  experienceLevel: string;
+  location: string;
+  workType: string;
+  minSalary: number;
+  maxSalary: number;
+  experienceRange: string;
+  jobDescription: string;
+  requirements: string;
+  responsibilities: string;
+  interviewStages: InterviewStage[];
+}
+
+interface InterviewStage {
+  id: string;
+  name: string;
+  interviewerType: 'human' | 'ai' | 'hybrid';
+  feedbackFormId: string;
+  feedbackFormName?: string;
+  assignee?: string;
+}
+
+interface FeedbackForm {
+  id: string;
+  name: string;
+  questions: number;
+  questionsList: string[];
+}
+
+interface InterviewRound {
+  id: string;
+  name: string;
+  type: 'telephonic' | 'video' | 'technical' | 'hr' | 'panel' | 'assignment' | 'onsite' | 'cultural';
+  description: string;
+  duration: number;
+  isRequired: boolean;
+  order: number;
+  interviewers: string[];
+  skills: string[];
+  passingCriteria: {
+    minScore: number;
+    requiredSkills: string[];
+  };
+  autoAdvance: boolean;
+  emailTemplate?: string;
+  instructions?: string;
+}
+
+interface InterviewFlow {
+  id: string;
+  name: string;
+  description: string;
+  isDefault: boolean;
+  jobTypes: string[];
+  rounds: InterviewRound[];
+  totalEstimatedTime: number;
+  createdAt: string;
+  lastModified: string;
+}
+
+interface JobPostingFormProps {
+  onJobCreated?: () => void;
+  onSuccess?: () => void;
+  onClose?: () => void;
+  isModal?: boolean;
+  editingJob?: Job | null;
+}
+
+export default function JobPostingForm({ onJobCreated, onSuccess, onClose, isModal = false, editingJob = null }: JobPostingFormProps) {
+  const [formData, setFormData] = useState<FormData>({
+    jobId: '',
+    jobTitle: '',
+    department: '',
+    experienceLevel: '',
+    location: '',
+    workType: '',
+    minSalary: 0,
+    maxSalary: 0,
+    experienceRange: '',
+    jobDescription: '',
+    requirements: '',
+    responsibilities: '',
+    interviewStages: []
+  });
+
+  const [validationErrors, setValidationErrors] = useState<Record<string, boolean>>({});
+  const [focusedField, setFocusedField] = useState<keyof FormData | ''>('');
+  const [activeStep, setActiveStep] = useState(1);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showAddDepartment, setShowAddDepartment] = useState(false);
+  const [newDepartmentName, setNewDepartmentName] = useState('');
+  const [newDepartmentDescription, setNewDepartmentDescription] = useState('');
+  const [isCreatingDepartment, setIsCreatingDepartment] = useState(false);
+  const [locationSuggestions, setLocationSuggestions] = useState<Location[]>([]);
+  const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
+  const [isSearchingLocations, setIsSearchingLocations] = useState(false);
+  const [isGeneratingWithAI, setIsGeneratingWithAI] = useState(false);
+  const [orgSettings, setOrgSettings] = useState<OrganizationSettings>({
+    general: {
+      name: "Acme Corporation",
+      domain: "acmecorp.com",
+      industry: "Technology",
+      size: "201-500",
+      website: "https://www.acmecorp.com",
+      address: "123 Innovation Drive, San Francisco, CA 94105",
+      contactEmail: "hr@acmecorp.com",
+      phone: "+1 (555) 123-4567",
+      timezone: "America/Los_Angeles",
+      locale: "en-US",
+      aiProvider: "anthropic",
+      aiApiKey: ""
+    },
+    ai: {
+      jobGenerationPrompt: `You are an expert HR professional and job description writer. Create a comprehensive, engaging, and professional job description based on the provided job details.
+
+Please structure your response with clear sections and use professional language that attracts qualified candidates while accurately representing the role requirements.
+
+Include the following elements:
+- A compelling job summary that highlights the role's impact and growth opportunities
+- Detailed list of key responsibilities using action-oriented language
+- Comprehensive requirements including both hard and soft skills
+- Information about company culture and values
+- Any relevant benefits or perks that make this role attractive
+
+Make the description inclusive and avoid any language that might discourage diverse candidates from applying.`
+    }
+  });
+  const [interviewStages, setInterviewStages] = useState<InterviewStage[]>([
+    {
+      id: '1',
+      name: '',
+      interviewerType: 'human',
+      feedbackFormId: '',
+      assignee: '',
+    }
+  ]);
+  const [showFormPreview, setShowFormPreview] = useState<string | null>(null);
+  const [selectedRuleType, setSelectedRuleType] = useState<string>('');
+  const [interviewFlows, setInterviewFlows] = useState<InterviewFlow[]>([]);
+  const [selectedFlow, setSelectedFlow] = useState<InterviewFlow | null>(null);
+
+  const [feedbackForms, setFeedbackForms] = useState<FeedbackForm[]>([]);
+
+  // Sample assignees - in a real app, this would come from an API
+  const assignees = [
+    { id: 'jaikar', name: 'Jaikar', role: 'jaikar.s@cloudberry360.com' },
+    { id: 'yadhendra', name: 'Yadhendra', role: 'yadhendra.kannan@cloudberry360.com' },
+    { id: 'nithishkumar', name: 'Nithishkumar', role: 'nithish.kumar@cloudberry360.com' },
+  ];
+
+  const steps = [
+    { number: 1, name: 'Job Details', active: activeStep === 1 },
+    { number: 2, name: 'Job Description', active: activeStep === 2 }
+  ];
+
+  useEffect(() => {
+    const loadDepartments = async () => {
+      try {
+        const response = await getDepartments();
+        setDepartments(response.results);
+      } catch (error) {
+        console.error('Failed to load departments:', error);
+      }
+    };
+    loadDepartments();
+  }, []);
+
+  // Load feedback forms from both API and localStorage (same as Feedback Form Builder)
+  useEffect(() => {
+    const loadFormsFromLocalStorage = (): FeedbackTemplate[] => {
+      try {
+        const stored = localStorage.getItem('feedback-forms');
+        return stored ? JSON.parse(stored) : [];
+      } catch (error) {
+        console.warn('Failed to load forms from localStorage:', error);
+        return [];
+      }
+    };
+
+    const loadFeedbackForms = async () => {
+      try {
+        // Try to load from backend first
+        let backendForms: FeedbackTemplate[] = [];
+        try {
+          const response = await getFeedbackTemplates();
+          backendForms = response.results;
+        } catch (error) {
+          console.warn('Backend not available, using local storage:', error);
+        }
+
+        // Load locally created forms
+        const localForms = loadFormsFromLocalStorage();
+
+        // Combine backend and local forms, remove duplicates
+        const allForms = [...backendForms, ...localForms];
+        const uniqueForms = allForms.filter((form, index, array) =>
+          array.findIndex(f => f.id === form.id) === index
+        );
+
+        // Convert to the format expected by JobCreationForm
+        const convertedForms: FeedbackForm[] = uniqueForms.map(form => ({
+          id: form.id.toString(),
+          name: form.name,
+          questions: form.questions?.length || 0,
+          questionsList: form.questions?.map(q => q.text) || []
+        }));
+
+        setFeedbackForms(convertedForms);
+      } catch (error) {
+        console.error('Error loading feedback templates:', error);
+        // Fallback to local storage only
+        const localForms = loadFormsFromLocalStorage();
+        const convertedForms: FeedbackForm[] = localForms.map(form => ({
+          id: form.id.toString(),
+          name: form.name,
+          questions: form.questions?.length || 0,
+          questionsList: form.questions?.map(q => q.text) || []
+        }));
+        setFeedbackForms(convertedForms);
+      }
+    };
+
+    loadFeedbackForms();
+  }, []);
+
+  // Load organization settings for AI configuration
+  useEffect(() => {
+    const loadOrgSettings = () => {
+      try {
+        // Try to load from localStorage (where settings page saves them)
+        const savedSettings = localStorage.getItem('organizationSettings');
+        if (savedSettings) {
+          const settings = JSON.parse(savedSettings);
+
+          // Migration logic for JobCreationForm: convert old jobGenerationPrompt to new structure
+          if (settings.ai && settings.ai.jobGenerationPrompt && !settings.ai.implementations) {
+            console.log('JobCreationForm: Migrating old AI settings to new structure');
+            settings.ai = {
+              selectedImplementation: "jobDescription",
+              implementations: {
+                jobDescription: {
+                  name: "Job Description Generation",
+                  prompt: settings.ai.jobGenerationPrompt
+                }
+              }
+            };
+          }
+
+          setOrgSettings(settings);
+        } else {
+          console.log('No saved settings found in localStorage, using defaults');
+        }
+      } catch (error) {
+        console.error('Error loading organization settings:', error);
+      }
+    };
+    loadOrgSettings();
+
+    // Listen for settings changes
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'organizationSettings' && e.newValue) {
+        try {
+          const newSettings = JSON.parse(e.newValue);
+          setOrgSettings(newSettings);
+        } catch (error) {
+          console.error('Error parsing updated settings:', error);
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
+  // Populate form when editing a job
+  useEffect(() => {
+    if (editingJob) {
+      setFormData({
+        jobId: (editingJob as any).job_id || '',
+        jobTitle: editingJob.title || '',
+        department: editingJob.department.id.toString() || '',
+        experienceLevel: (editingJob as any).experience_level || '',
+        location: (editingJob as any).location || '',
+        workType: ((editingJob as any).job_type || '').replace('_', '-'), // Convert 'full_time' to 'full-time'
+        minSalary: (editingJob as any).salary_min || 80000,
+        maxSalary: (editingJob as any).salary_max || 120000,
+        experienceRange: (editingJob as any).experience_range || '',
+        jobDescription: editingJob.description || '',
+        requirements: editingJob.requirements || '',
+        responsibilities: editingJob.responsibilities || '',
+        interviewStages: (editingJob as any).interview_stages || []
+      });
+
+      // Also update the interview stages state
+      if ((editingJob as any).interview_stages) {
+        setInterviewStages((editingJob as any).interview_stages);
+      }
+    }
+  }, [editingJob]);
+
+  // Load interview flows from API (same as settings page)
+  useEffect(() => {
+    const fetchInterviewFlows = async () => {
+      try {
+        const response = await fetch('http://127.0.0.1:8000/api/interview-flows/');
+        if (response.ok) {
+          const data = await response.json();
+          const flows = Array.isArray(data) ? data : data.results || [];
+          // Transform backend data to frontend format (same as settings page)
+          const transformedFlows = flows.map((flow: any) => ({
+            id: flow.id.toString(),
+            name: flow.name,
+            description: flow.description || '',
+            isDefault: flow.is_default,
+            jobTypes: flow.job_types || [],
+            rounds: flow.rounds?.map((round: any) => ({
+              id: round.id.toString(),
+              name: round.name,
+              type: round.type,
+              description: round.description || '',
+              duration: round.duration,
+              isRequired: round.is_required,
+              order: round.order,
+              interviewers: round.interviewers || [],
+              skills: round.skills || [],
+              passingCriteria: round.passing_criteria || {},
+              autoAdvance: round.auto_advance,
+              emailTemplate: round.email_template || '',
+              instructions: round.instructions || ''
+            })) || [],
+            totalEstimatedTime: flow.total_estimated_time || 0,
+            createdAt: flow.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
+            lastModified: flow.updated_at?.split('T')[0] || new Date().toISOString().split('T')[0]
+          }));
+          setInterviewFlows(transformedFlows);
+          console.log('Loaded interview flows for dropdown:', transformedFlows.map(f => ({ id: f.id, name: f.name })));
+        } else {
+          console.error('Failed to fetch interview flows:', response.status, response.statusText);
+          setInterviewFlows([]);
+        }
+      } catch (error) {
+        console.error('Error fetching interview flows:', error);
+        setInterviewFlows([]);
+      }
+    };
+
+    fetchInterviewFlows();
+  }, []);
+
+  const departmentOptions = [
+    { value: '', label: 'Select department' },
+    ...departments.map(dept => ({ value: dept.id.toString(), label: dept.name }))
+  ];
+
+  const experienceLevelOptions = [
+    { value: '', label: 'Select level' },
+    { value: 'entry', label: 'Entry Level' },
+    { value: 'junior', label: 'Junior' },
+    { value: 'mid', label: 'Mid Level' },
+    { value: 'senior', label: 'Senior' },
+    { value: 'lead', label: 'Lead' },
+    { value: 'principal', label: 'Principal' },
+    { value: 'director', label: 'Director' },
+    { value: 'vp', label: 'VP' }
+  ];
+
+  const workTypeOptions = [
+    { value: '', label: 'Select work type' },
+    { value: 'full-time', label: 'Full-time' },
+    { value: 'part-time', label: 'Part-time' },
+    { value: 'contract', label: 'Contract' },
+    { value: 'freelance', label: 'Freelance' },
+    { value: 'internship', label: 'Internship' },
+    { value: 'temporary', label: 'Temporary' }
+  ];
+
+  const experienceRangeOptions = [
+    { value: '', label: 'Select experience range' },
+    { value: '0-1', label: '0-1 years' },
+    { value: '1-3', label: '1-3 years' },
+    { value: '3-5', label: '3-5 years' },
+    { value: '5-8', label: '5-8 years' },
+    { value: '8-12', label: '8-12 years' },
+    { value: '12+', label: '12+ years' }
+  ];
+
+  const handleInputChange = <K extends keyof FormData>(
+    field: K,
+    value: FormData[K]
+  ) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+
+    // Clear validation error when user starts typing
+    if (validationErrors[field]) {
+      setValidationErrors(prev => ({
+        ...prev,
+        [field]: false
+      }));
+    }
+
+    // Handle location search
+    if (field === 'location' && typeof value === 'string') {
+      handleLocationSearch(value);
+    }
+
+    // Remove automatic salary synchronization to allow independent input
+  };
+
+  const handleLocationSearch = async (query: string) => {
+    if (query.length < 3) {
+      setLocationSuggestions([]);
+      setShowLocationSuggestions(false);
+      return;
+    }
+
+    setIsSearchingLocations(true);
+    try {
+      const suggestions = await searchLocations(query);
+      setLocationSuggestions(suggestions);
+      setShowLocationSuggestions(suggestions.length > 0);
+    } catch (error) {
+      console.error('Error searching locations:', error);
+      setLocationSuggestions([]);
+      setShowLocationSuggestions(false);
+    } finally {
+      setIsSearchingLocations(false);
+    }
+  };
+
+  const handleLocationSelect = (location: Location) => {
+    setFormData(prev => ({
+      ...prev,
+      location: location.full_name || location.name
+    }));
+    setShowLocationSuggestions(false);
+    setLocationSuggestions([]);
+    // Clear the location input focus to ensure dropdown closes properly
+    const locationInput = document.querySelector('input[placeholder*="search locations"]') as HTMLInputElement;
+    if (locationInput) {
+      locationInput.blur();
+    }
+  };
+
+  const handleFieldFocus = (field: keyof FormData) => {
+    setFocusedField(field);
+  };
+
+  const handleFieldBlur = (field: keyof FormData) => {
+    setFocusedField('');
+  };
+
+  const handleRuleTypeChange = (value: string) => {
+    setSelectedRuleType(value);
+
+    // Find the selected flow and set it
+    const flow = interviewFlows.find(f => f.id === value);
+    setSelectedFlow(flow || null);
+
+    // Auto-populate interview stages with rounds from selected flow
+    if (flow && flow.rounds.length > 0) {
+      console.log('Selected interview flow:', flow.name);
+      console.log('Auto-populating stages from flow rounds:', flow.rounds.map(r => r.name));
+
+      // Convert flow rounds to interview stages
+      const newStages: InterviewStage[] = flow.rounds
+        .sort((a, b) => a.order - b.order) // Sort by order
+        .map((round, index) => ({
+          id: `${Date.now()}-${index}`, // Generate unique ID
+          name: round.name, // Use the round name as stage name
+          interviewerType: 'human' as const, // Default to human
+          feedbackFormId: '', // Empty for now, user can select
+          feedbackFormName: undefined
+        }));
+
+      setInterviewStages(newStages);
+      // Also update formData to keep it in sync
+      setFormData(prev => ({
+        ...prev,
+        interviewStages: newStages
+      }));
+      console.log('Created interview stages:', newStages.map(s => ({ id: s.id, name: s.name })));
+    }
+  };
+
+  const validateForm = () => {
+    const requiredFields: (keyof FormData)[] = ['jobTitle', 'department', 'experienceLevel', 'location', 'workType'];
+    const errors: Record<string, boolean> = {};
+    let isValid = true;
+
+    requiredFields.forEach(field => {
+      if (!formData[field] || !formData[field].toString().trim()) {
+        errors[field] = true;
+        isValid = false;
+      }
+    });
+
+    // Validate salary range only if both values are provided
+    if (formData.minSalary > 0 && formData.maxSalary > 0 && formData.minSalary > formData.maxSalary) {
+      alert('Minimum salary cannot be greater than maximum salary.');
+      errors['minSalary'] = true;
+      errors['maxSalary'] = true;
+      isValid = false;
+    }
+
+    setValidationErrors(errors);
+    return isValid;
+  };
+
+  const handleNextStep = () => {
+    if (activeStep === 1) {
+      if (validateForm()) {
+        setActiveStep(2);
+      } else {
+        alert('Please fill in all required fields.');
+      }
+    } else if (activeStep === 2) {
+      handleSubmit();
+    }
+  };
+
+  const handlePreviousStep = () => {
+    if (activeStep > 1) {
+      setActiveStep(activeStep - 1);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!formData.jobDescription.trim()) {
+      alert('Please enter a job description.');
+      return;
+    }
+    
+    if (!formData.department) {
+      alert('Please select a department.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    
+    try {
+      const jobData: JobCreateData = {
+        job_id: formData.jobId || undefined,
+        title: formData.jobTitle,
+        department: parseInt(formData.department),
+        description: formData.jobDescription,
+        requirements: formData.requirements || '',
+        responsibilities: formData.responsibilities || '',
+        job_type: formData.workType.replace('-', '_'), // Convert 'full-time' to 'full_time'
+        experience_level: formData.experienceLevel,
+        experience_range: formData.experienceRange || undefined,
+        location: formData.location,
+        work_type: 'remote', // Default to remote, could be made configurable
+        is_remote: formData.location.toLowerCase().includes('remote'),
+        salary_min: formData.minSalary || undefined,
+        salary_max: formData.maxSalary || undefined,
+        salary_currency: 'USD',
+        show_salary: formData.minSalary > 0 || formData.maxSalary > 0,
+        required_skills: [], // Could be made configurable
+        preferred_skills: [], // Could be made configurable
+        urgency: 'medium',
+        openings: 1,
+        sla_days: 30,
+        screening_questions: [],
+        publish_internal: true,
+        publish_external: false,
+        publish_company_website: true,
+        interview_stages: interviewStages.map(stage => ({
+          ...stage,
+          assigneeName: stage.assignee ? assignees.find(a => a.id === stage.assignee)?.name : undefined
+        })),
+      };
+
+      if (editingJob) {
+        const updatedJob = await updateJob(editingJob.id, jobData);
+        alert('Job updated successfully!');
+        console.log('Updated job:', updatedJob);
+      } else {
+        const createdJob = await createJob(jobData);
+        alert('Job created successfully!');
+        console.log('Created job:', createdJob);
+      }
+      
+      // Reset form
+      setFormData({
+        jobId: '',
+        jobTitle: '',
+        department: '',
+        experienceLevel: '',
+        location: '',
+        workType: '',
+        minSalary: 0,
+        maxSalary: 0,
+        experienceRange: '',
+        jobDescription: '',
+        requirements: '',
+        responsibilities: '',
+        interviewStages: []
+      });
+      setActiveStep(1);
+      
+      // Trigger refresh of job list
+      if (onJobCreated) {
+        onJobCreated();
+      }
+      if (onSuccess) {
+        onSuccess();
+      }
+      
+      // Close modal if in modal mode
+      if (isModal && onClose) {
+        onClose();
+      }
+      
+    } catch (error) {
+      console.error('Error creating job:', error);
+      alert('Error creating job. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleJDUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Check file type
+    const allowedTypes = ['text/plain', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+    if (!allowedTypes.includes(file.type)) {
+      alert('Please upload a .txt, .pdf, .doc, or .docx file');
+      return;
+    }
+
+    // Check file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Please upload a file smaller than 5MB');
+      return;
+    }
+
+    try {
+      // For now, just read text files directly
+      if (file.type === 'text/plain') {
+        const text = await file.text();
+        
+        // Split the content into description and requirements
+        const lines = text.split('\n');
+        const descriptionEnd = lines.findIndex(line => 
+          line.toLowerCase().includes('requirement') || 
+          line.toLowerCase().includes('qualification') ||
+          line.toLowerCase().includes('skill')
+        );
+        
+        if (descriptionEnd > 0) {
+          const description = lines.slice(0, descriptionEnd).join('\n').trim();
+          const requirements = lines.slice(descriptionEnd).join('\n').trim();
+          
+          setFormData(prev => ({
+            ...prev,
+            jobDescription: description,
+            requirements: requirements
+          }));
+        } else {
+          // If can't split, put everything in description
+          setFormData(prev => ({
+            ...prev,
+            jobDescription: text
+          }));
+        }
+        
+        alert('Job description uploaded successfully!');
+      } else {
+        // For PDF/Word files, show a message that parsing is not implemented
+        alert('PDF and Word file parsing will be implemented soon. Please use .txt files for now.');
+      }
+    } catch (error) {
+      console.error('Error reading file:', error);
+      alert('Error reading file. Please try again.');
+    }
+
+    // Reset the input
+    if (e.target) {
+      e.target.value = '';
+    }
+  };
+
+  const handleGenerateWithAI = async () => {
+    // Validate required fields first
+    if (!formData.jobTitle || !formData.department) {
+      alert('Please fill in Job Title and Department first before generating with AI.');
+      return;
+    }
+
+    if (!formData.experienceLevel) {
+      alert('Please select an Experience Level before generating with AI.');
+      return;
+    }
+
+    if (!formData.experienceRange) {
+      alert('Please select an Experience Range before generating with AI.');
+      return;
+    }
+
+    setIsGeneratingWithAI(true);
+
+    try {
+      const department = departments.find(d => d.id.toString() === formData.department)?.name || formData.department;
+      
+      // Prepare AI configuration from organization settings
+      const selectedImpl = orgSettings?.ai?.selectedImplementation;
+      const currentPrompt = selectedImpl && orgSettings?.ai?.implementations?.[selectedImpl]?.prompt;
+
+      const aiConfig: AIConfig | undefined = orgSettings?.general?.aiProvider && orgSettings?.general?.aiApiKey
+        ? {
+            provider: orgSettings.general.aiProvider,
+            apiKey: orgSettings.general.aiApiKey,
+            customPrompt: currentPrompt
+          }
+        : undefined;
+
+      // Debug log for custom prompt usage
+      if (aiConfig?.customPrompt) {
+        console.log('Using custom AI prompt from organization settings');
+        console.log('Prompt length:', aiConfig.customPrompt.length, 'characters');
+      } else {
+        console.log('Using default AI prompt - no custom prompt configured');
+      }
+
+      const generatedContent = await generateJobDescriptionWithAI({
+        jobTitle: formData.jobTitle,
+        department: department,
+        experienceLevel: formData.experienceLevel,
+        experienceRange: formData.experienceRange,
+        workType: formData.workType || undefined,
+        location: formData.location || undefined
+      }, aiConfig);
+
+      setFormData(prev => ({
+        ...prev,
+        jobDescription: generatedContent.description,
+        requirements: generatedContent.requirements
+      }));
+
+        alert('Job description generated successfully with local AI!');
+      }
+     catch (error) {
+      console.error('Error generating with AI:', error);
+      alert(`Error generating job description: ${error instanceof Error ? error.message : 'Please check your Claude AI API configuration and try again.'}`);
+    } finally {
+      setIsGeneratingWithAI(false);
+    }
+  };
+
+  // Helper functions for dynamic content generation
+  const extractRoleKeywords = (title: string) => {
+    const keywords = [];
+    if (title.includes('senior') || title.includes('sr')) keywords.push('senior-level');
+    if (title.includes('lead') || title.includes('manager')) keywords.push('leadership');
+    if (title.includes('developer') || title.includes('engineer')) keywords.push('technical');
+    if (title.includes('analyst') || title.includes('data')) keywords.push('analytical');
+    if (title.includes('designer') || title.includes('ui') || title.includes('ux')) keywords.push('creative');
+    if (title.includes('marketing') || title.includes('sales')) keywords.push('growth-oriented');
+    if (title.includes('product')) keywords.push('product-focused');
+    return keywords;
+  };
+
+  const extractPrimaryFunction = (title: string) => {
+    if (title.includes('developer') || title.includes('engineer')) return 'developing innovative software solutions';
+    if (title.includes('designer')) return 'creating exceptional user experiences';
+    if (title.includes('analyst')) return 'analyzing data and providing strategic insights';
+    if (title.includes('manager') || title.includes('lead')) return 'leading high-performing teams';
+    if (title.includes('marketing')) return 'driving marketing initiatives and brand growth';
+    if (title.includes('sales')) return 'building client relationships and driving revenue';
+    if (title.includes('product')) return 'defining product strategy and roadmaps';
+    if (title.includes('consultant')) return 'providing strategic consulting services';
+    if (title.includes('coordinator')) return 'coordinating projects and ensuring seamless execution';
+    return 'delivering exceptional results in your area of expertise';
+  };
+
+  const extractFocusArea = (title: string) => {
+    if (title.includes('frontend') || title.includes('ui')) return 'user interface development';
+    if (title.includes('backend') || title.includes('api')) return 'backend systems and APIs';
+    if (title.includes('fullstack') || title.includes('full stack')) return 'end-to-end application development';
+    if (title.includes('data') || title.includes('analytics')) return 'data analysis and insights';
+    if (title.includes('mobile')) return 'mobile application development';
+    if (title.includes('cloud') || title.includes('devops')) return 'cloud infrastructure and deployment';
+    if (title.includes('security')) return 'cybersecurity and risk management';
+    if (title.includes('qa') || title.includes('test')) return 'quality assurance and testing';
+    return 'core business objectives';
+  };
+
+  const generateSpecificSkills = (title: string) => {
+    const skills = [];
+    if (title.includes('react') || title.includes('frontend')) skills.push('React', 'JavaScript', 'TypeScript', 'HTML/CSS');
+    if (title.includes('node') || title.includes('backend')) skills.push('Node.js', 'Express', 'API Development');
+    if (title.includes('python')) skills.push('Python', 'Django/Flask', 'Data Analysis');
+    if (title.includes('java')) skills.push('Java', 'Spring Framework', 'Microservices');
+    if (title.includes('data') || title.includes('analyst')) skills.push('SQL', 'Excel', 'Tableau', 'Power BI');
+    if (title.includes('aws') || title.includes('cloud')) skills.push('AWS', 'Docker', 'Kubernetes');
+    if (title.includes('designer')) skills.push('Figma', 'Adobe Creative Suite', 'Prototyping');
+    return skills;
+  };
+
+  const generateDynamicResponsibilities = (title: string, primaryFunction: string, focusArea: string) => {
+    // Generate varied base responsibilities
+    const baseResponsibilityPools = [
+      [
+        `Drive innovation in ${focusArea} through strategic planning and execution`,
+        `Foster collaboration across departments to achieve shared objectives`,
+        `Champion best practices and continuous improvement initiatives`,
+        `Provide mentorship and guidance to team members at various levels`,
+        `Contribute to long-term strategic planning and organizational growth`
+      ],
+      [
+        `Lead transformative projects in ${focusArea} that enhance business value`,
+        `Build strong partnerships with stakeholders to ensure project success`,
+        `Stay ahead of industry trends and emerging technologies in your domain`,
+        `Develop and implement innovative solutions to complex challenges`,
+        `Support talent development and knowledge transfer within the organization`
+      ],
+      [
+        `Execute high-impact initiatives in ${focusArea} with measurable outcomes`,
+        `Collaborate with diverse teams to deliver exceptional results`,
+        `Monitor industry developments and apply relevant insights to your work`,
+        `Share expertise and best practices to elevate team performance`,
+        `Participate in strategic decision-making processes and planning sessions`
+      ]
+    ];
+
+    const selectedBasePool = baseResponsibilityPools[Math.floor(Math.random() * baseResponsibilityPools.length)];
+
+    const roleSpecificResponsibilities = [];
+    
+    if (title.includes('developer') || title.includes('engineer')) {
+      const techResponsibilities = [
+        ['Architect and develop robust, scalable software solutions using modern technologies',
+         'Implement comprehensive testing strategies to ensure code quality and reliability',
+         'Optimize application performance through code refactoring and technical improvements',
+         'Lead technical discussions and provide guidance on complex development challenges'],
+        ['Design and build innovative software applications that meet business requirements',
+         'Establish and maintain coding standards, documentation, and development workflows',
+         'Troubleshoot and resolve technical issues with creative problem-solving approaches',
+         'Collaborate with product teams to translate requirements into technical specifications'],
+        ['Create efficient, maintainable code following industry best practices and standards',
+         'Conduct thorough code reviews and provide constructive feedback to team members',
+         'Research and evaluate new technologies to enhance development processes',
+         'Contribute to system architecture decisions and technical roadmap planning']
+      ];
+      roleSpecificResponsibilities.push(...techResponsibilities[Math.floor(Math.random() * techResponsibilities.length)]);
+    } else if (title.includes('analyst')) {
+      const analystResponsibilities = [
+        ['Transform complex datasets into actionable business intelligence and strategic insights',
+         'Develop comprehensive analytical models and predictive algorithms',
+         'Create compelling data visualizations and reports for executive leadership',
+         'Identify trends, patterns, and opportunities that drive business growth'],
+        ['Conduct in-depth analysis of business metrics and key performance indicators',
+         'Design and implement data collection processes and analytical frameworks',
+         'Present findings and recommendations to stakeholders through clear storytelling',
+         'Collaborate with various departments to understand analytical needs and requirements'],
+        ['Analyze market trends, customer behavior, and operational data to support decision-making',
+         'Build automated reporting systems and interactive dashboards',
+         'Validate data accuracy and implement quality assurance processes',
+         'Translate complex analytical findings into practical business recommendations']
+      ];
+      roleSpecificResponsibilities.push(...analystResponsibilities[Math.floor(Math.random() * analystResponsibilities.length)]);
+    } else if (title.includes('designer')) {
+      const designResponsibilities = [
+        ['Conceptualize and create exceptional user experiences that delight customers',
+         'Conduct user research and usability testing to inform design decisions',
+         'Develop comprehensive design systems and maintain visual brand consistency',
+         'Collaborate closely with development teams to ensure seamless design implementation'],
+        ['Design intuitive interfaces that balance user needs with business objectives',
+         'Create prototypes and wireframes to communicate design concepts effectively',
+         'Establish design guidelines and standards that enhance product consistency',
+         'Lead design thinking workshops and facilitate creative problem-solving sessions'],
+        ['Craft visually compelling designs that align with brand identity and user expectations',
+         'Perform user journey mapping and interaction design optimization',
+         'Maintain design documentation and asset libraries for team collaboration',
+         'Stay current with design trends and emerging technologies in the UX/UI space']
+      ];
+      roleSpecificResponsibilities.push(...designResponsibilities[Math.floor(Math.random() * designResponsibilities.length)]);
+    } else if (title.includes('manager') || title.includes('lead')) {
+      const managementResponsibilities = [
+        ['Build and lead high-performing teams through effective coaching and development',
+         'Establish clear performance expectations and provide regular feedback',
+         'Drive strategic initiatives from conception through successful completion',
+         'Foster an inclusive, collaborative culture that promotes innovation and growth'],
+        ['Manage team resources and workflows to optimize productivity and outcomes',
+         'Develop talent through targeted training, mentoring, and career advancement opportunities',
+         'Lead change management initiatives and guide teams through organizational transitions',
+         'Communicate vision and strategy effectively to align team efforts with company goals'],
+        ['Oversee project planning, execution, and delivery to ensure successful outcomes',
+         'Create and maintain strong relationships with stakeholders and cross-functional partners',
+         'Implement process improvements that enhance team efficiency and effectiveness',
+         'Support individual team member growth through personalized development planning']
+      ];
+      roleSpecificResponsibilities.push(...managementResponsibilities[Math.floor(Math.random() * managementResponsibilities.length)]);
+    } else {
+      const genericResponsibilities = [
+        ['Execute strategic initiatives that align with organizational objectives and values',
+         'Implement process improvements that enhance operational efficiency and quality',
+         'Build and maintain professional relationships with key stakeholders and partners',
+         'Contribute specialized expertise to support organizational goals and success'],
+        ['Drive excellence in your area of specialization through continuous improvement',
+         'Develop and maintain strong working relationships across various departments',
+         'Support organizational initiatives through dedicated expertise and collaboration',
+         'Identify opportunities for innovation and implement solutions that add value'],
+        ['Deliver exceptional results in your core area of responsibility',
+         'Contribute to team success through expertise, collaboration, and professional growth',
+         'Support business objectives through specialized knowledge and skill application',
+         'Engage in professional development to stay current with industry best practices']
+      ];
+      roleSpecificResponsibilities.push(...genericResponsibilities[Math.floor(Math.random() * genericResponsibilities.length)]);
+    }
+
+    // Combine base and role-specific responsibilities
+    const allResponsibilities = [...selectedBasePool, ...roleSpecificResponsibilities];
+    
+    // Shuffle and return a subset to ensure variety
+    const shuffled = allResponsibilities.sort(() => 0.5 - Math.random());
+    return shuffled.slice(0, 6 + Math.floor(Math.random() * 3)); // Return 6-8 responsibilities
+  };
+
+  const generateEducationRequirement = (title: string, dept: string) => {
+    if (title.includes('senior') || title.includes('lead') || title.includes('manager')) {
+      return '• Bachelor\'s degree in relevant field with 5+ years of experience, or Master\'s degree with 3+ years of experience';
+    } else if (title.includes('engineer') || title.includes('developer')) {
+      return '• Bachelor\'s degree in Computer Science, Engineering, or related technical field';
+    } else if (title.includes('analyst') || title.includes('data')) {
+      return '• Bachelor\'s degree in Analytics, Statistics, Mathematics, Economics, or related quantitative field';
+    } else if (title.includes('designer')) {
+      return '• Bachelor\'s degree in Design, Fine Arts, HCI, or related creative field';
+    } else if (title.includes('marketing')) {
+      return '• Bachelor\'s degree in Marketing, Communications, Business, or related field';
+    }
+    return '• Bachelor\'s degree in relevant field or equivalent professional experience';
+  };
+
+  const generateSpecificRequirements = (title: string, experienceRange: string) => {
+    const requirements = [];
+    const skills = generateSpecificSkills(title);
+    
+    // Varied experience descriptions
+    const experienceDescriptions = [
+      `${experienceRange} years of progressive experience in relevant field`,
+      `Minimum ${experienceRange} years of professional experience with demonstrated success`,
+      `${experienceRange}+ years of hands-on experience in similar roles`,
+      `Strong background with ${experienceRange} years of industry experience`
+    ];
+    requirements.push(experienceDescriptions[Math.floor(Math.random() * experienceDescriptions.length)]);
+    
+    // Skills requirements with variety
+    if (skills.length > 0) {
+      const skillRequirements = [
+        `Advanced proficiency in ${skills.slice(0, 3).join(', ')} and associated technologies`,
+        `Strong technical expertise in ${skills.slice(0, 3).join(', ')} and related frameworks`,
+        `Deep knowledge of ${skills.slice(0, 3).join(', ')} with practical application experience`,
+        `Proven skills in ${skills.slice(0, 3).join(', ')} and modern development practices`
+      ];
+      requirements.push(skillRequirements[Math.floor(Math.random() * skillRequirements.length)]);
+    }
+    
+    // Leadership requirements for senior roles
+    if (title.includes('senior') || title.includes('lead')) {
+      const leadershipReqs = [
+        'Demonstrated ability to lead complex projects and guide technical decision-making',
+        'Proven experience mentoring team members and fostering professional development',
+        'Strong track record of successful project delivery and team leadership',
+        'Experience in strategic planning and cross-functional collaboration'
+      ];
+      requirements.push(leadershipReqs[Math.floor(Math.random() * leadershipReqs.length)]);
+      
+      const strategicReqs = [
+        'Exceptional analytical and problem-solving capabilities with strategic mindset',
+        'Advanced critical thinking skills with ability to solve complex challenges',
+        'Strong strategic thinking abilities and innovative problem-solving approach',
+        'Excellent judgment and decision-making skills in high-pressure situations'
+      ];
+      requirements.push(strategicReqs[Math.floor(Math.random() * strategicReqs.length)]);
+    }
+    
+    // Communication requirements with variety
+    const communicationReqs = [
+      'Outstanding written and verbal communication skills with stakeholders at all levels',
+      'Exceptional interpersonal abilities and collaborative working style',
+      'Strong communication skills with ability to present complex information clearly',
+      'Excellent relationship-building skills and professional communication abilities'
+    ];
+    requirements.push(communicationReqs[Math.floor(Math.random() * communicationReqs.length)]);
+    
+    // Work environment requirements
+    const environmentReqs = [
+      'Thrives in dynamic, fast-paced environments with changing priorities',
+      'Adaptable professional who excels in collaborative team settings',
+      'Self-motivated individual comfortable with ambiguity and rapid change',
+      'Results-driven professional with strong attention to detail and quality'
+    ];
+    requirements.push(environmentReqs[Math.floor(Math.random() * environmentReqs.length)]);
+    
+    // Remote work experience if applicable
+    if (title.includes('remote') || title.includes('hybrid')) {
+      const remoteReqs = [
+        'Proven success working in distributed, remote team environments',
+        'Experience with virtual collaboration tools and remote work best practices',
+        'Self-directed work style with excellent time management in remote settings',
+        'Strong digital communication skills and remote project management experience'
+      ];
+      requirements.push(remoteReqs[Math.floor(Math.random() * remoteReqs.length)]);
+    }
+    
+    return requirements;
+  };
+
+  const generatePreferredQualifications = (title: string) => {
+    const qualifications = [];
+    
+    // Advanced education for senior roles
+    if (title.includes('senior') || title.includes('lead')) {
+      const educationPrefs = [
+        'Master\'s degree or higher in relevant field of study',
+        'Advanced degree with specialized focus in your area of expertise',
+        'Graduate-level education or equivalent advanced professional training',
+        'Advanced degree with demonstrated academic excellence'
+      ];
+      qualifications.push(educationPrefs[Math.floor(Math.random() * educationPrefs.length)]);
+      
+      const certificationPrefs = [
+        'Professional certifications and industry-recognized credentials',
+        'Relevant industry certifications and continuing education achievements',
+        'Professional development credentials and specialized training certificates',
+        'Industry-specific certifications demonstrating expertise and commitment'
+      ];
+      qualifications.push(certificationPrefs[Math.floor(Math.random() * certificationPrefs.length)]);
+    }
+    
+    // Technical roles preferences
+    if (title.includes('engineer') || title.includes('developer')) {
+      const methodologyPrefs = [
+        'Extensive experience with Agile, Scrum, or other modern development methodologies',
+        'Proven track record working in Agile environments with cross-functional teams',
+        'Strong background in iterative development processes and best practices',
+        'Experience leading or participating in Agile transformation initiatives'
+      ];
+      qualifications.push(methodologyPrefs[Math.floor(Math.random() * methodologyPrefs.length)]);
+      
+      const portfolioPrefs = [
+        'Active contributions to open source projects and technical community involvement',
+        'Portfolio of personal projects demonstrating technical creativity and innovation',
+        'GitHub presence showcasing code quality and collaborative development skills',
+        'Technical blog, speaking engagements, or other thought leadership activities'
+      ];
+      qualifications.push(portfolioPrefs[Math.floor(Math.random() * portfolioPrefs.length)]);
+    }
+    
+    // Cloud-specific preferences
+    if (title.includes('cloud') || title.includes('aws') || title.includes('devops')) {
+      const cloudPrefs = [
+        'Cloud platform certifications (AWS Solutions Architect, Azure Expert, GCP Professional)',
+        'Advanced cloud infrastructure credentials and hands-on platform experience',
+        'Multi-cloud expertise with relevant professional certifications',
+        'Specialized cloud certifications demonstrating deep technical knowledge'
+      ];
+      qualifications.push(cloudPrefs[Math.floor(Math.random() * cloudPrefs.length)]);
+    }
+    
+    // Industry experience
+    const industryPrefs = [
+      'Background in similar industry verticals with relevant domain knowledge',
+      'Experience in comparable business environments and market segments',
+      'Understanding of industry-specific challenges and regulatory requirements',
+      'Previous work in organizations with similar scale, complexity, or business model'
+    ];
+    qualifications.push(industryPrefs[Math.floor(Math.random() * industryPrefs.length)]);
+    
+    // Analytical thinking
+    const analyticalPrefs = [
+      'Exceptional analytical mindset with data-driven decision-making approach',
+      'Advanced critical thinking skills and systematic problem-solving abilities',
+      'Strong quantitative analysis skills with attention to detail and accuracy',
+      'Proven ability to synthesize complex information and identify key insights'
+    ];
+    qualifications.push(analyticalPrefs[Math.floor(Math.random() * analyticalPrefs.length)]);
+    
+    // Growth mindset
+    const growthPrefs = [
+      'Demonstrated commitment to lifelong learning and professional development',
+      'Passion for staying current with emerging trends and technological advances',
+      'Growth mindset with enthusiasm for acquiring new skills and knowledge',
+      'Proactive approach to professional growth and skill enhancement'
+    ];
+    qualifications.push(growthPrefs[Math.floor(Math.random() * growthPrefs.length)]);
+    
+    return qualifications;
+  };
+
+  const generateUniqueCompanyIntros = (jobTitle: string, department: string, roleKeywords: string[]) => {
+    const introStyles = [
+      `Are you passionate about ${extractPassionArea(jobTitle)}? We're seeking a ${jobTitle} to join our ${department} team and drive innovation.`,
+      `Our ${department} team is expanding! We need a dedicated ${jobTitle} who thrives in ${extractWorkEnvironment(roleKeywords)} environments.`,
+      `Transform your career with us! We're looking for a ${jobTitle} who can ${extractKeyAction(jobTitle)} and make a real difference in our ${department} department.`,
+      `Ready to tackle exciting challenges? Join our ${department} team as a ${jobTitle} and shape the future of ${extractIndustryFocus(department)}.`,
+      `We believe in ${extractCompanyValue(roleKeywords)}. That's why we're seeking a ${jobTitle} to bring fresh perspectives to our ${department} team.`,
+      `Excellence drives everything we do. We're recruiting a ${jobTitle} for our ${department} team who shares our commitment to ${extractQualityFocus(jobTitle)}.`
+    ];
+    
+    return introStyles;
+  };
+
+  const generateUniqueRoleContexts = (workType: string, location: string, primaryFunction: string, experienceLevel: string) => {
+    const contexts = [
+      `This ${workType} role in ${location} is perfect for ${experienceLevel} professionals who want to ${primaryFunction} while enjoying work-life balance.`,
+      `Based in ${location}, this ${workType} opportunity offers the flexibility to work on ${generateProjectType()} projects with cutting-edge technology.`,
+      `Located in ${location}, you'll have the chance to ${primaryFunction} in a collaborative ${workType} setting with industry experts.`,
+      `This ${workType} position in ${location} provides the perfect platform to advance your career in ${extractCareerPath(experienceLevel)}.`,
+      `Working ${workType} from ${location}, you'll be part of a team that values ${generateTeamValue()} and professional growth.`,
+      `Our ${location}-based ${workType} role offers unique opportunities to ${primaryFunction} while contributing to meaningful projects.`
+    ];
+    
+    return contexts;
+  };
+
+  const generateUniqueValuePropositions = (jobTitle: string, department: string, focusArea: string) => {
+    const valueProps = [
+      `As our ${jobTitle}, you'll spearhead initiatives in ${focusArea} that directly impact our business success and customer satisfaction.`,
+      `In this role, you'll leverage your expertise in ${focusArea} to solve complex challenges and drive innovation within our ${department} team.`,
+      `You'll be at the forefront of ${focusArea}, collaborating with diverse teams to deliver solutions that exceed expectations.`,
+      `This position offers the opportunity to master ${focusArea} while mentoring others and contributing to strategic decision-making.`,
+      `Join us to revolutionize how we approach ${focusArea} and establish yourself as a thought leader in the ${department} space.`,
+      `Your expertise in ${focusArea} will be instrumental in achieving our ambitious goals and delivering exceptional results.`
+    ];
+    
+    return valueProps;
+  };
+
+  const generateUniqueClosingStatements = (jobTitle: string, primaryFunction: string) => {
+    const closings = [
+      `Ready to take your career to the next level? Apply now and become the ${jobTitle} who helps shape our future success.`,
+      `If you're excited about ${primaryFunction} and making a meaningful impact, we'd love to hear from you!`,
+      `Join our mission to excel in everything we do. Your journey as our next ${jobTitle} starts here.`,
+      `We're committed to your professional growth and success. Apply today to begin your adventure with us!`,
+      `Looking for a role where your skills in ${primaryFunction} truly matter? This is your opportunity to shine.`,
+      `Be part of something extraordinary. Apply now and help us redefine what's possible in our industry.`
+    ];
+    
+    return closings;
+  };
+
+  const extractPassionArea = (jobTitle: string) => {
+    if (jobTitle.toLowerCase().includes('developer') || jobTitle.toLowerCase().includes('engineer')) return 'creating innovative software solutions';
+    if (jobTitle.toLowerCase().includes('designer')) return 'crafting beautiful user experiences';
+    if (jobTitle.toLowerCase().includes('analyst')) return 'uncovering insights from data';
+    if (jobTitle.toLowerCase().includes('manager')) return 'leading high-performing teams';
+    if (jobTitle.toLowerCase().includes('marketing')) return 'building compelling brand experiences';
+    if (jobTitle.toLowerCase().includes('sales')) return 'driving revenue growth';
+    return 'delivering exceptional results';
+  };
+
+  const extractWorkEnvironment = (roleKeywords: string[]) => {
+    if (roleKeywords.includes('senior-level')) return 'fast-paced, senior-level';
+    if (roleKeywords.includes('leadership')) return 'collaborative, leadership-focused';
+    if (roleKeywords.includes('technical')) return 'innovative, technical';
+    if (roleKeywords.includes('creative')) return 'dynamic, creative';
+    return 'collaborative, growth-oriented';
+  };
+
+  const extractKeyAction = (jobTitle: string) => {
+    if (jobTitle.toLowerCase().includes('developer')) return 'build scalable applications';
+    if (jobTitle.toLowerCase().includes('designer')) return 'create intuitive designs';
+    if (jobTitle.toLowerCase().includes('analyst')) return 'analyze complex data';
+    if (jobTitle.toLowerCase().includes('manager')) return 'lead successful projects';
+    if (jobTitle.toLowerCase().includes('consultant')) return 'provide strategic guidance';
+    return 'drive impactful initiatives';
+  };
+
+  const extractIndustryFocus = (department: string) => {
+    if (department.toLowerCase().includes('engineering')) return 'software development';
+    if (department.toLowerCase().includes('design')) return 'user experience';
+    if (department.toLowerCase().includes('marketing')) return 'digital marketing';
+    if (department.toLowerCase().includes('sales')) return 'customer success';
+    if (department.toLowerCase().includes('operations')) return 'operational excellence';
+    return 'business innovation';
+  };
+
+  const extractCompanyValue = (roleKeywords: string[]) => {
+    if (roleKeywords.includes('technical')) return 'technical excellence and innovation';
+    if (roleKeywords.includes('creative')) return 'creativity and design thinking';
+    if (roleKeywords.includes('leadership')) return 'strong leadership and collaboration';
+    if (roleKeywords.includes('analytical')) return 'data-driven decision making';
+    return 'continuous improvement and growth';
+  };
+
+  const extractQualityFocus = (jobTitle: string) => {
+    if (jobTitle.toLowerCase().includes('developer')) return 'code quality and best practices';
+    if (jobTitle.toLowerCase().includes('designer')) return 'design excellence and user satisfaction';
+    if (jobTitle.toLowerCase().includes('analyst')) return 'data accuracy and insights';
+    if (jobTitle.toLowerCase().includes('manager')) return 'team performance and results';
+    return 'exceptional service delivery';
+  };
+
+  const generateProjectType = () => {
+    const projectTypes = ['high-impact', 'strategic', 'innovative', 'cross-functional', 'transformative', 'customer-focused'];
+    return projectTypes[Math.floor(Math.random() * projectTypes.length)];
+  };
+
+  const extractCareerPath = (experienceLevel: string) => {
+    if (experienceLevel.toLowerCase().includes('senior')) return 'senior-level expertise and leadership';
+    if (experienceLevel.toLowerCase().includes('mid')) return 'professional growth and skill development';
+    if (experienceLevel.toLowerCase().includes('junior') || experienceLevel.toLowerCase().includes('entry')) return 'career foundation and learning';
+    return 'professional development and expertise building';
+  };
+
+  const generateTeamValue = () => {
+    const teamValues = ['innovation', 'collaboration', 'excellence', 'diversity', 'continuous learning', 'mutual respect'];
+    return teamValues[Math.floor(Math.random() * teamValues.length)];
+  };
+
+  const generateIndustryTerms = (department: string, title: string) => {
+    const industryTerms = {
+      'technology': ['digital transformation', 'scalable solutions', 'agile methodologies', 'cloud-first approach', 'microservices architecture'],
+      'finance': ['regulatory compliance', 'risk management', 'financial modeling', 'market analysis', 'portfolio optimization'],
+      'healthcare': ['patient outcomes', 'healthcare innovation', 'regulatory standards', 'clinical excellence', 'care coordination'],
+      'education': ['learning outcomes', 'curriculum development', 'educational technology', 'student engagement', 'academic excellence'],
+      'retail': ['customer experience', 'omnichannel solutions', 'inventory optimization', 'brand loyalty', 'market positioning'],
+      'manufacturing': ['operational efficiency', 'quality assurance', 'supply chain optimization', 'lean manufacturing', 'process improvement'],
+      'marketing': ['brand awareness', 'customer acquisition', 'digital campaigns', 'market penetration', 'engagement strategies'],
+      'sales': ['revenue generation', 'client relationship management', 'sales optimization', 'territory expansion', 'deal closure']
+    };
+    
+    const deptLower = department.toLowerCase();
+    for (const [key, terms] of Object.entries(industryTerms)) {
+      if (deptLower.includes(key)) {
+        return terms[Math.floor(Math.random() * terms.length)];
+      }
+    }
+    return 'business excellence';
+  };
+
+  const generateCompanySize = (variationIndex: number) => {
+    const sizes = [
+      'fast-growing startup',
+      'established mid-market company',
+      'industry-leading enterprise',
+      'innovative scale-up',
+      'dynamic growth-stage company',
+      'well-funded technology company',
+      'market-leading organization',
+      'forward-thinking enterprise',
+      'agile technology firm',
+      'established industry player'
+    ];
+    return sizes[variationIndex % sizes.length];
+  };
+
+  const generateTeamStructure = (variationIndex: number) => {
+    const structures = [
+      'cross-functional team environment',
+      'collaborative, flat organizational structure',
+      'diverse, multicultural team setting',
+      'high-performing, results-driven team',
+      'innovative, creative team culture',
+      'autonomous, empowered team structure',
+      'inclusive, supportive team environment',
+      'dynamic, fast-paced team setting',
+      'strategic, goal-oriented team culture',
+      'flexible, adaptive team framework'
+    ];
+    return structures[variationIndex % structures.length];
+  };
+
+  const generateGrowthStage = (variationIndex: number) => {
+    const stages = [
+      'rapid expansion phase',
+      'strategic growth initiative',
+      'market expansion effort',
+      'innovation-driven growth',
+      'scaling operations globally',
+      'entering new market segments',
+      'digital transformation journey',
+      'product portfolio expansion',
+      'customer base diversification',
+      'international market penetration'
+    ];
+    return stages[variationIndex % stages.length];
+  };
+
+  const generateToneVariation = (variationIndex: number) => {
+    const tones = [
+      { style: 'professional', descriptor: 'We maintain the highest standards of' },
+      { style: 'innovative', descriptor: 'We\'re pioneering breakthrough approaches to' },
+      { style: 'collaborative', descriptor: 'We believe in the power of teamwork to achieve' },
+      { style: 'dynamic', descriptor: 'We thrive in fast-paced environments focused on' },
+      { style: 'supportive', descriptor: 'We foster an environment where everyone can contribute to' },
+      { style: 'results-driven', descriptor: 'We\'re committed to delivering exceptional outcomes in' },
+      { style: 'forward-thinking', descriptor: 'We anticipate future trends and prepare for' },
+      { style: 'inclusive', descriptor: 'We celebrate diverse perspectives that enhance' },
+      { style: 'agile', descriptor: 'We adapt quickly to changing needs while maintaining' },
+      { style: 'customer-centric', descriptor: 'We put our customers at the heart of everything we do in' }
+    ];
+    return tones[variationIndex % tones.length];
+  };
+
+  const generateCultureEmphasis = (variationIndex: number) => {
+    const cultures = [
+      'work-life balance and professional development',
+      'continuous learning and skill advancement',
+      'innovation and creative problem-solving',
+      'collaboration and knowledge sharing',
+      'diversity, equity, and inclusion',
+      'sustainability and social responsibility',
+      'customer success and satisfaction',
+      'operational excellence and quality',
+      'transparency and open communication',
+      'entrepreneurial spirit and ownership mindset'
+    ];
+    return cultures[variationIndex % cultures.length];
+  };
+
+  // Interview stages management functions
+  const addInterviewStage = () => {
+    const newStage: InterviewStage = {
+      id: Date.now().toString(),
+      name: '',
+      interviewerType: 'human',
+      feedbackFormId: '',
+    };
+    const updatedStages = [...interviewStages, newStage];
+    setInterviewStages(updatedStages);
+    setFormData(prev => ({ ...prev, interviewStages: updatedStages }));
+  };
+
+  const removeInterviewStage = (stageId: string) => {
+    if (interviewStages.length > 1) {
+      const updatedStages = interviewStages.filter(stage => stage.id !== stageId);
+      setInterviewStages(updatedStages);
+      setFormData(prev => ({ ...prev, interviewStages: updatedStages }));
+    }
+  };
+
+  const updateInterviewStage = (stageId: string, field: keyof InterviewStage, value: string) => {
+    const updatedStages = interviewStages.map(stage =>
+      stage.id === stageId
+        ? {
+            ...stage,
+            [field]: value,
+            // Update feedbackFormName when feedbackFormId changes
+            ...(field === 'feedbackFormId' ? {
+              feedbackFormName: feedbackForms.find(form => form.id === value)?.name
+            } : {})
+          }
+        : stage
+    );
+    setInterviewStages(updatedStages);
+    setFormData(prev => ({ ...prev, interviewStages: updatedStages }));
+  };
+
+  const getFilteredFeedbackForms = () => {
+    return feedbackForms;
+  };
+
+  const generateRoleSpecificContent = (jobTitle: string, department: string, experienceLevel: string, workType: string, location: string, experienceRange: string) => {
+    const title = jobTitle.toLowerCase();
+    const dept = department.toLowerCase();
+    
+    // Enhanced randomization system - create multiple sources of uniqueness
+    const timestamp = Date.now();
+    const randomSeed1 = Math.random() * 10000;
+    const randomSeed2 = Math.random() * 10000;
+    const hashSeed = Math.abs(jobTitle.split('').reduce((hash, char) => hash + char.charCodeAt(0), 0));
+    const combinedSeed = Math.floor((timestamp + randomSeed1 + randomSeed2 + hashSeed) % 1000);
+    
+    // DevOps Engineer with variations
+    if (title.includes('devops') || title.includes('sre') || title.includes('site reliability')) {
+      const devopsIntros = [
+        `We are seeking a skilled ${jobTitle} to join our ${department} team. This ${workType} position is based in ${location}.`,
+        `Join our dynamic ${department} team as a ${jobTitle}! This ${workType} role in ${location} offers exciting challenges.`,
+        `Our ${department} team is looking for an experienced ${jobTitle} to drive innovation. This ${workType} position is located in ${location}.`,
+        `Are you passionate about DevOps excellence? We're hiring a ${jobTitle} for our ${department} team. This ${workType} role is based in ${location}.`
+      ];
+      
+      const devopsDescriptions = [
+        `As a ${jobTitle}, you will be responsible for bridging the gap between development and operations teams, ensuring smooth deployment and operation of our software systems. You'll work with cutting-edge technologies to build and maintain scalable, reliable infrastructure.`,
+        `In this role, you'll architect and maintain robust CI/CD pipelines while optimizing our cloud infrastructure for maximum performance and reliability. You'll be at the forefront of modern DevOps practices.`,
+        `You'll lead the transformation of our development and deployment processes, implementing best practices in automation, monitoring, and infrastructure management. Your expertise will drive our technical excellence.`,
+        `As our ${jobTitle}, you'll design resilient systems and automate complex workflows. You'll work closely with development teams to ensure seamless software delivery and operational excellence.`
+      ];
+      
+      const selectedIntro = devopsIntros[combinedSeed % devopsIntros.length];
+      const selectedDesc = devopsDescriptions[Math.floor((combinedSeed + randomSeed1) % devopsDescriptions.length)];
+      
+      return {
+        description: `${selectedIntro}
+
+${selectedDesc}
+
+Key Responsibilities:
+• Design, implement, and maintain CI/CD pipelines using tools like Jenkins, GitLab CI, or GitHub Actions
+• Manage cloud infrastructure on AWS, Azure, or GCP using Infrastructure as Code (Terraform, CloudFormation)
+• Monitor system performance and reliability using tools like Prometheus, Grafana, ELK stack, or Datadog
+• Automate deployment processes and infrastructure provisioning
+• Implement security best practices across development and deployment workflows
+• Troubleshoot production issues and implement preventive measures
+• Collaborate with development teams to optimize application performance and scalability
+• Manage containerized applications using Docker and Kubernetes
+• Implement backup and disaster recovery strategies`,
+
+        requirements: `Required Qualifications:
+• Bachelor's degree in Computer Science, Engineering, or related field
+• ${experienceRange} of hands-on DevOps/SRE experience
+• Strong experience with Linux/Unix systems administration
+• Proficiency with cloud platforms (AWS, Azure, or GCP)
+• Experience with containerization technologies (Docker, Kubernetes)
+• Solid understanding of CI/CD concepts and tools
+• Experience with Infrastructure as Code (Terraform, Ansible, CloudFormation)
+• Knowledge of monitoring and logging tools (Prometheus, Grafana, ELK stack)
+• Scripting skills in Python, Bash, or PowerShell
+• Understanding of networking concepts and security best practices
+
+Preferred Qualifications:
+• Relevant certifications (AWS Certified DevOps Engineer, Kubernetes CKA/CKAD)
+• Experience with microservices architecture
+• Knowledge of database administration (MySQL, PostgreSQL, MongoDB)
+• Experience with service mesh technologies (Istio, Consul Connect)
+• Understanding of DevSecOps practices`
+      };
+    }
+
+    // Software Engineer/Developer with variations
+    if (title.includes('software') || title.includes('developer') || title.includes('engineer')) {
+      const engineerIntros = [
+        `We are seeking a talented ${jobTitle} to join our ${department} team. This ${workType} position is based in ${location}.`,
+        `Join our innovative ${department} team as a ${jobTitle}! We're looking for someone passionate about building great software. This ${workType} role is in ${location}.`,
+        `Are you ready to make an impact? Our ${department} team needs a skilled ${jobTitle} to help build the future. This ${workType} position is located in ${location}.`,
+        `Calling all talented developers! We're expanding our ${department} team and need a ${jobTitle} to join our mission. This ${workType} role is based in ${location}.`
+      ];
+      
+      const engineerDescriptions = [
+        `As a ${jobTitle}, you will be responsible for designing, developing, and maintaining high-quality software solutions. You'll work in a collaborative environment using modern development practices and cutting-edge technologies.`,
+        `In this role, you'll architect scalable applications and write clean, efficient code that makes a difference. You'll collaborate with cross-functional teams to deliver exceptional user experiences.`,
+        `You'll be at the heart of our product development, crafting robust solutions that serve thousands of users. Your code will be the foundation of innovative features that drive our business forward.`,
+        `As our ${jobTitle}, you'll solve complex technical challenges while mentoring team members and contributing to our engineering culture of excellence and continuous improvement.`
+      ];
+      
+      const selectedIntro = engineerIntros[combinedSeed % engineerIntros.length];
+      const selectedDesc = engineerDescriptions[Math.floor((combinedSeed + randomSeed1) % engineerDescriptions.length)];
+      
+      return {
+        description: `${selectedIntro}
+
+${selectedDesc}
+
+Key Responsibilities:
+• Design and develop scalable software applications using modern programming languages
+• Write clean, maintainable, and well-documented code following best practices
+• Participate in code reviews and provide constructive feedback to team members
+• Collaborate with product managers and designers to translate requirements into technical solutions
+• Implement automated testing strategies including unit, integration, and end-to-end tests
+• Debug and optimize existing applications for performance and scalability
+• Stay current with emerging technologies and industry trends
+• Contribute to architectural decisions and technical documentation
+• Mentor junior developers and share knowledge across the team`,
+
+        requirements: `Required Qualifications:
+• Bachelor's degree in Computer Science, Software Engineering, or related field
+• ${experienceRange} of professional software development experience
+• Proficiency in modern programming languages (JavaScript/TypeScript, Python, Java, C#, or Go)
+• Experience with web development frameworks (React, Angular, Vue.js, Node.js, Django, Spring)
+• Strong understanding of database design and SQL
+• Experience with version control systems (Git)
+• Knowledge of software development methodologies (Agile, Scrum)
+• Understanding of RESTful API design and integration
+• Experience with testing frameworks and methodologies
+
+Preferred Qualifications:
+• Experience with cloud platforms (AWS, Azure, GCP)
+• Knowledge of DevOps practices and CI/CD pipelines
+• Experience with microservices architecture
+• Understanding of container technologies (Docker, Kubernetes)
+• Experience with NoSQL databases (MongoDB, Redis)
+• Knowledge of security best practices in software development`
+      };
+    }
+
+    // Enhanced dynamic content generation for all other roles
+    const roleKeywords = extractRoleKeywords(title);
+    const primaryFunction = extractPrimaryFunction(title);
+    const focusArea = extractFocusArea(title);
+    const specificSkills = generateSpecificSkills(title);
+    
+    // Create multiple variation pools for true randomness
+    const companyIntroVariations = [
+      `We are seeking an exceptional ${jobTitle} to join our growing ${department} team. This ${workType} role is based in ${location} and offers incredible growth opportunities.`,
+      `Join our dynamic ${department} team as a ${jobTitle}! This ${workType} position in ${location} is perfect for someone who wants to make a real impact.`,
+      `Are you passionate about ${extractPassionArea(jobTitle)}? We're looking for a ${jobTitle} to join our innovative ${department} team. This ${workType} role is located in ${location}.`,
+      `Our ${department} team is expanding, and we need a talented ${jobTitle} to help drive our mission forward. This ${workType} position is based in ${location}.`,
+      `Ready for your next challenge? Join us as a ${jobTitle} in our ${department} team. This ${workType} opportunity in ${location} offers unlimited potential.`,
+      `We believe in the power of great talent. That's why we're seeking a ${jobTitle} for our ${department} team. This ${workType} role is based in ${location}.`,
+      `Transform your career with us! We're hiring a ${jobTitle} to join our ${department} team. This ${workType} position in ${location} offers exciting challenges.`,
+      `Innovation starts with the right people. We're looking for a ${jobTitle} to join our ${department} team. This ${workType} role is located in ${location}.`,
+    ];
+    
+    const roleDescriptionVariations = [
+      `As our ${jobTitle}, you will ${primaryFunction} while contributing to strategic initiatives that drive business growth. You'll work in a collaborative environment with cutting-edge tools and technologies.`,
+      `In this role, you'll ${primaryFunction} and play a key part in shaping the future of our ${department}. You'll have the opportunity to work on challenging projects with significant impact.`,
+      `You'll be responsible for ${primaryFunction} while building strong relationships across our organization. This position offers the perfect blend of technical challenges and professional growth.`,
+      `As a ${jobTitle}, you'll ${primaryFunction} and drive innovation in ${focusArea}. You'll work with a team of experts who are passionate about excellence and continuous improvement.`,
+      `This role involves ${primaryFunction} while contributing to our company's mission of delivering exceptional results. You'll be part of a team that values creativity, collaboration, and professional development.`,
+      `You'll ${primaryFunction} while working on projects that make a real difference. This position offers the opportunity to grow your skills while contributing to meaningful work.`,
+      `As our ${jobTitle}, you'll be at the forefront of ${primaryFunction} and help establish new standards of excellence in our industry. You'll work with state-of-the-art tools and methodologies.`,
+      `In this position, you'll ${primaryFunction} while collaborating with talented professionals who share your commitment to quality and innovation. You'll have access to ongoing learning opportunities.`
+    ];
+    
+    const responsibilityPools = [
+      [
+        `Lead strategic initiatives in ${focusArea} that drive measurable business impact`,
+        `Collaborate with cross-functional teams to deliver exceptional results and exceed expectations`,
+        `Develop innovative solutions to complex challenges using industry best practices`,
+        `Mentor team members and contribute to knowledge sharing across the organization`,
+        `Stay current with industry trends and emerging technologies in your field`,
+        `Participate in strategic planning and contribute to long-term organizational goals`,
+        `Build and maintain strong relationships with key stakeholders and partners`
+      ],
+      [
+        `Drive excellence in ${focusArea} through continuous improvement and innovation`,
+        `Work closely with stakeholders to understand requirements and deliver solutions that exceed expectations`,
+        `Implement best practices and establish new standards of quality in your area of expertise`,
+        `Provide guidance and support to team members while fostering a collaborative environment`,
+        `Research and evaluate new technologies and methodologies to enhance team capabilities`,
+        `Contribute to project planning and execution while ensuring timely delivery of objectives`,
+        `Communicate effectively with diverse audiences to ensure alignment and understanding`
+      ],
+      [
+        `Execute high-impact projects in ${focusArea} that contribute to organizational success`,
+        `Foster collaboration and teamwork while maintaining focus on quality and efficiency`,
+        `Analyze complex problems and develop creative solutions that address business needs`,
+        `Share expertise and best practices to elevate overall team performance`,
+        `Monitor industry developments and apply relevant insights to improve processes`,
+        `Support organizational initiatives through dedicated expertise and professional commitment`,
+        `Maintain high standards of professional conduct while contributing to a positive work culture`
+      ],
+      [
+        `Champion innovation in ${focusArea} while ensuring adherence to quality standards`,
+        `Build consensus among stakeholders and facilitate effective decision-making processes`,
+        `Optimize workflows and processes to improve efficiency and outcomes`,
+        `Develop and maintain documentation that supports team knowledge and continuity`,
+        `Identify opportunities for improvement and implement solutions that add value`,
+        `Engage in professional development activities to enhance skills and expertise`,
+        `Support organizational culture through active participation and positive contribution`
+      ]
+    ];
+    
+    // Use multiple randomization sources
+    const introIndex = Math.floor((combinedSeed + timestamp) % companyIntroVariations.length);
+    const descIndex = Math.floor((combinedSeed + randomSeed1 + randomSeed2) % roleDescriptionVariations.length);
+    const respPoolIndex = Math.floor((combinedSeed + hashSeed) % responsibilityPools.length);
+    
+    const selectedIntro = companyIntroVariations[introIndex];
+    const selectedDesc = roleDescriptionVariations[descIndex];
+    const selectedResponsibilities = responsibilityPools[respPoolIndex];
+    
+    // Shuffle responsibilities for more variety
+    const shuffledResponsibilities = selectedResponsibilities
+      .map(resp => ({ resp, sort: Math.random() + combinedSeed / 1000 }))
+      .sort((a, b) => a.sort - b.sort)
+      .map(({ resp }) => resp)
+      .slice(0, 5 + (combinedSeed % 3)); // 5-7 responsibilities
+    
+    const educationReq = generateEducationRequirement(title, department);
+    const specificReqs = generateSpecificRequirements(title, experienceRange);
+    const preferredQuals = generatePreferredQualifications(title);
+
+    return {
+      description: `${selectedIntro}
+
+${selectedDesc}
+
+Key Responsibilities:
+${shuffledResponsibilities.map(resp => `• ${resp}`).join('\n')}
+
+What We Offer:
+• Competitive compensation and comprehensive benefits package
+• Professional development opportunities and career advancement
+• Flexible work environment that promotes work-life balance
+• Collaborative culture with talented professionals
+• Access to cutting-edge tools and technologies
+• Opportunity to make a meaningful impact in your field`,
+
+      requirements: `Required Qualifications:
+${educationReq}
+${specificReqs.map(req => `• ${req}`).join('\n')}
+
+Preferred Qualifications:
+${preferredQuals.map(qual => `• ${qual}`).join('\n')}`
+    };
+  };
+
+  const handleCreateDepartment = async () => {
+    if (!newDepartmentName.trim()) {
+      alert('Please enter a department name.');
+      return;
+    }
+
+    setIsCreatingDepartment(true);
+    
+    try {
+      const departmentData: DepartmentCreateData = {
+        name: newDepartmentName.trim(),
+        description: newDepartmentDescription.trim() || undefined
+      };
+
+      const newDepartment = await createDepartment(departmentData);
+      
+      // Add the new department to the list
+      setDepartments(prev => [...prev, newDepartment]);
+      
+      // Select the new department
+      setFormData(prev => ({
+        ...prev,
+        department: newDepartment.id.toString()
+      }));
+      
+      // Reset form and close dialog
+      setNewDepartmentName('');
+      setNewDepartmentDescription('');
+      setShowAddDepartment(false);
+      
+      alert(`Department "${newDepartment.name}" created successfully!`);
+    } catch (error) {
+      console.error('Error creating department:', error);
+      alert('Error creating department. Please try again.');
+    } finally {
+      setIsCreatingDepartment(false);
+    }
+  };
+
+  const getInputClasses = (field: keyof FormData) => {
+    const baseClasses = "w-full px-4 py-3 border-2 rounded-lg text-base transition-all duration-200 bg-white";
+    
+    if (validationErrors[field]) {
+      return `${baseClasses} border-red-500 focus:border-red-500 focus:ring-red-100`;
+    } else if (focusedField === field) {
+      return `${baseClasses} border-blue-500 focus:border-blue-500 focus:ring-blue-100`;
+    } else if (formData[field] && formData[field].toString().trim()) {
+      return `${baseClasses} border-green-500 focus:border-blue-500 focus:ring-blue-100`;
+    }
+    
+    return `${baseClasses} border-gray-300 focus:border-blue-500 focus:ring-blue-100`;
+  };
+
+  return (
+    <div className={isModal ? "" : "max-w-6xl mx-auto px-4 py-8 md:px-8"}>
+        {/* Header */}
+        {!isModal && (
+          <div className="mb-12">
+            <h1 className="text-4xl md:text-5xl font-bold text-slate-900 mb-3">
+              Create New Job Posting
+            </h1>
+            <p className="text-lg text-slate-600">
+              Define the details, description, screening questions, and publishing options for your new job.
+            </p>
+          </div>
+        )}
+
+        {/* Progress Steps */}
+        <div className={`flex justify-center ${isModal ? "mb-8" : "mb-12"}`}>
+          <div className="flex items-center space-x-8">
+            {steps.map((step, index) => (
+              <div key={step.number} className="flex items-center">
+                <div className={`flex items-center space-x-2 ${
+                  step.active ? 'text-blue-600' : 'text-slate-400'
+                }`}>
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-semibold ${
+                    step.active 
+                      ? 'bg-blue-600 text-white' 
+                      : 'bg-slate-200 text-slate-500'
+                  }`}>
+                    {step.number}
+                  </div>
+                  <span className={`font-medium ${step.active ? 'font-semibold' : ''}`}>
+                    {step.name}
+                  </span>
+                </div>
+                {index < steps.length - 1 && (
+                  <div className="w-8 h-px bg-slate-200 ml-4"></div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Form Section */}
+        <div className={isModal ? "" : "bg-white rounded-xl shadow-sm p-8"}>
+          <div className="mb-8">
+            <h2 className="text-3xl font-bold text-slate-900 mb-2">
+              {activeStep === 1 ? 'Job Details' : 'Job Description'}
+            </h2>
+            <p className="text-slate-600">
+              {activeStep === 1 
+                ? 'Enter the basic information for your job posting.'
+                : 'Provide detailed job description and requirements.'
+              }
+            </p>
+          </div>
+
+          {activeStep === 1 && (
+          <div className="space-y-8">
+            {/* Job Code and Job Title */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Job Code
+                  <span className="text-xs font-normal text-gray-500 ml-2">(Optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.jobId}
+                  onChange={(e) => handleInputChange('jobId', e.target.value)}
+                  onFocus={() => handleFieldFocus('jobId')}
+                  onBlur={() => handleFieldBlur('jobId')}
+                  className={getInputClasses('jobId')}
+                  placeholder="e.g., JOB-2024-001"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Job Title
+                </label>
+                <input
+                  type="text"
+                  value={formData.jobTitle}
+                  onChange={(e) => handleInputChange('jobTitle', e.target.value)}
+                  onFocus={() => handleFieldFocus('jobTitle')}
+                  onBlur={() => handleFieldBlur('jobTitle')}
+                  className={getInputClasses('jobTitle')}
+                  placeholder="e.g., Senior Software Engineer"
+                />
+              </div>
+            </div>
+
+            {/* Department and Experience Level */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="block text-sm font-semibold text-gray-700">
+                    Department
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddDepartment(true)}
+                    className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    </svg>
+                    Add New
+                  </button>
+                </div>
+                <select
+                  value={formData.department}
+                  onChange={(e) => handleInputChange('department', e.target.value)}
+                  onFocus={() => handleFieldFocus('department')}
+                  onBlur={() => handleFieldBlur('department')}
+                  className={`${getInputClasses('department')} cursor-pointer appearance-none bg-no-repeat bg-right pr-10`}
+                  style={{
+                    backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e")`,
+                    backgroundPosition: 'right 0.75rem center',
+                    backgroundSize: '1.5em 1.5em'
+                  }}
+                >
+                  {departmentOptions.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Experience Level
+                </label>
+                <select
+                  value={formData.experienceLevel}
+                  onChange={(e) => handleInputChange('experienceLevel', e.target.value)}
+                  onFocus={() => handleFieldFocus('experienceLevel')}
+                  onBlur={() => handleFieldBlur('experienceLevel')}
+                  className={`${getInputClasses('experienceLevel')} cursor-pointer appearance-none bg-no-repeat bg-right pr-10`}
+                  style={{
+                    backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e")`,
+                    backgroundPosition: 'right 0.75rem center',
+                    backgroundSize: '1.5em 1.5em'
+                  }}
+                >
+                  {experienceLevelOptions.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Location and Work Type */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="relative">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Location
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={formData.location}
+                    onChange={(e) => handleInputChange('location', e.target.value)}
+                    onFocus={() => handleFieldFocus('location')}
+                    onBlur={() => setTimeout(() => setShowLocationSuggestions(false), 150)}
+                    className={getInputClasses('location')}
+                    placeholder="Type 3+ letters to search locations..."
+                    autoComplete="off"
+                  />
+                  {isSearchingLocations && (
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Location Suggestions Dropdown */}
+                {showLocationSuggestions && locationSuggestions.length > 0 && (
+                  <div 
+                    className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+                    onMouseDown={(e) => e.preventDefault()} // Prevent input blur when clicking dropdown
+                  >
+                    {locationSuggestions.map((location) => (
+                      <div
+                        key={location.id}
+                        onClick={() => handleLocationSelect(location)}
+                        className="px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                      >
+                        <div className="font-medium text-gray-900">{location.name}</div>
+                        {location.state && location.country && (
+                          <div className="text-sm text-gray-600">
+                            {location.state}, {location.country}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Work Type
+                </label>
+                <select
+                  value={formData.workType}
+                  onChange={(e) => handleInputChange('workType', e.target.value)}
+                  onFocus={() => handleFieldFocus('workType')}
+                  onBlur={() => handleFieldBlur('workType')}
+                  className={`${getInputClasses('workType')} cursor-pointer appearance-none bg-no-repeat bg-right pr-10`}
+                  style={{
+                    backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e")`,
+                    backgroundPosition: 'right 0.75rem center',
+                    backgroundSize: '1.5em 1.5em'
+                  }}
+                >
+                  {workTypeOptions.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Salary Range */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Min Salary
+                </label>
+                <input
+                  type="number"
+                  value={formData.minSalary === 0 ? '' : formData.minSalary}
+                  onChange={(e) => handleInputChange('minSalary', parseInt(e.target.value) || 0)}
+                  onFocus={() => handleFieldFocus('minSalary')}
+                  onBlur={() => handleFieldBlur('minSalary')}
+                  className={getInputClasses('minSalary')}
+                  min="0"
+                  step="1000"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Max Salary
+                </label>
+                <input
+                  type="number"
+                  value={formData.maxSalary === 0 ? '' : formData.maxSalary}
+                  onChange={(e) => handleInputChange('maxSalary', parseInt(e.target.value) || 0)}
+                  onFocus={() => handleFieldFocus('maxSalary')}
+                  onBlur={() => handleFieldBlur('maxSalary')}
+                  className={getInputClasses('maxSalary')}
+                  min="0"
+                  step="1000"
+                />
+              </div>
+            </div>
+
+            {/* Experience Range */}
+            <div className="grid grid-cols-1">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Experience Range
+                </label>
+                <select
+                  value={formData.experienceRange}
+                  onChange={(e) => handleInputChange('experienceRange', e.target.value)}
+                  onFocus={() => handleFieldFocus('experienceRange')}
+                  onBlur={() => handleFieldBlur('experienceRange')}
+                  className={`${getInputClasses('experienceRange')} cursor-pointer appearance-none bg-no-repeat bg-right pr-10`}
+                  style={{
+                    backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e")`,
+                    backgroundPosition: 'right 0.75rem center',
+                    backgroundSize: '1.5em 1.5em'
+                  }}
+                >
+                  {experienceRangeOptions.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Next Button */}
+            <div className="flex justify-start pt-4">
+              <button
+                onClick={handleNextStep}
+                className="bg-gray-800 hover:bg-gray-900 text-white font-semibold px-8 py-3.5 rounded-lg transition-all duration-200 transform hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus:ring-4 focus:ring-gray-300"
+              >
+                Next: Job Description
+              </button>
+            </div>
+          </div>
+          )}
+
+          {activeStep === 2 && (
+          <div className="space-y-10">
+            {/* Header Section with Gradient */}
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-6">
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Job Content & Interview Process</h3>
+              <p className="text-gray-600">Create comprehensive job details and configure your interview pipeline</p>
+            </div>
+
+            {/* Action Buttons Section */}
+            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+              <h4 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <label htmlFor="jd-upload" className="block">
+                  <input
+                    id="jd-upload"
+                    type="file"
+                    accept=".txt,.pdf,.doc,.docx"
+                    onChange={handleJDUpload}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => document.getElementById('jd-upload')?.click()}
+                    className="w-full bg-white hover:bg-gray-50 border-2 border-dashed border-gray-300 hover:border-blue-400 text-gray-700 hover:text-blue-600 font-semibold px-6 py-4 rounded-xl transition-all duration-200 flex items-center justify-center gap-3 group"
+                  >
+                    <div className="p-2 bg-gray-100 group-hover:bg-blue-100 rounded-lg transition-colors">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                      </svg>
+                    </div>
+                    <div className="text-left">
+                      <div className="font-semibold">Upload Job Description</div>
+                      <div className="text-sm text-gray-500">PDF, DOC, TXT files</div>
+                    </div>
+                  </button>
+                </label>
+
+                <button
+                  type="button"
+                  onClick={handleGenerateWithAI}
+                  disabled={isGeneratingWithAI}
+                  className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 disabled:from-purple-400 disabled:to-blue-400 disabled:cursor-not-allowed text-white font-semibold px-6 py-4 rounded-xl transition-all duration-200 flex items-center justify-center gap-3 shadow-lg hover:shadow-xl"
+                >
+                  <div className="p-2 bg-white/20 rounded-lg">
+                    {isGeneratingWithAI ? (
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    ) : (
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                    )}
+                  </div>
+                  <div className="text-left">
+                    <div className="font-semibold">
+                      {isGeneratingWithAI ? 'Generating...' : 'Generate with AI'}
+                    </div>
+                    <div className="text-sm text-white/80">
+                      {orgSettings?.general?.aiProvider ?
+                        `Using ${orgSettings.general.aiProvider.charAt(0).toUpperCase() + orgSettings.general.aiProvider.slice(1)}` :
+                        'Auto-create content'
+                      }
+                    </div>
+                  </div>
+                </button>
+              </div>
+
+              {/* AI Configuration Status */}
+              <div className="mt-4 flex items-center justify-center">
+                {orgSettings?.general?.aiProvider && orgSettings?.general?.aiApiKey ? (
+                  <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 px-3 py-2 rounded-lg border border-green-200">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    AI Ready - {orgSettings.general.aiProvider.charAt(0).toUpperCase() + orgSettings.general.aiProvider.slice(1)} configured
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-sm text-amber-700 bg-amber-50 px-3 py-2 rounded-lg border border-amber-200">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                    </svg>
+                    Configure AI in Organization Settings for auto-generation
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Job Description Section */}
+            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <div>
+                  <h4 className="text-lg font-semibold text-gray-900">Job Description</h4>
+                  <p className="text-sm text-gray-600">Describe the role, responsibilities, and what the candidate will be doing</p>
+                </div>
+              </div>
+              <textarea
+                value={formData.jobDescription}
+                onChange={(e) => handleInputChange('jobDescription', e.target.value)}
+                onFocus={() => handleFieldFocus('jobDescription')}
+                onBlur={() => handleFieldBlur('jobDescription')}
+                className={`${getInputClasses('jobDescription')} min-h-[200px] resize-none`}
+                rows={8}
+                placeholder="• Company overview and role context&#10;• Key responsibilities and daily tasks&#10;• Team structure and collaboration&#10;• Growth opportunities and impact..."
+              />
+            </div>
+
+            {/* Requirements Section */}
+            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-green-100 rounded-lg">
+                  <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <h4 className="text-lg font-semibold text-gray-900">Requirements</h4>
+                  <p className="text-sm text-gray-600">List the required skills, qualifications, and experience</p>
+                </div>
+              </div>
+              <textarea
+                value={formData.requirements}
+                onChange={(e) => handleInputChange('requirements', e.target.value)}
+                onFocus={() => handleFieldFocus('requirements')}
+                onBlur={() => handleFieldBlur('requirements')}
+                className={`${getInputClasses('requirements')} min-h-[150px] resize-none`}
+                rows={6}
+                placeholder="• Required education level and certifications&#10;• Technical skills and proficiency levels&#10;• Years of experience in relevant areas&#10;• Language requirements and soft skills..."
+              />
+            </div>
+
+            {/* Interview Process Configuration */}
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+              <div className="bg-gradient-to-r from-purple-50 to-blue-50 border-b border-gray-200 px-6 py-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-purple-100 rounded-lg">
+                    <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h4 className="text-lg font-semibold text-gray-900">Interview Process Configuration</h4>
+                    <p className="text-sm text-gray-600">Set up interview stages with feedback forms that will guide interviewers and enable AI-assisted evaluation</p>
+                  </div>
+                </div>
+              </div>
+              <div className="p-6 space-y-6">
+                {/* Rule Type Section */}
+                <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-xl p-5 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-indigo-100 rounded-lg">
+                      <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h5 className="text-base font-semibold text-gray-900">Rule Type</h5>
+                      <p className="text-xs text-gray-600">Select an interview flow from the rule engine to configure the interview process</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label className="text-sm font-semibold text-gray-700">Interview Flow Template</Label>
+                    <Select value={selectedRuleType} onValueChange={handleRuleTypeChange}>
+                      <SelectTrigger className="bg-white text-black border-gray-300 focus:border-indigo-500">
+                        <SelectValue placeholder="Select interview flow from rule engine..." />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white text-black border border-gray-300 shadow-lg">
+                        {interviewFlows.map((flow) => (
+                          <SelectItem key={flow.id} value={flow.id} className="text-black hover:bg-indigo-50">
+                            <div className="flex items-center gap-2">
+                              <div className={`w-2 h-2 rounded-full ${flow.isDefault ? 'bg-green-500' : 'bg-blue-500'}`}></div>
+                              <div>
+                                <div className="font-medium">{flow.name}</div>
+                                <div className="text-xs text-gray-500">{flow.description}</div>
+                              </div>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Display selected flow stages */}
+                  {selectedFlow && (
+                    <div className="mt-4 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <h6 className="text-sm font-semibold text-gray-900">Selected Flow Stages:</h6>
+                        <Badge className="bg-indigo-100 text-indigo-800 text-xs">{selectedFlow.rounds.length} stages</Badge>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {selectedFlow.rounds
+                          .sort((a, b) => a.order - b.order)
+                          .map((round, index) => (
+                          <div key={round.id} className="bg-white border border-gray-200 rounded-lg p-3 hover:shadow-sm transition-shadow">
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="w-6 h-6 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center text-xs font-semibold">
+                                {index + 1}
+                              </div>
+                              <div className="font-medium text-sm text-gray-900 truncate">{round.name}</div>
+                            </div>
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-1">
+                                <Badge variant="outline" className="text-xs">
+                                  {round.type}
+                                </Badge>
+                                <span className="text-xs text-gray-500">{round.duration}min</span>
+                              </div>
+                              {round.description && (
+                                <p className="text-xs text-gray-600 line-clamp-2">{round.description}</p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-2">
+                        Total estimated time: {selectedFlow.totalEstimatedTime} minutes
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Interview Stages */}
+                {selectedFlow && interviewStages.length > 0 && (
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <h6 className="text-sm font-semibold text-green-800">Stages Auto-Populated</h6>
+                    </div>
+                    <p className="text-xs text-green-700">
+                      Interview stages have been automatically populated from the "{selectedFlow.name}" flow.
+                      You can modify these stages below or add additional ones as needed.
+                    </p>
+                  </div>
+                )}
+
+                {interviewStages.map((stage, index) => (
+                  <div key={stage.id} className="bg-gradient-to-r from-gray-50 to-blue-50 border border-gray-200 rounded-xl p-5 space-y-4 hover:shadow-md transition-shadow">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-sm font-semibold">
+                          {index + 1}
+                        </div>
+                        <h5 className="text-lg font-semibold text-gray-900">Interview Stage {index + 1}</h5>
+                      </div>
+                      {interviewStages.length > 1 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeInterviewStage(stage.id)}
+                          className="hover:bg-red-100 hover:text-red-600 transition-colors"
+                        >
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </Button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="space-y-3">
+                        <Label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                          <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                          </svg>
+                          Stage Name *
+                        </Label>
+                        <Input
+                          value={stage.name}
+                          onChange={(e) => updateInterviewStage(stage.id, "name", e.target.value)}
+                          placeholder="e.g., Technical Interview"
+                          className="bg-white border-gray-300 focus:border-blue-500 focus:ring-blue-200"
+                        />
+                      </div>
+
+                      <div className="space-y-3">
+                        <Label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                          <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
+                          </svg>
+                          Interviewer Type
+                        </Label>
+                        <Select
+                          value={stage.interviewerType}
+                          onValueChange={(val) =>
+                            updateInterviewStage(stage.id, "interviewerType", val as "human" | "ai" | "hybrid")
+                          }
+                        >
+                          <SelectTrigger className="bg-white text-black border-gray-300 focus:border-blue-500">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white text-black border border-gray-300 shadow-lg">
+                            <SelectItem value="human" className="text-black hover:bg-blue-50">
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                </svg>
+                                Human Only
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="ai" className="text-black hover:bg-purple-50">
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                </svg>
+                                AI Assisted
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="hybrid" className="text-black hover:bg-green-50">
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                                </svg>
+                                Hybrid (AI + Human)
+                              </div>
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-3">
+                        <Label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                          <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          Feedback Form *
+                        </Label>
+                        <div className="flex gap-2">
+                          <Select
+                            value={stage.feedbackFormId}
+                            onValueChange={(val) => updateInterviewStage(stage.id, "feedbackFormId", val)}
+                          >
+                            <SelectTrigger className="flex-1 bg-white text-black border-gray-300 focus:border-blue-500">
+                              <SelectValue placeholder="Select form" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white text-black border border-gray-300 shadow-lg">
+                              {getFilteredFeedbackForms().map((form) => (
+                                <SelectItem key={form.id} value={form.id} className="text-black hover:bg-gray-50">
+                                  <div className="flex items-center justify-between w-full">
+                                    <span className="font-medium">{form.name}</span>
+                                    <Badge variant="outline" className="ml-2 bg-blue-50 text-blue-700 border-blue-200">
+                                      {form.questions}Q
+                                    </Badge>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {stage.feedbackFormId && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setShowFormPreview(stage.feedbackFormId)}
+                              className="border-blue-500 text-blue-600 hover:bg-blue-50 hover:border-blue-600 transition-all"
+                            >
+                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Assignee Selection */}
+                      <div className="grid grid-cols-1 gap-3">
+                        <label className="text-sm font-medium text-gray-700">
+                          Assignee
+                        </label>
+                        <Select
+                          value={stage.assignee || ''}
+                          onValueChange={(value) => updateInterviewStage(stage.id, 'assignee', value)}
+                        >
+                          <SelectTrigger className="bg-white text-black border-gray-300 focus:border-blue-500">
+                            <SelectValue placeholder="Select assignee" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white text-black border border-gray-300 shadow-lg">
+                            {assignees.map((assignee) => (
+                              <SelectItem key={assignee.id} value={assignee.id} className="text-black hover:bg-gray-50">
+                                <div className="flex items-center justify-between w-full">
+                                  <span className="font-medium">{assignee.name}</span>
+                                  <span className="text-xs text-gray-500 ml-2">{assignee.role}</span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    {stage.feedbackFormName && (
+                      <div className="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 p-4 rounded-lg">
+                        <div className="flex items-start gap-3">
+                          <div className="p-1 bg-green-100 rounded-full">
+                            <svg className="h-4 w-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-gray-900">
+                              Selected Form: <span className="text-green-700">{stage.feedbackFormName}</span>
+                            </p>
+                            <p className="text-xs text-gray-600 mt-1">
+                              This form will guide the interview process and enable AI-assisted feedback collection during the evaluation.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                <div className="pt-4 border-t border-gray-200">
+                  <Button
+                    variant="outline"
+                    onClick={addInterviewStage}
+                    className="w-full bg-gradient-to-r from-blue-50 to-purple-50 hover:from-blue-100 hover:to-purple-100 border-2 border-dashed border-blue-300 hover:border-blue-400 text-blue-700 hover:text-blue-800 font-semibold py-4 transition-all duration-200"
+                  >
+                    <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    </svg>
+                    Add Interview Stage
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* Responsibilities */}
+            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-orange-100 rounded-lg">
+                  <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                  </svg>
+                </div>
+                <div>
+                  <h4 className="text-lg font-semibold text-gray-900">Key Responsibilities</h4>
+                  <p className="text-sm text-gray-600">Describe the key responsibilities and duties for this role</p>
+                </div>
+              </div>
+              <textarea
+                value={formData.responsibilities}
+                onChange={(e) => handleInputChange('responsibilities', e.target.value)}
+                onFocus={() => handleFieldFocus('responsibilities')}
+                onBlur={() => handleFieldBlur('responsibilities')}
+                className={`${getInputClasses('responsibilities')} min-h-[150px] resize-none`}
+                rows={6}
+                placeholder="• Daily tasks and core responsibilities&#10;• Project management and delivery expectations&#10;• Team collaboration and communication duties&#10;• Performance metrics and success criteria..."
+              />
+            </div>
+
+            {/* Navigation Buttons */}
+            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+              <div className="flex justify-between items-center">
+                <button
+                  onClick={handlePreviousStep}
+                  className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold px-6 py-3 rounded-xl transition-all duration-200 hover:shadow-md"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                  Previous: Job Details
+                </button>
+                <button
+                  onClick={handleNextStep}
+                  disabled={isSubmitting}
+                  className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-blue-400 disabled:to-blue-500 text-white font-semibold px-8 py-3 rounded-xl transition-all duration-200 hover:shadow-lg disabled:cursor-not-allowed disabled:shadow-none"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      {editingJob ? 'Updating Job...' : 'Creating Job...'}
+                    </>
+                  ) : (
+                    <>
+                      {editingJob ? 'Update Job' : 'Create Job'}
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+          )}
+        </div>
+
+        {/* Add Department Modal */}
+        {showAddDepartment && (
+          <div className="fixed inset-0 z-50">
+            <div className="fixed inset-0 bg-background/80 backdrop-blur-sm" onClick={() => setShowAddDepartment(false)} />
+            <div className="fixed inset-0 flex items-center justify-center p-4">
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+                <div className="p-6 border-b border-gray-200">
+                  <h3 className="text-xl font-bold text-gray-900">Add New Department</h3>
+                  <p className="text-sm text-gray-600 mt-1">Create a new department for your organization</p>
+                </div>
+                <div className="p-6 space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Department Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={newDepartmentName}
+                      onChange={(e) => setNewDepartmentName(e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none transition-colors duration-200"
+                      placeholder="e.g., Data Science"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Description (Optional)
+                    </label>
+                    <textarea
+                      value={newDepartmentDescription}
+                      onChange={(e) => setNewDepartmentDescription(e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none transition-colors duration-200"
+                      rows={3}
+                      placeholder="Brief description of the department"
+                    />
+                  </div>
+                </div>
+                
+                <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+                  <button
+                    onClick={() => setShowAddDepartment(false)}
+                    className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors duration-200"
+                    disabled={isCreatingDepartment}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleCreateDepartment}
+                    disabled={isCreatingDepartment || !newDepartmentName.trim()}
+                    className="px-4 py-2 text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 rounded-lg transition-colors duration-200 disabled:cursor-not-allowed"
+                  >
+                    {isCreatingDepartment ? 'Creating...' : 'Create Department'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Feedback Form Preview Modal */}
+        {showFormPreview && (
+          <div className="fixed inset-0 z-50">
+            <div className="fixed inset-0 bg-background/80 backdrop-blur-sm" onClick={() => setShowFormPreview(null)} />
+            <div className="fixed inset-0 flex items-center justify-center p-4">
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden">
+                <div className="p-6 border-b border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xl font-bold text-gray-900">
+                        {feedbackForms.find(form => form.id === showFormPreview)?.name}
+                      </h3>
+                      <p className="text-sm text-gray-600 mt-1">
+                        Preview of feedback form questions
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setShowFormPreview(null)}
+                      className="text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-6 overflow-y-auto max-h-[60vh]">
+                  <div className="space-y-4">
+                    {feedbackForms
+                      .find(form => form.id === showFormPreview)
+                      ?.questionsList.map((question, index) => (
+                        <div key={index} className="p-4 border border-gray-200 rounded-lg bg-gray-50">
+                          <div className="flex items-start gap-3">
+                            <div className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-medium">
+                              {index + 1}
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-gray-900 font-medium">
+                                {question}
+                              </p>
+                              <div className="mt-2 text-sm text-gray-500">
+                                <div className="flex items-center gap-2">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                  Response field will be displayed here during interview
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+
+                  <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-start gap-3">
+                      <svg className="w-5 h-5 text-blue-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <div>
+                        <h4 className="text-sm font-medium text-blue-900">How it works</h4>
+                        <p className="text-sm text-blue-700 mt-1">
+                          During the interview, interviewers will be guided through these questions and can provide
+                          ratings, comments, or detailed feedback. AI assistance can help analyze responses and
+                          provide evaluation insights.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-6 border-t border-gray-200 flex justify-end">
+                  <Button onClick={() => setShowFormPreview(null)} className="bg-blue-600 hover:bg-blue-700 text-white">
+                    Close Preview
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+    </div>
+  );
+}

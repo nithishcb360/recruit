@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(../venv/Scripts/python.exe manage.py migrate api --fake-initial)",
+      "Bash(del d:recruitbackendapimigrations0026_emailsettings.py)",
+      "Bash(../venv/Scripts/python.exe:*)",
+      "Bash(git -C \"D:/recruit\" status)",
+      "Bash(del apimigrations0027_remove_emailsettings_email_host_and_more.py)",
+      "Bash(del:*)",
+      "Bash(rm:*)",
+      "Bash(git -C \"d:\\recruit\" checkout HEAD -- backend/api/utils/pytorch_resume_parser.py)",
+      "Bash(../venv/Scripts/pip install torch transformers)",
+      "Bash(d:/recruit/venv/Scripts/pip.exe install torch transformers)",
+      "Bash(\"d:\\recruit\\venv\\Scripts\\python.exe\" -m pip install torch transformers)",
+      "Bash(git config:*)",
+      "Bash(cmdkey:*)",
+      "Bash(findstr:*)",
+      "Bash(git -C \"d:\\recruit\" remote -v)",
+      "Bash(git credential:*)",
+      "Bash(git credential-manager:*)",
+      "Bash(git -C \"d:\\recruit\" status)",
+      "Bash(git -C \"d:\\recruit\" pull origin duplicate)",
+      "Bash(git -C \"d:\\recruit\" branch -a)",
+      "Bash(cat:*)",
+      "Bash(git rm:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git reset:*)",
+      "Bash(git checkout:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

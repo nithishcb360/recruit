@@ -1,0 +1,3607 @@
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import status, viewsets, filters
+from rest_framework.decorators import action
+from django.contrib.auth.models import User
+from django.db.models import Count, Q
+from django.utils import timezone
+from datetime import timedelta
+from django_filters.rest_framework import DjangoFilterBackend
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
+from .models import DashboardStats, Task, ActivityLog, Department, Job, Candidate, JobApplication, FeedbackTemplate, InterviewFlow, InterviewRound, EmailSettings, Notification
+from .serializers import (
+    DashboardStatsSerializer, TaskSerializer, TaskCreateSerializer,
+    ActivityLogSerializer, DashboardOverviewSerializer,
+    DepartmentSerializer, JobSerializer, JobCreateSerializer,
+    JobUpdateSerializer, JobListSerializer, CandidateSerializer,
+    CandidateCreateSerializer, CandidateListSerializer, ResumeParseSerializer,
+    JobApplicationSerializer, JobApplicationCreateSerializer,
+    FeedbackTemplateSerializer, FeedbackTemplateCreateSerializer, FeedbackTemplateUpdateSerializer,
+    InterviewFlowSerializer, InterviewFlowCreateSerializer, InterviewFlowUpdateSerializer, InterviewRoundSerializer,
+    EmailSettingsSerializer, EmailSettingsCreateSerializer, EmailSettingsUpdateSerializer,
+    NotificationSerializer
+)
+from .utils.pytorch_resume_parser import PyTorchResumeParser
+from django.core.mail import send_mail
+from django.conf import settings
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Safe import for semantic matcher with fallback
+try:
+    from .utils.semantic_matcher import get_semantic_matcher
+    SEMANTIC_MATCHING_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Semantic matching not available: {e}")
+    SEMANTIC_MATCHING_AVAILABLE = False
+    
+    # Create a dummy function to prevent errors
+    def get_semantic_matcher():
+        class DummyMatcher:
+            def calculate_job_match_score(self, candidate_data, job_data):
+                return 0.0
+            def find_best_matching_jobs(self, candidate_data, jobs, top_k=5):
+                return []
+            def find_matching_candidates(self, job_data, candidates, threshold=30.0):
+                return []
+        return DummyMatcher()
+import os
+import re
+import tempfile
+import logging
+from django.http import HttpResponse, Http404
+from django.core.files.storage import default_storage
+import datetime
+import json
+
+logger = logging.getLogger(__name__)
+
+# Import AI SDKs for AI operations
+try:
+    from anthropic import Anthropic
+    ANTHROPIC_AVAILABLE = True
+except ImportError:
+    logger.warning("Anthropic SDK not available.")
+    ANTHROPIC_AVAILABLE = False
+
+try:
+    import openai
+    OPENAI_AVAILABLE = True
+except ImportError:
+    logger.warning("OpenAI SDK not available.")
+    OPENAI_AVAILABLE = False
+
+try:
+    import google.generativeai as genai
+    GEMINI_AVAILABLE = True
+except ImportError:
+    logger.warning("Google Gemini SDK not available.")
+    GEMINI_AVAILABLE = False
+
+
+def create_notification(candidate, notification_type, title, message):
+    """
+    Create a notification for all HR users about candidate status
+    """
+    try:
+        from django.contrib.auth.models import User
+        # Get all HR users
+        hr_users = User.objects.filter(groups__name='HR') | User.objects.filter(is_superuser=True)
+
+        # Create notification for each HR user
+        for user in hr_users.distinct():
+            Notification.objects.create(
+                user=user,
+                candidate=candidate,
+                notification_type=notification_type,
+                title=title,
+                message=message
+            )
+        logger.info(f"Created {notification_type} notifications for candidate {candidate.id}")
+        return True
+    except Exception as e:
+        logger.error(f"Error creating notification: {e}")
+        return False
+
+
+def send_webdesk_email(candidate):
+    """
+    Send WebDesk assessment email to candidate after call ends
+    Email includes credentials and scheduled interview time
+    """
+    try:
+        # Check if email was already sent
+        if candidate.webdesk_email_sent:
+            logger.info(f"WebDesk email already sent to candidate {candidate.id} at {candidate.webdesk_email_sent_at}")
+            return False
+
+        # Check if candidate has email
+        if not candidate.email:
+            logger.warning(f"Candidate {candidate.id} has no email address")
+            return False
+
+        # Generate credentials if not already generated
+        if not candidate.assessment_username or not candidate.assessment_password:
+            import random
+            import string
+            first_name = candidate.first_name.lower().replace(' ', '')
+            random_suffix = ''.join(random.choices(string.digits, k=4))
+            candidate.assessment_username = f"{first_name}{random_suffix}"
+            password_chars = string.ascii_letters + string.digits + '@#$%'
+            candidate.assessment_password = ''.join(random.choices(password_chars, k=8))
+            candidate.save()
+
+        # Build WebDesk URL
+        webdesk_url = f"http://localhost:3003/?candidate_id={candidate.id}"
+
+        # Format scheduled date/time if available
+        schedule_info = ""
+        if candidate.retell_interview_scheduled and candidate.retell_scheduled_date and candidate.retell_scheduled_time:
+            from datetime import datetime
+            try:
+                scheduled_date = datetime.strptime(candidate.retell_scheduled_date, '%Y-%m-%d')
+                date_str = scheduled_date.strftime('%A, %B %d, %Y')
+                schedule_info = f"""
+Interview Schedule:
+Date: {date_str}
+Time: {candidate.retell_scheduled_time}
+Timezone: {candidate.retell_scheduled_timezone or 'Local Time'}
+
+IMPORTANT: The assessment link will only be active 15 minutes before your scheduled time until 2 hours after.
+"""
+            except:
+                schedule_info = f"""
+Interview Schedule:
+Date: {candidate.retell_scheduled_date}
+Time: {candidate.retell_scheduled_time}
+
+IMPORTANT: The assessment link will only be active 15 minutes before your scheduled time until 2 hours after.
+"""
+
+        # Email subject and body
+        subject = f"Technical Assessment - {candidate.first_name}"
+        message = f"""Dear {candidate.first_name},
+
+Thank you for your interest in our position. We are pleased to invite you to complete a technical assessment as the next step in the interview process.
+
+{schedule_info}
+
+Assessment Details:
+-----------------
+Link: {webdesk_url}
+Username: {candidate.assessment_username}
+Password: {candidate.assessment_password}
+
+Instructions:
+1. Click the link above at your scheduled time
+2. Log in using the credentials provided
+3. Complete the assessment within the allotted time
+4. Do not switch tabs or leave the assessment page
+
+Important Notes:
+- Please ensure you have a stable internet connection
+- Use a desktop or laptop (mobile devices are not recommended)
+- Close all unnecessary applications and tabs
+- The assessment will be proctored (video and screen recording)
+
+If you have any questions or need assistance, please don't hesitate to contact us.
+
+Best regards,
+Recruitment Team
+"""
+
+        # Get email settings from database first, fallback to environment variables
+        from .models import EmailSettings
+        email_settings = EmailSettings.objects.filter(is_active=True).order_by('-updated_at').first()
+
+        if email_settings:
+            email_user = email_settings.email
+            email_password = email_settings.password
+            email_host = email_settings.host
+            email_port = email_settings.port
+        else:
+            # Fallback to environment variables
+            email_user = os.getenv('EMAIL_USER', os.getenv('EMAIL_HOST_USER', ''))
+            email_password = os.getenv('EMAIL_PASSWORD', os.getenv('EMAIL_HOST_PASSWORD', ''))
+            email_host = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+            email_port = int(os.getenv('EMAIL_PORT', '587'))
+
+        if not email_user or not email_password:
+            logger.error("Email credentials not configured. Please set EMAIL_USER and EMAIL_PASSWORD in Settings page.")
+            return False
+
+        # Send email using SMTP
+        import smtplib
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+
+        msg = MIMEMultipart()
+        msg['From'] = email_user
+        msg['To'] = candidate.email
+        msg['Subject'] = subject
+        msg.attach(MIMEText(message, 'plain'))
+
+        try:
+            with smtplib.SMTP(email_host, email_port) as server:
+                server.starttls()
+                server.login(email_user, email_password)
+                server.send_message(msg)
+                logger.info(f"Email sent successfully to {candidate.email}")
+        except Exception as e:
+            logger.error(f"Failed to send email: {e}")
+            return False
+
+        # Mark email as sent
+        from django.utils import timezone
+        candidate.webdesk_email_sent = True
+        candidate.webdesk_email_sent_at = timezone.now()
+        candidate.save()
+
+        logger.info(f"✅ WebDesk email sent to {candidate.email} (Candidate ID: {candidate.id})")
+        return True
+
+    except Exception as e:
+        logger.error(f"❌ Failed to send WebDesk email to candidate {candidate.id}: {e}")
+        return False
+
+
+@api_view(['GET'])
+def api_root(request):
+    """
+    API root endpoint
+    """
+    return Response({
+        'message': 'Welcome to the Django REST API',
+        'version': '1.0.0',
+        'endpoints': {
+            'admin': '/admin/',
+            'api': '/api/',
+            'dashboard': '/api/dashboard/',
+            'tasks': '/api/tasks/',
+            'activities': '/api/activities/',
+            'departments': '/api/departments/',
+            'jobs': '/api/jobs/',
+        }
+    })
+
+
+@api_view(['GET'])
+def dashboard_overview(request):
+    """
+    Dashboard overview endpoint with statistics and recent data
+    """
+    # Get or create dashboard stats
+    stats, created = DashboardStats.objects.get_or_create(
+        id=1,
+        defaults={
+            'total_users': User.objects.count(),
+            'active_users': User.objects.filter(last_login__gte=timezone.now() - timedelta(days=30)).count(),
+            'total_revenue': 125600.50,
+            'orders_today': 42,
+        }
+    )
+    
+    if not created:
+        # Update stats
+        stats.total_users = User.objects.count()
+        stats.active_users = User.objects.filter(last_login__gte=timezone.now() - timedelta(days=30)).count()
+        stats.save()
+
+    # Get recent tasks
+    recent_tasks = Task.objects.all()[:5]
+    
+    # Get recent activities
+    recent_activities = ActivityLog.objects.all()[:10]
+    
+    # Get task counts by status
+    task_status_counts = Task.objects.values('status').annotate(count=Count('status'))
+    status_dict = {item['status']: item['count'] for item in task_status_counts}
+    
+    # Get task counts by priority
+    priority_counts = Task.objects.values('priority').annotate(count=Count('priority'))
+    priority_dict = {item['priority']: item['count'] for item in priority_counts}
+
+    data = {
+        'stats': DashboardStatsSerializer(stats).data,
+        'recent_tasks': TaskSerializer(recent_tasks, many=True).data,
+        'recent_activities': ActivityLogSerializer(recent_activities, many=True).data,
+        'task_status_counts': status_dict,
+        'priority_counts': priority_dict,
+    }
+    
+    return Response(data)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class TaskViewSet(viewsets.ModelViewSet):
+    queryset = Task.objects.all()
+    serializer_class = TaskSerializer
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return TaskCreateSerializer
+        return TaskSerializer
+
+    @action(detail=False, methods=['get'])
+    def by_status(self, request):
+        status_param = request.query_params.get('status', None)
+        if status_param:
+            tasks = Task.objects.filter(status=status_param)
+        else:
+            tasks = Task.objects.all()
+        serializer = self.get_serializer(tasks, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def statistics(self, request):
+        total_tasks = Task.objects.count()
+        completed_tasks = Task.objects.filter(status='completed').count()
+        pending_tasks = Task.objects.filter(status='pending').count()
+        in_progress_tasks = Task.objects.filter(status='in_progress').count()
+        
+        return Response({
+            'total': total_tasks,
+            'completed': completed_tasks,
+            'pending': pending_tasks,
+            'in_progress': in_progress_tasks,
+            'completion_rate': (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
+        })
+
+
+class ActivityLogViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = ActivityLog.objects.all()
+    serializer_class = ActivityLogSerializer
+
+    @action(detail=False, methods=['get'])
+    def recent(self, request):
+        limit = int(request.query_params.get('limit', 20))
+        activities = ActivityLog.objects.all()[:limit]
+        serializer = self.get_serializer(activities, many=True)
+        return Response(serializer.data)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class DepartmentViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing departments
+    """
+    queryset = Department.objects.all()
+    serializer_class = DepartmentSerializer
+    
+    @action(detail=True, methods=['get'])
+    def jobs(self, request, pk=None):
+        """Get all jobs for a specific department"""
+        department = self.get_object()
+        jobs = department.jobs.all()
+        serializer = JobListSerializer(jobs, many=True)
+        return Response(serializer.data)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class JobViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing jobs with full CRUD operations
+    """
+    queryset = Job.objects.select_related('department', 'created_by').all()
+    serializer_class = JobSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['status', 'department', 'job_type', 'experience_level', 'work_type', 'urgency']
+    search_fields = ['title', 'description', 'requirements', 'location']
+    ordering_fields = ['created_at', 'updated_at', 'title', 'status']
+    ordering = ['-created_at']
+    
+    def get_serializer_class(self):
+        """Return appropriate serializer based on action"""
+        if self.action == 'create':
+            return JobCreateSerializer
+        elif self.action in ['update', 'partial_update']:
+            return JobUpdateSerializer
+        elif self.action == 'list':
+            return JobListSerializer
+        return JobSerializer
+    
+    def perform_create(self, serializer):
+        """Set created_by when creating a job"""
+        serializer.save(created_by=self.request.user if self.request.user.is_authenticated else None)
+
+    def update(self, request, *args, **kwargs):
+        """Custom update method with detailed error logging"""
+        try:
+            print(f"Job update request data: {request.data}")
+            return super().update(request, *args, **kwargs)
+        except Exception as e:
+            print(f"Job update error: {str(e)}")
+            print(f"Job update exception type: {type(e)}")
+            if hasattr(e, 'detail'):
+                print(f"Job update error detail: {e.detail}")
+            raise
+
+    def partial_update(self, request, *args, **kwargs):
+        """Custom partial update method with detailed error logging"""
+        try:
+            print(f"Job partial update request data: {request.data}")
+            instance = self.get_object()
+            print(f"Job being updated: ID={instance.id}, Title={instance.title}")
+            print(f"Current job data: salary_min={instance.salary_min}, salary_max={instance.salary_max}, openings={instance.openings}")
+
+            serializer = self.get_serializer(instance, data=request.data, partial=True)
+            if not serializer.is_valid():
+                print(f"Job validation errors: {serializer.errors}")
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+            self.perform_update(serializer)
+            return Response(serializer.data)
+        except Exception as e:
+            print(f"Job partial update error: {str(e)}")
+            print(f"Job partial update exception type: {type(e)}")
+            if hasattr(e, 'detail'):
+                print(f"Job partial update error detail: {e.detail}")
+            raise
+    
+    @action(detail=False, methods=['get'])
+    def active(self, request):
+        """Get all active jobs"""
+        active_jobs = self.queryset.filter(status='active')
+        page = self.paginate_queryset(active_jobs)
+        if page is not None:
+            serializer = JobListSerializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        
+        serializer = JobListSerializer(active_jobs, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def drafts(self, request):
+        """Get all draft jobs"""
+        draft_jobs = self.queryset.filter(status='draft')
+        page = self.paginate_queryset(draft_jobs)
+        if page is not None:
+            serializer = JobListSerializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        
+        serializer = JobListSerializer(draft_jobs, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def publish(self, request, pk=None):
+        """Publish a job (change status to active)"""
+        job = self.get_object()
+        if job.status != 'draft':
+            return Response(
+                {'error': 'Only draft jobs can be published'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        job.status = 'active'
+        job.published_at = timezone.now()
+        job.save()
+        
+        serializer = self.get_serializer(job)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def pause(self, request, pk=None):
+        """Pause an active job"""
+        job = self.get_object()
+        if job.status != 'active':
+            return Response(
+                {'error': 'Only active jobs can be paused'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        job.status = 'paused'
+        job.save()
+        
+        serializer = self.get_serializer(job)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def close(self, request, pk=None):
+        """Close a job"""
+        job = self.get_object()
+        if job.status in ['closed', 'archived']:
+            return Response(
+                {'error': 'Job is already closed'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        job.status = 'closed'
+        job.closed_at = timezone.now()
+        job.save()
+        
+        serializer = self.get_serializer(job)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def statistics(self, request):
+        """Get job statistics"""
+        stats = {
+            'total': self.queryset.count(),
+            'active': self.queryset.filter(status='active').count(),
+            'draft': self.queryset.filter(status='draft').count(),
+            'paused': self.queryset.filter(status='paused').count(),
+            'closed': self.queryset.filter(status='closed').count(),
+        }
+        
+        # Add department breakdown
+        department_stats = self.queryset.values('department__name').annotate(
+            count=Count('id')
+        ).order_by('-count')
+        
+        # Add urgency breakdown
+        urgency_stats = self.queryset.values('urgency').annotate(
+            count=Count('id')
+        ).order_by('-count')
+        
+        stats['by_department'] = list(department_stats)
+        stats['by_urgency'] = list(urgency_stats)
+        
+        return Response(stats)
+
+
+class CandidateViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing candidates with full CRUD operations
+    """
+    queryset = Candidate.objects.all()
+    serializer_class = CandidateSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['status', 'experience_level', 'source']
+    search_fields = ['first_name', 'last_name', 'email', 'current_company', 'skills']
+    ordering_fields = ['created_at', 'updated_at', 'first_name', 'last_name']
+    ordering = ['-created_at']
+
+    def destroy(self, request, *args, **kwargs):
+        """Delete a candidate"""
+        return super().destroy(request, *args, **kwargs)
+
+    def get_serializer_class(self):
+        """Return appropriate serializer based on action"""
+        if self.action == 'create':
+            return CandidateCreateSerializer
+        elif self.action == 'list':
+            return CandidateListSerializer
+        return CandidateSerializer
+
+    def update(self, request, *args, **kwargs):
+        """Override update to trigger Retell call when status changes to screening and create notifications"""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        old_status = instance.status
+        old_assessment_completed = instance.assessment_completed
+
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        # Check if status changed to 'screening'
+        new_status = serializer.instance.status
+        if old_status != 'screening' and new_status == 'screening':
+            # Trigger Retell AI call
+            try:
+                from .retell_service import trigger_screening_call
+                trigger_screening_call(serializer.instance)
+                logger.info(f"Triggered Retell screening call for candidate {serializer.instance.id}")
+            except Exception as e:
+                logger.error(f"Failed to trigger Retell call: {e}")
+
+        # Check if assessment was just completed with responses
+        new_assessment_completed = serializer.instance.assessment_completed
+        has_responses = bool(serializer.instance.assessment_responses)
+        if not old_assessment_completed and new_assessment_completed and has_responses:
+            # Create notification for WebDesk assessment completion
+            create_notification(
+                candidate=serializer.instance,
+                notification_type='webdesk_completed',
+                title='WebDesk Assessment Completed',
+                message=f'{serializer.instance.name} has completed the WebDesk assessment with a score of {serializer.instance.assessment_score or "N/A"}%.'
+            )
+            logger.info(f"Created WebDesk completion notification for candidate {serializer.instance.id}")
+
+        return Response(serializer.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        """Override partial_update to use the custom update method"""
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
+
+    @action(detail=False, methods=['get'])
+    def statistics(self, request):
+        """Get candidate statistics"""
+        stats = {
+            'total': self.queryset.count(),
+            'new': self.queryset.filter(status='new').count(),
+            'screening': self.queryset.filter(status='screening').count(),
+            'interviewing': self.queryset.filter(status='interviewing').count(),
+            'offered': self.queryset.filter(status='offered').count(),
+            'hired': self.queryset.filter(status='hired').count(),
+            'rejected': self.queryset.filter(status='rejected').count(),
+        }
+        
+        # Add experience level breakdown
+        experience_stats = self.queryset.values('experience_level').annotate(
+            count=Count('id')
+        ).order_by('-count')
+        
+        stats['by_experience'] = list(experience_stats)
+        
+        return Response(stats)
+    
+    @action(detail=True, methods=['get'])
+    def matching_jobs(self, request, pk=None):
+        """
+        Get semantically matching jobs for a specific candidate.
+        Uses sentence-transformers all-MiniLM-L6-v2 for semantic similarity.
+        """
+        try:
+            candidate = self.get_object()
+            limit = int(request.query_params.get('limit', 10))
+            min_score = float(request.query_params.get('min_score', 25.0))
+            
+            # Get active jobs
+            active_jobs = Job.objects.select_related('department').filter(status='active')
+            
+            # Prepare candidate data
+            candidate_data = {
+                'id': candidate.id,
+                'skills': candidate.skills or [],
+                'current_position': candidate.current_position or '',
+                'current_company': candidate.current_company or '',
+                'experience_years': candidate.experience_years or 0,
+                'education': candidate.education or []
+            }
+            
+            # Prepare jobs data
+            jobs_data = []
+            for job in active_jobs:
+                job_data = {
+                    'id': job.id,
+                    'title': job.title,
+                    'description': job.description or '',
+                    'requirements': job.requirements or '',
+                    'experience_level': job.experience_level or '',
+                    'department': {
+                        'name': job.department.name if job.department else '',
+                        'id': job.department.id if job.department else None
+                    },
+                    'job_type': job.job_type or '',
+                    'work_type': getattr(job, 'work_type', ''),
+                    'location': getattr(job, 'location', ''),
+                    'salary_min': getattr(job, 'salary_min', None),
+                    'salary_max': getattr(job, 'salary_max', None)
+                }
+                jobs_data.append(job_data)
+            
+            # Find matching jobs using semantic analysis
+            matcher = get_semantic_matcher()
+            job_matches = matcher.find_best_matching_jobs(candidate_data, jobs_data, top_k=limit)
+            
+            # Filter by minimum score and prepare response
+            matching_jobs = []
+            for job_data, score in job_matches:
+                if score >= min_score:
+                    matching_jobs.append({
+                        'id': job_data['id'],
+                        'title': job_data['title'],
+                        'department': job_data['department']['name'],
+                        'experience_level': job_data['experience_level'],
+                        'job_type': job_data['job_type'],
+                        'location': job_data.get('location', ''),
+                        'salary_min': job_data.get('salary_min'),
+                        'salary_max': job_data.get('salary_max'),
+                        'match_score': score,
+                        'match_level': 'high' if score >= 75 else 'medium' if score >= 50 else 'low'
+                    })
+            
+            return Response({
+                'candidate_id': candidate.id,
+                'candidate_name': candidate.full_name,
+                'matching_jobs': matching_jobs,
+                'total_matches': len(matching_jobs),
+                'algorithm': 'semantic_similarity_all_minilm_l6_v2'
+            })
+            
+        except Exception as e:
+            logger.error(f"Error in candidate matching jobs: {e}")
+            return Response(
+                {'error': f'Failed to find matching jobs: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['post'])
+    def generate_credentials(self, request, pk=None):
+        """
+        Generate WebDesk assessment credentials for a candidate
+        """
+        import random
+        import string
+
+        try:
+            candidate = self.get_object()
+
+            # Generate username from first name + random numbers
+            first_name = candidate.first_name.lower().replace(' ', '')
+            random_suffix = ''.join(random.choices(string.digits, k=4))
+            username = f"{first_name}{random_suffix}"
+
+            # Generate random password (8 characters: letters + numbers + special chars)
+            password_chars = string.ascii_letters + string.digits + '@#$%'
+            password = ''.join(random.choices(password_chars, k=8))
+
+            # Update candidate with credentials
+            candidate.assessment_username = username
+            candidate.assessment_password = password
+            candidate.save()
+
+            return Response({
+                'id': candidate.id,
+                'assessment_username': username,
+                'assessment_password': password,
+                'message': 'Credentials generated successfully'
+            })
+
+        except Exception as e:
+            logger.error(f"Error generating credentials: {e}")
+            return Response(
+                {'error': f'Failed to generate credentials: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['post'])
+    def save_retell_call_data(self, request, pk=None):
+        """
+        Save Retell AI call data to candidate record
+
+        Expected request body:
+        {
+            "call_id": "call_abc123",
+            "call_status": "ended",
+            "call_type": "phone_call",
+            "recording_url": "https://...",
+            "transcript": "Full transcript text...",
+            "transcript_object": [...],
+            "call_analysis": {
+                "call_summary": "...",
+                "user_sentiment": "Positive",
+                "call_successful": true,
+                "in_voicemail": false,
+                "custom_analysis_data": {
+                    "interview_scheduled": true,
+                    "scheduled_date": "2025-10-08",
+                    "scheduled_time": "10:00 AM",
+                    ...
+                }
+            },
+            "duration_ms": 600000,
+            "start_timestamp": 1704067200000,
+            "end_timestamp": 1704067800000,
+            "metadata": {...},
+            "public_log_url": "https://..."
+        }
+        """
+        try:
+            candidate = self.get_object()
+            data = request.data
+
+            # Debug logging
+            logger.info(f"Received Retell data for candidate {pk}")
+            logger.info(f"Has call_analysis: {bool(data.get('call_analysis'))}")
+            if data.get('call_analysis'):
+                logger.info(f"Custom analysis data: {data.get('call_analysis', {}).get('custom_analysis_data')}")
+
+            # Basic call info - only essentials
+            if 'call_id' in data:
+                candidate.retell_call_id = data['call_id']
+            if 'call_status' in data:
+                candidate.retell_call_status = data['call_status']
+            if 'call_type' in data:
+                candidate.retell_call_type = data['call_type']
+            if 'recording_url' in data:
+                candidate.retell_recording_url = data['recording_url']
+            # DON'T save full transcript - too large, just store URL to access it
+            # if 'transcript' in data:
+            #     candidate.retell_transcript = data['transcript']
+            # DON'T save transcript_object - too large
+            # if 'transcript_object' in data:
+            #     candidate.retell_transcript_object = data['transcript_object']
+            if 'duration_ms' in data:
+                candidate.retell_call_duration_ms = data['duration_ms']
+            if 'start_timestamp' in data:
+                candidate.retell_start_timestamp = data['start_timestamp']
+            if 'end_timestamp' in data:
+                candidate.retell_end_timestamp = data['end_timestamp']
+            # Only save essential metadata (candidate_id, job_id)
+            if 'metadata' in data:
+                candidate.retell_metadata = data['metadata']
+            if 'public_log_url' in data:
+                candidate.retell_public_log_url = data['public_log_url']
+
+            # Extract from Dynamic Variables (retell_llm_dynamic_variables or collected_dynamic_variables)
+            dynamic_vars = data.get('retell_llm_dynamic_variables') or data.get('collected_dynamic_variables') or {}
+
+            # Extract from dynamic variables if available
+            if dynamic_vars:
+                if 'interviewDate' in dynamic_vars or 'interview_date' in dynamic_vars:
+                    interview_date = dynamic_vars.get('interviewDate') or dynamic_vars.get('interview_date')
+                    candidate.retell_scheduled_date = interview_date
+                    candidate.retell_interview_scheduled = True
+
+                if 'interviewTime' in dynamic_vars or 'interview_time' in dynamic_vars:
+                    interview_time = dynamic_vars.get('interviewTime') or dynamic_vars.get('interview_time')
+                    candidate.retell_scheduled_time = interview_time
+                    candidate.retell_interview_scheduled = True
+
+                if 'interviewTimezone' in dynamic_vars or 'timezone' in dynamic_vars:
+                    timezone_val = dynamic_vars.get('interviewTimezone') or dynamic_vars.get('timezone')
+                    candidate.retell_scheduled_timezone = timezone_val
+                    candidate.retell_candidate_timezone = timezone_val
+
+                if 'candidateName' in dynamic_vars:
+                    # Store in additional notes
+                    candidate.retell_additional_notes = f"Candidate Name from call: {dynamic_vars['candidateName']}"
+
+                if 'candidateEmail' in dynamic_vars:
+                    # Could update candidate email if needed
+                    pass
+
+                if 'jobTitle' in dynamic_vars:
+                    # Store job title in metadata
+                    if not candidate.retell_metadata:
+                        candidate.retell_metadata = {}
+                    candidate.retell_metadata['job_title'] = dynamic_vars['jobTitle']
+
+            # Call analysis data - extract only what we need, don't store full JSON
+            call_analysis = data.get('call_analysis', {})
+            if call_analysis:
+                # DON'T save full call_analysis - too large and redundant
+                # candidate.retell_call_analysis = call_analysis
+
+                # Extract only the essential analysis fields
+                if 'call_summary' in call_analysis:
+                    candidate.retell_call_summary = call_analysis['call_summary']
+                if 'user_sentiment' in call_analysis:
+                    candidate.retell_user_sentiment = call_analysis['user_sentiment']
+                if 'call_successful' in call_analysis:
+                    candidate.retell_call_successful = call_analysis['call_successful']
+                if 'in_voicemail' in call_analysis:
+                    candidate.retell_in_voicemail = call_analysis['in_voicemail']
+
+                # Extract custom analysis data - THIS IS WHAT WE ACTUALLY NEED
+                custom_data = call_analysis.get('custom_analysis_data', {})
+                if custom_data:
+                    logger.info(f"Processing custom_data keys: {list(custom_data.keys())}")
+
+                    # Interview scheduling fields (check multiple possible field names)
+                    if 'interview_scheduled' in custom_data:
+                        candidate.retell_interview_scheduled = custom_data['interview_scheduled']
+
+                    # Check for scheduled_date
+                    if 'scheduled_date' in custom_data:
+                        candidate.retell_scheduled_date = custom_data['scheduled_date']
+                        logger.info(f"Set scheduled_date: {custom_data['scheduled_date']}")
+                        # Auto-set interview_scheduled to True if we have a date
+                        candidate.retell_interview_scheduled = True
+
+                    # Check for scheduled_time or retell_scheduled_time
+                    if 'scheduled_time' in custom_data:
+                        candidate.retell_scheduled_time = custom_data['scheduled_time']
+                        logger.info(f"Set scheduled_time: {custom_data['scheduled_time']}")
+                        # Auto-set interview_scheduled to True if we have a time
+                        candidate.retell_interview_scheduled = True
+                    elif 'retell_scheduled_time' in custom_data:
+                        candidate.retell_scheduled_time = custom_data['retell_scheduled_time']
+                        logger.info(f"Set retell_scheduled_time: {custom_data['retell_scheduled_time']}")
+                        # Auto-set interview_scheduled to True if we have a time
+                        candidate.retell_interview_scheduled = True
+
+                    if 'scheduled_timezone' in custom_data:
+                        candidate.retell_scheduled_timezone = custom_data['scheduled_timezone']
+                    if 'scheduled_datetime_iso' in custom_data:
+                        candidate.retell_scheduled_datetime_iso = custom_data['scheduled_datetime_iso']
+                    if 'candidate_timezone' in custom_data:
+                        candidate.retell_candidate_timezone = custom_data['candidate_timezone']
+                    if 'availability_preference' in custom_data:
+                        candidate.retell_availability_preference = custom_data['availability_preference']
+                    if 'unavailable_dates' in custom_data:
+                        candidate.retell_unavailable_dates = custom_data['unavailable_dates']
+
+                    # Screening fields
+                    if 'is_qualified_candidate' in custom_data:
+                        candidate.retell_is_qualified = custom_data['is_qualified_candidate']
+                    if 'candidate_interest_level' in custom_data or 'interest_level' in custom_data:
+                        candidate.retell_interest_level = custom_data.get('candidate_interest_level') or custom_data.get('interest_level')
+                    if 'technical_skills_mentioned' in custom_data or 'technical_skills' in custom_data:
+                        candidate.retell_technical_skills = custom_data.get('technical_skills_mentioned') or custom_data.get('technical_skills')
+                    if 'questions_asked' in custom_data or 'questions_asked_by_candidate' in custom_data:
+                        candidate.retell_questions_asked = custom_data.get('questions_asked') or custom_data.get('questions_asked_by_candidate')
+                    if 'outcome' in custom_data or 'call_outcome' in custom_data:
+                        candidate.retell_call_outcome = custom_data.get('outcome') or custom_data.get('call_outcome')
+                    if 'rejection_reason' in custom_data:
+                        candidate.retell_rejection_reason = custom_data['rejection_reason']
+                    if 'additional_notes' in custom_data:
+                        candidate.retell_additional_notes = custom_data['additional_notes']
+
+                    # SMART DATE PARSING: Handle relative dates like "tomorrow", "next Monday"
+                    if 'scheduled_date' in custom_data:
+                        date_str = custom_data['scheduled_date']
+                        # Check if it's a relative date expression
+                        from .utils.date_parser import parse_relative_date
+                        parsed_date = parse_relative_date(date_str)
+                        if parsed_date:
+                            candidate.retell_scheduled_date = parsed_date['date']
+                            # If time not already set, use the parsed default time
+                            if not candidate.retell_scheduled_time and parsed_date.get('time'):
+                                candidate.retell_scheduled_time = parsed_date['time']
+                            if parsed_date.get('iso'):
+                                candidate.retell_scheduled_datetime_iso = parsed_date['iso']
+                            logger.info(f"Parsed relative date '{date_str}' to {parsed_date['date']}")
+
+                    # CALLBACK SCHEDULING: Handle "call me after 10 minutes", "call later", etc.
+                    callback_time_str = custom_data.get('callback_time') or custom_data.get('preferred_callback_time')
+                    if callback_time_str:
+                        from .utils.date_parser import parse_callback_time
+                        from .utils.retell_scheduler import schedule_retell_callback
+
+                        callback_datetime = parse_callback_time(callback_time_str)
+                        if callback_datetime:
+                            schedule_retell_callback(
+                                candidate,
+                                callback_datetime,
+                                f"Candidate requested: {callback_time_str}"
+                            )
+                            logger.info(f"Scheduled callback for {callback_datetime} based on '{callback_time_str}'")
+
+                    # Check if callback should be scheduled based on call outcome
+                    if candidate.retell_call_outcome:
+                        from .utils.date_parser import should_schedule_callback, parse_callback_time
+                        from .utils.retell_scheduler import schedule_retell_callback
+
+                        if should_schedule_callback(candidate.retell_call_outcome, custom_data):
+                            # Try to extract callback time from outcome or notes
+                            callback_text = candidate.retell_call_outcome
+                            if candidate.retell_additional_notes:
+                                callback_text += " " + candidate.retell_additional_notes
+
+                            callback_datetime = parse_callback_time(callback_text)
+                            if callback_datetime:
+                                schedule_retell_callback(
+                                    candidate,
+                                    callback_datetime,
+                                    "Callback requested during call"
+                                )
+                                logger.info(f"Auto-scheduled callback based on call outcome")
+
+            # IMPORTANT: Check for rejection AFTER processing all data (outside custom_data block)
+            # This ensures rejection detection works even if custom_analysis_data is missing
+            logger.info(f"=== REJECTION CHECK START for candidate {candidate.id} ===")
+            logger.info(f"Interview scheduled: {candidate.retell_interview_scheduled}")
+            logger.info(f"Call summary exists: {bool(candidate.retell_call_summary)}")
+            logger.info(f"Call outcome: {candidate.retell_call_outcome}")
+
+            # Update candidate status based on call outcome OR call summary
+            # IMPORTANT: Check for rejection FIRST, regardless of interview_scheduled status!
+            is_rejected = False
+            rejection_source = None
+
+            # Check call outcome first
+            if candidate.retell_call_outcome:
+                rejection_outcomes = ['Not Interested', 'Accepted Another Offer', 'Not Proceeding', 'Declined']
+                outcome_lower = candidate.retell_call_outcome.lower()
+
+                is_rejected = (
+                    candidate.retell_call_outcome in rejection_outcomes or
+                    'not interested' in outcome_lower or
+                    'another offer' in outcome_lower or
+                    'accepted offer' in outcome_lower or
+                    'not proceeding' in outcome_lower or
+                    'not proceed' in outcome_lower or
+                    'declined' in outcome_lower or
+                    'withdraw' in outcome_lower or
+                    'decided not to' in outcome_lower
+                )
+                if is_rejected:
+                    rejection_source = candidate.retell_call_outcome
+                    logger.info(f"Rejection found in call outcome: {candidate.retell_call_outcome}")
+
+            # Also check call summary for rejection indicators
+            if not is_rejected and candidate.retell_call_summary:
+                summary_lower = candidate.retell_call_summary.lower()
+                logger.info(f"Checking call summary for rejection keywords...")
+                logger.info(f"Summary (first 200 chars): {candidate.retell_call_summary[:200]}")
+
+                rejection_indicators = [
+                    'not interested',
+                    'another offer',
+                    'accepted offer',
+                    'accepted another',
+                    'not proceeding',
+                    'not proceed',
+                    'decided not to',
+                    'does not wish to proceed',
+                    'doesn\'t wish to proceed',
+                    'not wish to proceed',
+                    'declined',
+                    'withdraw',
+                    'no longer interested',
+                    'already accepted',
+                    'found another position',
+                    'took another job',
+                    'expressed disinterest',
+                    'disinterest',
+                    'cannot travel',
+                    'can\'t travel',
+                    'unable to travel',
+                    'not able to travel',
+                    'cannot relocate',
+                    'can\'t relocate',
+                    'not available',
+                    'no longer available',
+                    'pursuing other',
+                    'polite exchange',
+                    'call ended with a polite',
+                    'expressed that he cannot',
+                    'expressed that she cannot',
+                    'not moving forward',
+                    'won\'t be moving forward',
+                    'will not be moving forward'
+                ]
+
+                for indicator in rejection_indicators:
+                    if indicator in summary_lower:
+                        is_rejected = True
+                        rejection_source = 'Candidate not interested (from call summary)'
+                        logger.info(f"[REJECTION] Found keyword '{indicator}' in summary for candidate {candidate.id}")
+                        break
+
+                if not is_rejected:
+                    logger.info(f"No rejection keywords found in summary")
+
+            # Apply rejection if detected (TAKES PRIORITY over interview_scheduled!)
+            if is_rejected:
+                candidate.status = 'rejected'
+                # Set rejection reason if not already set
+                if not candidate.retell_rejection_reason:
+                    candidate.retell_rejection_reason = rejection_source or 'Not Interested'
+                # Set outcome if not already set
+                if not candidate.retell_call_outcome:
+                    candidate.retell_call_outcome = 'Not Interested'
+                # Clear interview scheduled flag since candidate is not interested
+                candidate.retell_interview_scheduled = False
+                logger.info(f"[REJECTED] Candidate {candidate.id} marked as REJECTED. Reason: {candidate.retell_rejection_reason}")
+            elif candidate.retell_interview_scheduled:
+                # Only set to interviewing if NOT rejected
+                candidate.status = 'interviewing'
+                logger.info(f"Setting status to 'interviewing' (interview scheduled)")
+            else:
+                logger.info(f"Candidate {candidate.id} - no special status change")
+
+            logger.info(f"=== REJECTION CHECK END - Final status: {candidate.status} ===")
+
+            candidate.save()
+
+            # Send WebDesk email automatically after call ends if interview is scheduled
+            # BUT NOT if candidate is rejected OR if date/time not provided OR if email already sent
+            # Use atomic database update to prevent race conditions
+            from django.db import transaction
+
+            email_sent = False
+            if candidate.retell_call_status == 'ended' and candidate.retell_interview_scheduled and candidate.status != 'rejected':
+                # Check if date and time are provided
+                has_date = bool(candidate.retell_scheduled_date and candidate.retell_scheduled_date.strip())
+                has_time = bool(candidate.retell_scheduled_time and candidate.retell_scheduled_time.strip())
+
+                if has_date and has_time:
+                    # Use atomic transaction with select_for_update to prevent race condition
+                    # This ensures only ONE request can send the email even if multiple requests arrive simultaneously
+                    should_send_email = False
+                    try:
+                        with transaction.atomic():
+                            # Lock the candidate row and check if email already sent
+                            candidate_locked = Candidate.objects.select_for_update().get(id=candidate.id)
+
+                            # Check BOTH flags to prevent duplicates
+                            if not candidate_locked.retell_email_sent and not candidate_locked.webdesk_email_sent:
+                                logger.info(f"Attempting to send WebDesk email to candidate {candidate.id}")
+                                logger.info(f"Interview scheduled: {candidate.retell_scheduled_date} at {candidate.retell_scheduled_time}")
+
+                                # Set the flag BEFORE sending email to prevent other threads from trying
+                                candidate_locked.retell_email_sent = True
+                                candidate_locked.save(update_fields=['retell_email_sent'])
+                                should_send_email = True
+                            else:
+                                logger.info(f"Skipping WebDesk email for candidate {candidate.id} - email already sent (retell_email_sent={candidate_locked.retell_email_sent}, webdesk_email_sent={candidate_locked.webdesk_email_sent})")
+
+                        # Send email OUTSIDE the transaction to avoid holding the lock too long
+                        if should_send_email:
+                            email_sent = send_webdesk_email(candidate)
+
+                            if email_sent:
+                                logger.info(f"WebDesk email sent successfully to candidate {candidate.id}")
+
+                                # Create notification for HR users
+                                create_notification(
+                                    candidate=candidate,
+                                    notification_type='retell_completed',
+                                    title='Retell Call Completed',
+                                    message=f'{candidate.name} has completed the Retell screening call. Interview scheduled for {candidate.retell_scheduled_date} at {candidate.retell_scheduled_time}.'
+                                )
+                            else:
+                                # If email failed, reset the flag so it can be retried
+                                Candidate.objects.filter(id=candidate.id).update(retell_email_sent=False)
+                                logger.warning(f"Email send failed, flag reset for retry")
+                    except Exception as e:
+                        logger.error(f"Error in atomic email send transaction: {e}")
+                else:
+                    logger.warning(f"Skipping WebDesk email for candidate {candidate.id} - Date/Time not provided")
+                    logger.warning(f"  Date: '{candidate.retell_scheduled_date}' | Time: '{candidate.retell_scheduled_time}'")
+            elif candidate.status == 'rejected':
+                logger.info(f"Skipping WebDesk email for candidate {candidate.id} - status is rejected")
+
+            serializer = self.get_serializer(candidate)
+            response_data = {
+                'success': True,
+                'message': 'Retell call data saved successfully',
+                'candidate': serializer.data
+            }
+
+            if email_sent:
+                response_data['email_sent'] = True
+                response_data['message'] += ' and WebDesk email sent to candidate'
+
+            return Response(response_data)
+
+        except Exception as e:
+            logger.error(f"Error saving Retell call data: {e}")
+            return Response(
+                {'success': False, 'error': f'Failed to save Retell call data: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+@csrf_exempt
+@api_view(['POST'])
+def parse_resume(request):
+    """
+    Parse uploaded resume file and extract information
+    """
+    if 'file' not in request.FILES:
+        return Response(
+            {'error': 'No file provided'}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    uploaded_file = request.FILES['file']
+    
+    # Check file extension
+    if not uploaded_file.name.lower().endswith(('.pdf', '.docx', '.doc')):
+        return Response(
+            {'error': 'Only PDF and DOCX files are supported'}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        # Save file temporarily for parsing
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1]) as temp_file:
+            for chunk in uploaded_file.chunks():
+                temp_file.write(chunk)
+            temp_file_path = temp_file.name
+        
+        # Parse the resume using PyTorch-based parser
+        parser = PyTorchResumeParser()
+        parsed_data = parser.parse_resume(temp_file_path, uploaded_file.name)
+        print(f"Using PyTorch resume parser for: {uploaded_file.name}")
+        
+        # Clean up temporary file
+        os.unlink(temp_file_path)
+        
+        if 'error' in parsed_data:
+            return Response(
+                {'error': parsed_data['error']}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Store the uploaded file for future access
+        import uuid
+        from django.core.files.storage import default_storage
+        from django.core.files.base import ContentFile
+        
+        # Generate unique filename
+        file_extension = os.path.splitext(uploaded_file.name)[1]
+        unique_filename = f"resume_{uuid.uuid4().hex}{file_extension}"
+        
+        # Reset file pointer to beginning
+        uploaded_file.seek(0)
+        
+        # Save file to media storage
+        file_path = default_storage.save(f'resumes/{unique_filename}', ContentFile(uploaded_file.read()))
+        file_url = default_storage.url(file_path)
+        
+        # Clean parsed data to remove null characters that cause serializer issues
+        def clean_null_chars(obj):
+            if isinstance(obj, str):
+                return obj.replace('\x00', '').replace('\0', '')
+            elif isinstance(obj, list):
+                return [clean_null_chars(item) for item in obj]
+            elif isinstance(obj, dict):
+                return {key: clean_null_chars(value) for key, value in obj.items()}
+            return obj
+
+        parsed_data = clean_null_chars(parsed_data)
+
+        # Add file information to parsed data
+        parsed_data['resume_file_url'] = file_url
+        parsed_data['resume_file_path'] = file_path
+        parsed_data['original_filename'] = uploaded_file.name
+        
+        # Serialize the response
+        serializer = ResumeParseSerializer(data=parsed_data)
+        if serializer.is_valid():
+            response_data = serializer.validated_data
+            # Add file info to response
+            response_data['resume_file_url'] = file_url
+            response_data['resume_file_path'] = file_path
+            response_data['original_filename'] = uploaded_file.name
+            return Response(response_data)
+        else:
+            print(f"Serializer validation failed for {uploaded_file.name}: {serializer.errors}")
+            print(f"Parsed data: {parsed_data}")
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+    except Exception as e:
+        return Response(
+            {'error': f'Failed to parse resume: {str(e)}'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@csrf_exempt
+@api_view(['POST'])
+def bulk_create_candidates(request):
+    """
+    Create multiple candidates from parsed resume data
+    """
+    candidates_data = request.data.get('candidates', [])
+    
+    if not candidates_data:
+        return Response(
+            {'error': 'No candidate data provided'}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    created_candidates = []
+    errors = []
+    
+    for i, candidate_data in enumerate(candidates_data):
+        try:
+            # Parse name into first_name and last_name
+            name = candidate_data.get('name', '').strip()
+            original_filename = candidate_data.get('original_filename', '')
+
+            if name:
+                name_parts = name.split()
+                candidate_data['first_name'] = name_parts[0] if name_parts else ''
+                candidate_data['last_name'] = ' '.join(name_parts[1:]) if len(name_parts) > 1 else 'Unknown'
+            else:
+                # Try to extract name from filename as fallback
+                if original_filename:
+                    # Extract name from filename (e.g., "John_Doe_Resume.pdf" -> "John Doe")
+                    filename_base = os.path.splitext(original_filename)[0]
+                    # Remove common resume-related words and experience indicators
+                    cleanup_words = ['_Resume', '_CV', '_react', '_React', '_months', '_Months', '_years', '_Years', '_yrs', '_experience', '_exp']
+                    for word in cleanup_words:
+                        filename_base = filename_base.replace(word, '')
+
+                    # Remove numbers followed by time units (e.g., "_7Months", "_24months", "_3Years")
+                    filename_base = re.sub(r'_\d+(?:months?|years?|yrs?|mos?)', '', filename_base, flags=re.IGNORECASE)
+                    name_from_file = filename_base.replace('_', ' ').strip()
+
+                    if name_from_file:
+                        name_parts = name_from_file.split()
+                        # Filter out tech terms that aren't names
+                        name_parts = [part for part in name_parts if part.lower() not in ['react', 'python', 'java', 'js', 'node', 'angular', 'vue']]
+                        candidate_data['first_name'] = name_parts[0] if name_parts else 'Unknown'
+                        candidate_data['last_name'] = ' '.join(name_parts[1:]) if len(name_parts) > 1 else 'Candidate'
+                    else:
+                        candidate_data['first_name'] = 'Unknown'
+                        candidate_data['last_name'] = 'Candidate'
+                else:
+                    candidate_data['first_name'] = 'Unknown'
+                    candidate_data['last_name'] = 'Candidate'
+
+            # Ensure we have valid first_name and last_name after parsing
+            first_name = candidate_data.get('first_name', '').strip()
+            last_name = candidate_data.get('last_name', '').strip()
+
+            if not first_name:
+                candidate_data['first_name'] = 'Unknown'
+                first_name = 'Unknown'
+            if not last_name:
+                candidate_data['last_name'] = 'Candidate'
+                last_name = 'Candidate'
+            
+            # Map experience data and ensure integer conversion
+            experience_data = candidate_data.get('experience', {})
+            experience_years = candidate_data.get('experience_years')
+            if experience_years is not None:
+                try:
+                    # Convert to integer (round up for partial years)
+                    candidate_data['experience_years'] = max(1, int(round(float(experience_years))))
+                except (ValueError, TypeError):
+                    candidate_data['experience_years'] = None
+            if isinstance(experience_data, dict):
+                candidate_data['experience_years'] = experience_data.get('years')
+            
+            # Extract and truncate current_position and current_company to prevent validation errors
+            if 'current_position' in candidate_data and candidate_data['current_position']:
+                current_position = str(candidate_data['current_position']).strip()
+                if len(current_position) > 200:
+                    candidate_data['current_position'] = current_position[:197] + '...'
+                else:
+                    candidate_data['current_position'] = current_position
+
+            if 'current_company' in candidate_data and candidate_data['current_company']:
+                current_company = str(candidate_data['current_company']).strip()
+                if len(current_company) > 200:
+                    candidate_data['current_company'] = current_company[:197] + '...'
+                else:
+                    candidate_data['current_company'] = current_company
+
+            # Also truncate location if present
+            if 'location' in candidate_data and candidate_data['location']:
+                location = str(candidate_data['location']).strip()
+                if len(location) > 200:
+                    candidate_data['location'] = location[:197] + '...'
+                else:
+                    candidate_data['location'] = location
+            
+            # Clean up data
+            candidate_data.pop('name', None)
+            candidate_data.pop('experience', None)
+            candidate_data.pop('text', None)
+            
+            # Check for duplicates before creating
+            email = candidate_data.get('email', '').strip()
+            first_name = candidate_data.get('first_name', '').strip()
+            last_name = candidate_data.get('last_name', '').strip()
+
+            
+            # Handle empty email - convert to None for database storage
+            if not email:
+                candidate_data['email'] = None
+            else:
+                # Clean email - remove non-printable characters and extra whitespace
+                email = ''.join(char for char in email if char.isprintable()).strip()
+                candidate_data['email'] = email
+
+                # Validate email format before proceeding
+                from django.core.validators import validate_email
+                from django.core.exceptions import ValidationError
+                try:
+                    validate_email(email)
+                except ValidationError:
+                    errors.append(f"Candidate {i+1}: Invalid email format '{email}'")
+                    continue
+
+                # Check for email duplicates only if email is provided
+                existing_candidate = Candidate.objects.filter(email__iexact=email).first()
+                if existing_candidate:
+                    # Update existing candidate instead of rejecting
+                    resume_file_path = candidate_data.get('resume_file_path')
+                    serializer = CandidateCreateSerializer(existing_candidate, data=candidate_data, partial=True)
+                    if serializer.is_valid():
+                        candidate = serializer.save()
+                        # Set resume file path after candidate update if available
+                        if resume_file_path:
+                            candidate.resume_file = resume_file_path
+                            candidate.save()
+                        created_candidates.append(CandidateListSerializer(candidate).data)
+                        continue
+                    else:
+                        errors.append(f"Candidate {i+1}: Error updating existing candidate with email '{email}': {serializer.errors}")
+                        continue
+
+            # Check for name duplicates only if no email provided
+            if not email and first_name and last_name:
+                existing_candidate = Candidate.objects.filter(
+                    first_name__iexact=first_name,
+                    last_name__iexact=last_name
+                ).first()
+                if existing_candidate:
+                    # Update existing candidate instead of rejecting
+                    resume_file_path = candidate_data.get('resume_file_path')
+                    serializer = CandidateCreateSerializer(existing_candidate, data=candidate_data, partial=True)
+                    if serializer.is_valid():
+                        candidate = serializer.save()
+                        # Set resume file path after candidate update if available
+                        if resume_file_path:
+                            candidate.resume_file = resume_file_path
+                            candidate.save()
+                        created_candidates.append(CandidateListSerializer(candidate).data)
+                        continue
+                    else:
+                        errors.append(f"Candidate {i+1}: Error updating existing candidate '{first_name} {last_name}': {serializer.errors}")
+                        continue
+            
+            # Handle resume file path if present
+            resume_file_path = candidate_data.get('resume_file_path')
+            if resume_file_path:
+                # Remove file-related fields from candidate_data as we'll set them after creation
+                candidate_data.pop('resume_file_path', None)
+                candidate_data.pop('resume_file_url', None)
+                candidate_data.pop('original_filename', None)
+            
+            serializer = CandidateCreateSerializer(data=candidate_data)
+            if serializer.is_valid():
+                candidate = serializer.save()
+                
+                # Set resume file path after candidate creation if available
+                if resume_file_path:
+                    candidate.resume_file.name = resume_file_path
+                    candidate.save(update_fields=['resume_file'])
+                
+                # Note: current_position should come directly from parsed resume data
+                # No longer auto-generating job titles from skills and experience
+                
+                created_candidates.append(CandidateListSerializer(candidate).data)
+            else:
+                errors.append(f"Candidate {i+1}: {serializer.errors}")
+                
+        except Exception as e:
+            errors.append(f"Candidate {i+1}: {str(e)}")
+    
+    return Response({
+        'success': len(created_candidates),
+        'failed': len(errors),
+        'total': len(candidates_data),
+        'candidates': created_candidates,
+        'errors': errors
+    })
+
+
+@api_view(['GET', 'HEAD'])
+def view_resume(request, candidate_id):
+    """
+    Serve resume file for viewing/download
+    """
+    try:
+        candidate = Candidate.objects.get(id=candidate_id)
+        
+        # Handle HEAD request
+        if request.method == 'HEAD':
+            if not candidate.resume_file or not default_storage.exists(candidate.resume_file.name):
+                return HttpResponse(status=404)
+            else:
+                response = HttpResponse(status=200)
+                # Set content type for HEAD request
+                file_name = candidate.resume_file.name.lower()
+                if file_name.endswith('.pdf'):
+                    response['Content-Type'] = 'application/pdf'
+                elif file_name.endswith('.docx'):
+                    response['Content-Type'] = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                elif file_name.endswith('.doc'):
+                    response['Content-Type'] = 'application/msword'
+                return response
+        
+        if not candidate.resume_file:
+            # Return HTML page for better user experience
+            html_content = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Resume Not Available</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; margin: 50px; text-align: center; }}
+                    .container {{ max-width: 500px; margin: 0 auto; }}
+                    h1 {{ color: #666; }}
+                    .message {{ background: #f5f5f5; padding: 20px; border-radius: 5px; margin: 20px 0; }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>Resume Not Available</h1>
+                    <div class="message">
+                        <p>No resume file has been uploaded for <strong>{candidate.first_name} {candidate.last_name}</strong>.</p>
+                        <p>Only extracted text may be available in the candidate profile.</p>
+                    </div>
+                    <p><a href="javascript:window.close()">Close this tab</a></p>
+                </div>
+            </body>
+            </html>
+            """
+            return HttpResponse(html_content, content_type='text/html')
+        
+        # Check if file exists in storage
+        if not default_storage.exists(candidate.resume_file.name):
+            html_content = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Resume File Missing</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; margin: 50px; text-align: center; }}
+                    .container {{ max-width: 500px; margin: 0 auto; }}
+                    h1 {{ color: #666; }}
+                    .message {{ background: #fff3cd; padding: 20px; border-radius: 5px; margin: 20px 0; border: 1px solid #ffeaa7; }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>Resume File Missing</h1>
+                    <div class="message">
+                        <p>The resume file for <strong>{candidate.first_name} {candidate.last_name}</strong> could not be found in storage.</p>
+                        <p>The file may have been moved or deleted. Please contact support if this persists.</p>
+                    </div>
+                    <p><a href="javascript:window.close()">Close this tab</a></p>
+                </div>
+            </body>
+            </html>
+            """
+            return HttpResponse(html_content, content_type='text/html')
+        
+        # Get file content
+        file_content = default_storage.open(candidate.resume_file.name).read()
+        
+        # Determine content type
+        file_name = candidate.resume_file.name.lower()
+        if file_name.endswith('.pdf'):
+            content_type = 'application/pdf'
+        elif file_name.endswith('.docx'):
+            content_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        elif file_name.endswith('.doc'):
+            content_type = 'application/msword'
+        else:
+            content_type = 'application/octet-stream'
+        
+        # Create response with file content
+        response = HttpResponse(file_content, content_type=content_type)
+        
+        # Set filename for download
+        original_name = os.path.basename(candidate.resume_file.name)
+        candidate_name = f"{candidate.first_name}_{candidate.last_name}".replace(' ', '_')
+        filename = f"{candidate_name}_resume{os.path.splitext(original_name)[1]}"
+        
+        # Add headers for inline viewing (not download)
+        response['Content-Disposition'] = f'inline; filename="{filename}"'
+        
+        return response
+        
+    except Candidate.DoesNotExist:
+        html_content = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Candidate Not Found</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 50px; text-align: center; }
+                .container { max-width: 500px; margin: 0 auto; }
+                h1 { color: #d63031; }
+                .message { background: #ffe0e0; padding: 20px; border-radius: 5px; margin: 20px 0; border: 1px solid #ff7675; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>Candidate Not Found</h1>
+                <div class="message">
+                    <p>The requested candidate could not be found.</p>
+                </div>
+                <p><a href="javascript:window.close()">Close this tab</a></p>
+            </div>
+        </body>
+        </html>
+        """
+        return HttpResponse(html_content, content_type='text/html')
+    except Exception as e:
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Error Loading Resume</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; margin: 50px; text-align: center; }}
+                .container {{ max-width: 500px; margin: 0 auto; }}
+                h1 {{ color: #d63031; }}
+                .message {{ background: #ffe0e0; padding: 20px; border-radius: 5px; margin: 20px 0; border: 1px solid #ff7675; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>Error Loading Resume</h1>
+                <div class="message">
+                    <p>An error occurred while trying to load the resume:</p>
+                    <p><em>{str(e)}</em></p>
+                </div>
+                <p><a href="javascript:window.close()">Close this tab</a></p>
+            </div>
+        </body>
+        </html>
+        """
+        return HttpResponse(html_content, content_type='text/html')
+
+
+def generate_job_title_for_candidate(candidate):
+    """
+    DEPRECATED: Generate a job title for a single candidate based on their skills and experience
+    This function is no longer used as job titles now come directly from parsed resume data.
+    """
+    if not candidate.skills:
+        return None
+    
+    # Skill-based job title mapping (same as in API endpoint)
+    skill_to_job_mapping = {
+        # Frontend Development
+        'react': 'Frontend Developer',
+        'angular': 'Frontend Developer', 
+        'vue': 'Frontend Developer',
+        'html': 'Frontend Developer',
+        'css': 'Frontend Developer',
+        'javascript': 'Frontend Developer',
+        'typescript': 'Frontend Developer',
+        
+        # Backend Development
+        'python': 'Backend Developer',
+        'java': 'Backend Developer',
+        'node.js': 'Backend Developer',
+        'php': 'Backend Developer',
+        'c#': 'Backend Developer',
+        'go': 'Backend Developer',
+        'ruby': 'Backend Developer',
+        'express': 'Backend Developer',
+        'django': 'Backend Developer',
+        'flask': 'Backend Developer',
+        'spring': 'Backend Developer',
+        
+        # Full Stack
+        'full stack': 'Full Stack Developer',
+        'fullstack': 'Full Stack Developer',
+        
+        # Mobile Development
+        'ios': 'Mobile Developer',
+        'android': 'Mobile Developer',
+        'react native': 'Mobile Developer',
+        'flutter': 'Mobile Developer',
+        'swift': 'iOS Developer',
+        'kotlin': 'Android Developer',
+        
+        # DevOps/Cloud
+        'aws': 'Cloud Engineer',
+        'azure': 'Cloud Engineer',
+        'docker': 'DevOps Engineer',
+        'kubernetes': 'DevOps Engineer',
+        'jenkins': 'DevOps Engineer',
+        'terraform': 'DevOps Engineer',
+        'ci/cd': 'DevOps Engineer',
+        
+        # Data Science/Analytics
+        'machine learning': 'Data Scientist',
+        'data science': 'Data Scientist',
+        'pandas': 'Data Analyst',
+        'numpy': 'Data Analyst',
+        'tensorflow': 'Machine Learning Engineer',
+        'pytorch': 'Machine Learning Engineer',
+        'tableau': 'Data Analyst',
+        'power bi': 'Business Analyst',
+        
+        # Database/Data
+        'sql': 'Database Developer',
+        'mysql': 'Database Developer',
+        'postgresql': 'Database Developer',
+        'mongodb': 'Database Developer',
+        'oracle': 'Database Administrator',
+        
+        # Quality Assurance
+        'qa': 'QA Engineer',
+        'testing': 'QA Engineer',
+        'selenium': 'Test Automation Engineer',
+        
+        # UI/UX
+        'ui': 'UI Designer',
+        'ux': 'UX Designer',
+        'figma': 'UI/UX Designer',
+        'adobe': 'Graphic Designer',
+        
+        # Security
+        'security': 'Security Engineer',
+        'cybersecurity': 'Security Analyst',
+        
+        # General
+        'project management': 'Project Manager',
+        'agile': 'Scrum Master',
+        'scrum': 'Scrum Master',
+    }
+    
+    # Experience level mapping
+    experience_prefixes = {
+        0: '', 1: 'Junior ', 2: 'Junior ', 3: '', 4: '',
+        5: 'Senior ', 6: 'Senior ', 7: 'Senior ', 8: 'Lead ',
+        9: 'Lead ', 10: 'Principal '
+    }
+    
+    # Convert skills to lowercase for matching
+    candidate_skills = [skill.lower() for skill in candidate.skills]
+    
+    # Score different job titles based on skills
+    job_scores = {}
+    
+    for skill in candidate_skills:
+        for skill_keyword, job_title in skill_to_job_mapping.items():
+            if skill_keyword in skill:
+                if job_title not in job_scores:
+                    job_scores[job_title] = 0
+                job_scores[job_title] += 1
+    
+    # Special logic for full stack detection
+    has_frontend = any(skill in candidate_skills for skill in ['react', 'angular', 'vue', 'html', 'css', 'javascript'])
+    has_backend = any(skill in candidate_skills for skill in ['python', 'java', 'node.js', 'php', 'django', 'flask', 'spring'])
+    
+    if has_frontend and has_backend:
+        job_scores['Full Stack Developer'] = job_scores.get('Full Stack Developer', 0) + 5
+    
+    # Get the best matching job title
+    if job_scores:
+        best_job_title = max(job_scores.keys(), key=lambda k: job_scores[k])
+        
+        # Add experience level prefix
+        experience_years = candidate.experience_years or 0
+        experience_years = min(experience_years, 10)  # Cap at 10 for mapping
+        
+        prefix = experience_prefixes.get(experience_years, '')
+        return f"{prefix}{best_job_title}".strip()
+    
+    return None
+
+
+@api_view(['POST'])
+def generate_job_titles(request):
+    """
+    DEPRECATED: Generate job titles for candidates based on their skills and experience
+    This endpoint is deprecated as job titles now come directly from parsed resume data.
+    """
+    try:
+        # Skill-based job title mapping
+        skill_to_job_mapping = {
+            # Frontend Development
+            'react': 'Frontend Developer',
+            'angular': 'Frontend Developer', 
+            'vue': 'Frontend Developer',
+            'html': 'Frontend Developer',
+            'css': 'Frontend Developer',
+            'javascript': 'Frontend Developer',
+            'typescript': 'Frontend Developer',
+            
+            # Backend Development
+            'python': 'Backend Developer',
+            'java': 'Backend Developer',
+            'node.js': 'Backend Developer',
+            'php': 'Backend Developer',
+            'c#': 'Backend Developer',
+            'go': 'Backend Developer',
+            'ruby': 'Backend Developer',
+            'express': 'Backend Developer',
+            'django': 'Backend Developer',
+            'flask': 'Backend Developer',
+            'spring': 'Backend Developer',
+            
+            # Full Stack
+            'full stack': 'Full Stack Developer',
+            'fullstack': 'Full Stack Developer',
+            
+            # Mobile Development
+            'ios': 'Mobile Developer',
+            'android': 'Mobile Developer',
+            'react native': 'Mobile Developer',
+            'flutter': 'Mobile Developer',
+            'swift': 'iOS Developer',
+            'kotlin': 'Android Developer',
+            
+            # DevOps/Cloud
+            'aws': 'Cloud Engineer',
+            'azure': 'Cloud Engineer',
+            'docker': 'DevOps Engineer',
+            'kubernetes': 'DevOps Engineer',
+            'jenkins': 'DevOps Engineer',
+            'terraform': 'DevOps Engineer',
+            'ci/cd': 'DevOps Engineer',
+            
+            # Data Science/Analytics
+            'machine learning': 'Data Scientist',
+            'data science': 'Data Scientist',
+            'pandas': 'Data Analyst',
+            'numpy': 'Data Analyst',
+            'tensorflow': 'Machine Learning Engineer',
+            'pytorch': 'Machine Learning Engineer',
+            'tableau': 'Data Analyst',
+            'power bi': 'Business Analyst',
+            
+            # Database/Data
+            'sql': 'Database Developer',
+            'mysql': 'Database Developer',
+            'postgresql': 'Database Developer',
+            'mongodb': 'Database Developer',
+            'oracle': 'Database Administrator',
+            
+            # Quality Assurance
+            'qa': 'QA Engineer',
+            'testing': 'QA Engineer',
+            'selenium': 'Test Automation Engineer',
+            
+            # UI/UX
+            'ui': 'UI Designer',
+            'ux': 'UX Designer',
+            'figma': 'UI/UX Designer',
+            'adobe': 'Graphic Designer',
+            
+            # Security
+            'security': 'Security Engineer',
+            'cybersecurity': 'Security Analyst',
+            
+            # General
+            'project management': 'Project Manager',
+            'agile': 'Scrum Master',
+            'scrum': 'Scrum Master',
+        }
+        
+        # Experience level mapping
+        experience_prefixes = {
+            0: '',
+            1: 'Junior ',
+            2: 'Junior ',
+            3: '',
+            4: '',
+            5: 'Senior ',
+            6: 'Senior ',
+            7: 'Senior ',
+            8: 'Lead ',
+            9: 'Lead ',
+            10: 'Principal '
+        }
+        
+        # Find candidates with missing job titles
+        candidates_to_update = Candidate.objects.filter(
+            current_position__in=['', None]
+        ).exclude(skills__exact=[])
+        
+        updated_candidates = []
+        
+        for candidate in candidates_to_update:
+            if not candidate.skills:
+                continue
+                
+            # Convert skills to lowercase for matching
+            candidate_skills = [skill.lower() for skill in candidate.skills]
+            
+            # Score different job titles based on skills
+            job_scores = {}
+            
+            for skill in candidate_skills:
+                for skill_keyword, job_title in skill_to_job_mapping.items():
+                    if skill_keyword in skill:
+                        if job_title not in job_scores:
+                            job_scores[job_title] = 0
+                        job_scores[job_title] += 1
+            
+            # Special logic for full stack detection
+            has_frontend = any(skill in candidate_skills for skill in ['react', 'angular', 'vue', 'html', 'css', 'javascript'])
+            has_backend = any(skill in candidate_skills for skill in ['python', 'java', 'node.js', 'php', 'django', 'flask', 'spring'])
+            
+            if has_frontend and has_backend:
+                job_scores['Full Stack Developer'] = job_scores.get('Full Stack Developer', 0) + 5
+            
+            # Get the best matching job title
+            if job_scores:
+                best_job_title = max(job_scores.keys(), key=lambda k: job_scores[k])
+                
+                # Add experience level prefix
+                experience_years = candidate.experience_years or 0
+                experience_years = min(experience_years, 10)  # Cap at 10 for mapping
+                
+                prefix = experience_prefixes.get(experience_years, '')
+                final_job_title = f"{prefix}{best_job_title}".strip()
+                
+                # Update candidate
+                candidate.current_position = final_job_title
+                candidate.save(update_fields=['current_position'])
+                
+                updated_candidates.append({
+                    'id': candidate.id,
+                    'name': candidate.full_name,
+                    'generated_title': final_job_title,
+                    'skills': candidate.skills,
+                    'experience_years': candidate.experience_years
+                })
+        
+        return Response({
+            'message': f'Generated job titles for {len(updated_candidates)} candidates',
+            'updated_candidates': updated_candidates,
+            'total_processed': candidates_to_update.count()
+        })
+        
+    except Exception as e:
+        return Response(
+            {'error': f'Error generating job titles: {str(e)}'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+def update_candidate_experience(request):
+    """
+    Update experience years for candidates who have null experience_years
+    """
+    try:
+        # Find candidates with null experience_years
+        candidates_to_update = Candidate.objects.filter(experience_years__isnull=True)
+        
+        parser = EnhancedResumeParser()
+        parser = ResumeParser()
+        updated_count = 0
+        current_year = datetime.datetime.now().year
+        
+        for candidate in candidates_to_update:
+            experience_years = None
+            
+            # Try to estimate from education data if available
+            if candidate.education:
+                for edu_item in candidate.education:
+                    if isinstance(edu_item, str):
+                        # Look for graduation year patterns
+                        import re
+                        year_matches = re.findall(r'(\d{4})', edu_item)
+                        for year_str in year_matches:
+                            year = int(year_str)
+                            if 1990 <= year <= current_year:
+                                # Estimate experience from graduation year
+                                estimated_years = max(0, current_year - year - 1)
+                                if estimated_years <= 40:  # Reasonable cap
+                                    experience_years = max(experience_years or 0, estimated_years)
+            
+            # If we found a reasonable experience estimate, update the candidate
+            if experience_years and experience_years > 0:
+                candidate.experience_years = experience_years
+                candidate.save(update_fields=['experience_years'])
+                updated_count += 1
+        
+        return Response({
+            'message': f'Updated experience for {updated_count} candidates',
+            'total_checked': candidates_to_update.count(),
+            'updated': updated_count
+        })
+        
+    except Exception as e:
+        return Response(
+            {'error': f'Error updating candidate experience: {str(e)}'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class JobApplicationViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing job applications
+    """
+    queryset = JobApplication.objects.all()
+    serializer_class = JobApplicationSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['status', 'job', 'candidate']
+    search_fields = ['candidate__first_name', 'candidate__last_name', 'candidate__email']
+    ordering_fields = ['applied_at', 'updated_at']
+    ordering = ['-applied_at']
+
+    def get_serializer_class(self):
+        """Return appropriate serializer based on action"""
+        if self.action == 'create':
+            return JobApplicationCreateSerializer
+        return JobApplicationSerializer
+
+    @action(detail=True, methods=['post'])
+    def advance(self, request, pk=None):
+        """Advance application to next stage"""
+        application = self.get_object()
+        
+        # Define stage progression
+        stage_progression = {
+            'applied': 'screening',
+            'screening': 'interviewing', 
+            'interviewing': 'offered',
+            'offered': 'hired'
+        }
+        
+        if application.status in stage_progression:
+            application.status = stage_progression[application.status]
+            application.save()
+            
+            serializer = self.get_serializer(application)
+            return Response(serializer.data)
+        else:
+            return Response(
+                {'error': f'Cannot advance from status: {application.status}'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        """Reject an application"""
+        application = self.get_object()
+        
+        reason = request.data.get('reason', '')
+        application.status = 'rejected'
+        if reason:
+            application.notes = f"{application.notes}\n\nRejected: {reason}".strip()
+        application.save()
+        
+        serializer = self.get_serializer(application)
+        return Response(serializer.data)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class FeedbackTemplateViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing feedback templates
+    """
+    queryset = FeedbackTemplate.objects.all()
+    serializer_class = FeedbackTemplateSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['status', 'is_active', 'is_default']
+    search_fields = ['name', 'description']
+    ordering_fields = ['created_at', 'updated_at', 'name']
+    ordering = ['-created_at']
+
+    def get_serializer_class(self):
+        """Return appropriate serializer based on action"""
+        if self.action == 'create':
+            return FeedbackTemplateCreateSerializer
+        elif self.action in ['update', 'partial_update']:
+            return FeedbackTemplateUpdateSerializer
+        return FeedbackTemplateSerializer
+
+    def perform_create(self, serializer):
+        """Set the created_by field when creating a new template"""
+        serializer.save(created_by=self.request.user if self.request.user.is_authenticated else None)
+
+    def create(self, request, *args, **kwargs):
+        """Override create to return full object after creation"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        
+        # Return full object using the main serializer
+        instance = serializer.instance
+        response_serializer = FeedbackTemplateSerializer(instance)
+        headers = self.get_success_headers(serializer.data)
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def update(self, request, *args, **kwargs):
+        """Override update to return full object after update"""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        # Return full object using the main serializer
+        response_serializer = FeedbackTemplateSerializer(instance)
+        return Response(response_serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def publish(self, request, pk=None):
+        """Publish a feedback template"""
+        template = self.get_object()
+        template.status = 'published'
+        template.save()
+        
+        serializer = self.get_serializer(template)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def unpublish(self, request, pk=None):
+        """Unpublish a feedback template (set to draft)"""
+        template = self.get_object()
+        template.status = 'draft'
+        template.save()
+        
+        serializer = self.get_serializer(template)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def archive(self, request, pk=None):
+        """Archive a feedback template"""
+        template = self.get_object()
+        template.status = 'archived'
+        template.is_active = False
+        template.save()
+        
+        serializer = self.get_serializer(template)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def duplicate(self, request, pk=None):
+        """Create a duplicate of a feedback template"""
+        original_template = self.get_object()
+        
+        # Create a copy
+        template_data = {
+            'name': f"{original_template.name} (Copy)",
+            'description': original_template.description,
+            'questions': original_template.questions,
+            'sections': original_template.sections,
+            'rating_criteria': original_template.rating_criteria,
+            'status': 'draft',
+            'is_active': True,
+            'is_default': False
+        }
+        
+        serializer = FeedbackTemplateCreateSerializer(data=template_data)
+        if serializer.is_valid():
+            new_template = serializer.save(created_by=self.request.user if self.request.user.is_authenticated else None)
+            response_serializer = self.get_serializer(new_template)
+            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+def calculate_job_match(request):
+    """
+    Calculate semantic job match score between a candidate and a job.
+    
+    Expected POST data:
+    {
+        "candidate_id": int,
+        "job_id": int
+    }
+    """
+    try:
+        candidate_id = request.data.get('candidate_id')
+        job_id = request.data.get('job_id')
+        
+        if not candidate_id or not job_id:
+            return Response(
+                {'error': 'Both candidate_id and job_id are required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get candidate and job objects
+        try:
+            candidate = Candidate.objects.get(id=candidate_id)
+            job = Job.objects.select_related('department').get(id=job_id)
+        except (Candidate.DoesNotExist, Job.DoesNotExist) as e:
+            return Response(
+                {'error': f'Object not found: {str(e)}'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Prepare candidate data for matching
+        candidate_data = {
+            'id': candidate.id,
+            'skills': candidate.skills or [],
+            'current_position': candidate.current_position or '',
+            'current_company': candidate.current_company or '',
+            'experience_years': candidate.experience_years or 0,
+            'education': candidate.education or []
+        }
+        
+        # Prepare job data for matching
+        job_data = {
+            'id': job.id,
+            'title': job.title,
+            'description': job.description or '',
+            'requirements': job.requirements or '',
+            'experience_level': job.experience_level or '',
+            'department': {
+                'name': job.department.name if job.department else '',
+                'id': job.department.id if job.department else None
+            },
+            'job_type': job.job_type or '',
+            'work_type': getattr(job, 'work_type', '')
+        }
+        
+        # Calculate semantic match score
+        matcher = get_semantic_matcher()
+        match_score = matcher.calculate_job_match_score(candidate_data, job_data)
+        
+        return Response({
+            'candidate_id': candidate_id,
+            'job_id': job_id,
+            'match_score': match_score,
+            'match_level': 'high' if match_score >= 75 else 'medium' if match_score >= 50 else 'low',
+            'candidate_name': candidate.full_name,
+            'job_title': job.title
+        })
+        
+    except Exception as e:
+        logger.error(f"Error calculating job match: {e}")
+        return Response(
+            {'error': f'Failed to calculate job match: {str(e)}'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+def find_matching_jobs(request, candidate_id):
+    """
+    Find best matching jobs for a specific candidate using semantic analysis.
+    
+    Query parameters:
+    - limit: Number of top matches to return (default: 5)
+    - min_score: Minimum match score threshold (default: 20.0)
+    """
+    try:
+        limit = int(request.GET.get('limit', 5))
+        min_score = float(request.GET.get('min_score', 20.0))
+        
+        # Get candidate
+        try:
+            candidate = Candidate.objects.get(id=candidate_id)
+        except Candidate.DoesNotExist:
+            return Response(
+                {'error': 'Candidate not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Get all active jobs
+        active_jobs = Job.objects.select_related('department').filter(status='active')
+        
+        # Prepare candidate data
+        candidate_data = {
+            'id': candidate.id,
+            'skills': candidate.skills or [],
+            'current_position': candidate.current_position or '',
+            'current_company': candidate.current_company or '',
+            'experience_years': candidate.experience_years or 0,
+            'education': candidate.education or []
+        }
+        
+        # Prepare jobs data
+        jobs_data = []
+        for job in active_jobs:
+            job_data = {
+                'id': job.id,
+                'title': job.title,
+                'description': job.description or '',
+                'requirements': job.requirements or '',
+                'experience_level': job.experience_level or '',
+                'department': {
+                    'name': job.department.name if job.department else '',
+                    'id': job.department.id if job.department else None
+                },
+                'job_type': job.job_type or '',
+                'work_type': getattr(job, 'work_type', ''),
+                'location': getattr(job, 'location', ''),
+                'salary_min': getattr(job, 'salary_min', None),
+                'salary_max': getattr(job, 'salary_max', None)
+            }
+            jobs_data.append(job_data)
+        
+        # Find matching jobs
+        matcher = get_semantic_matcher()
+        job_matches = matcher.find_best_matching_jobs(candidate_data, jobs_data, top_k=limit)
+        
+        # Filter by minimum score and prepare response
+        matching_jobs = []
+        for job_data, score in job_matches:
+            if score >= min_score:
+                matching_jobs.append({
+                    'job': {
+                        'id': job_data['id'],
+                        'title': job_data['title'],
+                        'department': job_data['department']['name'],
+                        'experience_level': job_data['experience_level'],
+                        'job_type': job_data['job_type'],
+                        'location': job_data.get('location', ''),
+                        'salary_min': job_data.get('salary_min'),
+                        'salary_max': job_data.get('salary_max')
+                    },
+                    'match_score': score,
+                    'match_level': 'high' if score >= 75 else 'medium' if score >= 50 else 'low'
+                })
+        
+        return Response({
+            'candidate_id': candidate_id,
+            'candidate_name': candidate.full_name,
+            'matching_jobs': matching_jobs,
+            'total_matches': len(matching_jobs),
+            'total_jobs_analyzed': len(jobs_data)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error finding matching jobs: {e}")
+        return Response(
+            {'error': f'Failed to find matching jobs: {str(e)}'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+def find_matching_candidates(request, job_id):
+    """
+    Find candidates that match a specific job using semantic analysis.
+    
+    Query parameters:
+    - limit: Maximum number of candidates to return (default: 20)
+    - min_score: Minimum match score threshold (default: 30.0)
+    """
+    try:
+        limit = int(request.GET.get('limit', 20))
+        min_score = float(request.GET.get('min_score', 30.0))
+        
+        # Get job
+        try:
+            job = Job.objects.select_related('department').get(id=job_id)
+        except Job.DoesNotExist:
+            return Response(
+                {'error': 'Job not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Get all candidates
+        candidates = Candidate.objects.all()
+        
+        # Prepare job data
+        job_data = {
+            'id': job.id,
+            'title': job.title,
+            'description': job.description or '',
+            'requirements': job.requirements or '',
+            'experience_level': job.experience_level or '',
+            'department': {
+                'name': job.department.name if job.department else '',
+                'id': job.department.id if job.department else None
+            },
+            'job_type': job.job_type or '',
+            'work_type': getattr(job, 'work_type', '')
+        }
+        
+        # Prepare candidates data
+        candidates_data = []
+        for candidate in candidates:
+            candidate_data = {
+                'id': candidate.id,
+                'skills': candidate.skills or [],
+                'current_position': candidate.current_position or '',
+                'current_company': candidate.current_company or '',
+                'experience_years': candidate.experience_years or 0,
+                'education': candidate.education or [],
+                'email': candidate.email,
+                'phone': candidate.phone_number or '',
+                'status': candidate.status
+            }
+            candidates_data.append(candidate_data)
+        
+        # Find matching candidates
+        matcher = get_semantic_matcher()
+        candidate_matches = matcher.find_matching_candidates(job_data, candidates_data, threshold=min_score)
+        
+        # Limit results and prepare response
+        matching_candidates = []
+        for candidate_data, score in candidate_matches[:limit]:
+            matching_candidates.append({
+                'candidate': {
+                    'id': candidate_data['id'],
+                    'name': f"{candidates.get(id=candidate_data['id']).first_name} {candidates.get(id=candidate_data['id']).last_name}",
+                    'email': candidate_data['email'],
+                    'current_position': candidate_data['current_position'],
+                    'current_company': candidate_data['current_company'],
+                    'experience_years': candidate_data['experience_years'],
+                    'skills': candidate_data['skills'][:10] if candidate_data['skills'] else [],  # Limit skills for response
+                    'status': candidate_data['status']
+                },
+                'match_score': score,
+                'match_level': 'high' if score >= 75 else 'medium' if score >= 50 else 'low'
+            })
+        
+        return Response({
+            'job_id': job_id,
+            'job_title': job.title,
+            'matching_candidates': matching_candidates,
+            'total_matches': len(matching_candidates),
+            'total_candidates_analyzed': len(candidates_data)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error finding matching candidates: {e}")
+        return Response(
+            {'error': f'Failed to find matching candidates: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+class InterviewFlowViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing interview flows
+    """
+    queryset = InterviewFlow.objects.all()
+    serializer_class = InterviewFlowSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['is_default', 'created_by']
+    search_fields = ['name', 'description']
+    ordering_fields = ['name', 'created_at', 'updated_at']
+    ordering = ['-updated_at']
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return InterviewFlowCreateSerializer
+        elif self.action in ['update', 'partial_update']:
+            return InterviewFlowUpdateSerializer
+        return InterviewFlowSerializer
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user if self.request.user.is_authenticated else None)
+
+
+class InterviewRoundViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing interview rounds
+    """
+    queryset = InterviewRound.objects.all()
+    serializer_class = InterviewRoundSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['flow', 'type', 'is_required']
+    search_fields = ['name', 'description']
+    ordering_fields = ['order', 'name', 'created_at']
+    ordering = ['flow', 'order']
+
+
+class EmailSettingsViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing email settings
+    """
+    queryset = EmailSettings.objects.all()
+    serializer_class = EmailSettingsSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['created_at', 'updated_at']
+    ordering = ['-created_at']
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return EmailSettingsCreateSerializer
+        elif self.action in ['update', 'partial_update']:
+            return EmailSettingsUpdateSerializer
+        return EmailSettingsSerializer
+
+    def perform_create(self, serializer):
+        # Deactivate all existing email settings when creating a new one
+        if serializer.validated_data.get('is_active', True):
+            EmailSettings.objects.filter(is_active=True).update(is_active=False)
+        serializer.save(created_by=self.request.user if self.request.user.is_authenticated else None)
+
+    def perform_update(self, serializer):
+        # If this setting is being activated, deactivate all others
+        if serializer.validated_data.get('is_active', False):
+            EmailSettings.objects.filter(is_active=True).exclude(id=self.get_object().id).update(is_active=False)
+        serializer.save()
+
+    @action(detail=False, methods=['get'])
+    def active(self, request):
+        """Get the currently active email settings - includes password for backend use"""
+        active_settings = EmailSettings.objects.filter(is_active=True).first()
+        if active_settings:
+            # Return full data including password for backend use
+            data = {
+                'id': active_settings.id,
+                'email': active_settings.email,
+                'password': active_settings.password,  # Include password for backend
+                'host': active_settings.host,
+                'port': active_settings.port,
+                'use_tls': active_settings.use_tls,
+                'use_ssl': active_settings.use_ssl,
+                'from_name': active_settings.from_name,
+                'is_active': active_settings.is_active,
+                'created_at': active_settings.created_at,
+                'updated_at': active_settings.updated_at,
+            }
+            return Response(data)
+        return Response({'detail': 'No active email settings found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class NotificationViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing user notifications
+    """
+    serializer_class = NotificationSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['created_at']
+    ordering = ['-created_at']
+
+    def get_queryset(self):
+        # Only return notifications for the current user
+        if self.request.user.is_authenticated:
+            return Notification.objects.filter(user=self.request.user)
+        return Notification.objects.none()
+
+    @action(detail=False, methods=['get'])
+    def unread_count(self, request):
+        """Get count of unread notifications"""
+        count = self.get_queryset().filter(is_read=False).count()
+        return Response({'count': count})
+
+    @action(detail=False, methods=['post'])
+    def mark_all_read(self, request):
+        """Mark all notifications as read"""
+        updated = self.get_queryset().filter(is_read=False).update(is_read=True)
+        return Response({'updated': updated})
+
+    @action(detail=True, methods=['post'])
+    def mark_read(self, request, pk=None):
+        """Mark a single notification as read"""
+        notification = self.get_object()
+        notification.is_read = True
+        notification.save()
+        return Response({'status': 'marked as read'})
+
+
+@csrf_exempt
+@api_view(['POST'])
+def generate_job_description_ai(request):
+    """
+    Generate job description using AI (server-side)
+
+    Expected POST data:
+    {
+        "jobTitle": str,
+        "department": str,
+        "experienceLevel": str,
+        "experienceRange": str,
+        "workType": str (optional),
+        "location": str (optional),
+        "aiProvider": str,
+        "aiApiKey": str,
+        "customPrompt": str (optional)
+    }
+    """
+    try:
+        # Extract request data
+        job_title = request.data.get('jobTitle')
+        department = request.data.get('department')
+        experience_level = request.data.get('experienceLevel')
+        experience_range = request.data.get('experienceRange')
+        work_type = request.data.get('workType', '')
+        location = request.data.get('location', '')
+        ai_provider = request.data.get('aiProvider', 'anthropic').lower()
+        ai_api_key = request.data.get('aiApiKey')
+        custom_prompt = request.data.get('customPrompt')
+
+        # Validate required fields
+        if not all([job_title, department, experience_level, experience_range, ai_api_key]):
+            return Response(
+                {'error': 'Missing required fields: jobTitle, department, experienceLevel, experienceRange, aiApiKey'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validate provider availability
+        if ai_provider == 'anthropic' and not ANTHROPIC_AVAILABLE:
+            return Response(
+                {'error': 'Anthropic SDK not installed. Please install it: pip install anthropic'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider == 'openai' and not OPENAI_AVAILABLE:
+            return Response(
+                {'error': 'OpenAI SDK not installed. Please install it: pip install openai'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider == 'google' and not GEMINI_AVAILABLE:
+            return Response(
+                {'error': 'Google Gemini SDK not installed. Please install it: pip install google-generativeai'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider == 'perplexity' and not OPENAI_AVAILABLE:
+            return Response(
+                {'error': 'OpenAI SDK not installed (required for Perplexity). Please install it: pip install openai'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider == 'groq' and not OPENAI_AVAILABLE:
+            return Response(
+                {'error': 'OpenAI SDK not installed (required for Groq). Please install it: pip install openai'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider == 'grok' and not OPENAI_AVAILABLE:
+            return Response(
+                {'error': 'OpenAI SDK not installed (required for Grok/xAI). Please install it: pip install openai'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider not in ['anthropic', 'openai', 'google', 'perplexity', 'groq', 'grok']:
+            return Response(
+                {'error': f'Unsupported AI provider: {ai_provider}. Supported providers: anthropic, openai, google, perplexity, groq, grok'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Default system prompt
+        default_system_prompt = """You are an expert HR professional and job description writer. Create professional, engaging, and comprehensive job descriptions that attract qualified candidates.
+
+Your task is to generate:
+1. A detailed job description (3-4 paragraphs)
+2. Comprehensive requirements list (both required and preferred qualifications)
+
+Make the content:
+- Professional yet engaging
+- Specific to the role and industry
+- Include relevant technologies and skills for the position
+- Follow modern job posting best practices
+- Be inclusive and welcoming
+
+Format the response as JSON with two fields: "description" and "requirements".
+For the requirements field, format it as a clean, readable text with sections like:
+Required Qualifications:
+• Item 1
+• Item 2
+
+Technical Skills:
+• Skill 1
+• Skill 2
+
+Preferred Qualifications:
+• Item 1
+• Item 2
+
+Make sure the requirements field contains properly formatted text, not JSON structure."""
+
+        system_prompt = custom_prompt if custom_prompt else default_system_prompt
+
+        # Build user prompt
+        user_prompt = f"""Generate a job description and requirements for the following position:
+
+Job Title: {job_title}
+Department: {department}
+Experience Level: {experience_level}
+Experience Range: {experience_range}
+{f'Work Type: {work_type}' if work_type else ''}
+{f'Location: {location}' if location else ''}
+
+Please create:
+1. Job Description: A compelling 3-4 paragraph description that includes:
+   - Brief company/role introduction
+   - Key responsibilities and duties
+   - What the candidate will achieve/impact
+   - Work environment and culture fit
+
+2. Requirements: A comprehensive requirements section that includes:
+   - Required qualifications (education, experience, skills)
+   - Preferred qualifications
+   - Technical skills specific to this role
+   - Soft skills and personal qualities
+
+Make sure the content is tailored specifically to a {job_title} role in {department} at {experience_level} level with {experience_range} years of experience.
+
+Please respond with valid JSON in this exact format:
+{{
+  "description": "Your detailed job description here...",
+  "requirements": "Your comprehensive requirements formatted as readable text with sections and bullet points..."
+}}"""
+
+        # Call appropriate AI provider API
+        try:
+            response_text = None
+
+            if ai_provider == 'anthropic':
+                client = Anthropic(api_key=ai_api_key)
+                message = client.messages.create(
+                    model="claude-3-haiku-20240307",
+                    max_tokens=2000,
+                    temperature=0.7,
+                    system=system_prompt,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": user_prompt
+                        }
+                    ]
+                )
+                response_content = message.content[0]
+                if response_content.type != 'text':
+                    raise Exception('Unexpected response type from Claude')
+                response_text = response_content.text
+
+            elif ai_provider == 'openai':
+                client = openai.OpenAI(api_key=ai_api_key)
+                completion = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    max_tokens=2000,
+                    temperature=0.7
+                )
+                response_text = completion.choices[0].message.content
+
+            elif ai_provider == 'perplexity':
+                client = openai.OpenAI(
+                    api_key=ai_api_key,
+                    base_url="https://api.perplexity.ai"
+                )
+                completion = client.chat.completions.create(
+                    model="llama-3.1-sonar-small-128k-online",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    max_tokens=2000,
+                    temperature=0.7
+                )
+                response_text = completion.choices[0].message.content
+
+            elif ai_provider == 'groq':
+                client = openai.OpenAI(
+                    api_key=ai_api_key,
+                    base_url="https://api.groq.com/openai/v1"
+                )
+                completion = client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    max_tokens=2000,
+                    temperature=0.7
+                )
+                response_text = completion.choices[0].message.content
+
+            elif ai_provider == 'grok':
+                client = openai.OpenAI(
+                    api_key=ai_api_key,
+                    base_url="https://api.x.ai/v1"
+                )
+                completion = client.chat.completions.create(
+                    model="grok-beta",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    max_tokens=2000,
+                    temperature=0.7
+                )
+                response_text = completion.choices[0].message.content
+
+            elif ai_provider == 'google':
+                genai.configure(api_key=ai_api_key)
+
+                # Try models in order of preference
+                model_names = ['gemini-1.5-pro', 'gemini-1.0-pro', 'gemini-pro']
+                response_text = None
+                last_error = None
+
+                for model_name in model_names:
+                    try:
+                        model = genai.GenerativeModel(model_name)
+                        full_prompt = f"{system_prompt}\n\n{user_prompt}"
+
+                        # Configure safety settings to be less restrictive
+                        safety_settings = [
+                            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+                        ]
+
+                        response = model.generate_content(
+                            full_prompt,
+                            safety_settings=safety_settings
+                        )
+
+                        # Check if response was blocked
+                        if not response.text:
+                            raise Exception(f"Gemini blocked the response. Prompt feedback: {response.prompt_feedback if hasattr(response, 'prompt_feedback') else 'No feedback'}")
+
+                        response_text = response.text
+                        break  # Success, exit loop
+                    except Exception as e:
+                        last_error = e
+                        continue  # Try next model
+
+                if not response_text:
+                    raise Exception(f"All Gemini models failed. Last error: {str(last_error)}")
+
+            # Parse JSON response
+            try:
+                parsed_response = json.loads(response_text)
+                return Response({
+                    'description': parsed_response.get('description', ''),
+                    'requirements': parsed_response.get('requirements', '')
+                })
+            except json.JSONDecodeError:
+                # Try to extract content manually
+                desc_match = re.search(r'"description":\s*"([^"]*(?:\\.[^"]*)*)"', response_text)
+                req_match = re.search(r'"requirements":\s*"([^"]*(?:\\.[^"]*)*)"', response_text)
+
+                if desc_match and req_match:
+                    return Response({
+                        'description': desc_match.group(1).replace('\\n', '\n').replace('\\"', '"'),
+                        'requirements': req_match.group(1).replace('\\n', '\n').replace('\\"', '"')
+                    })
+
+                # Fallback response
+                return Response({
+                    'description': response_text,
+                    'requirements': 'Please review the generated description and specify requirements.'
+                })
+
+        except Exception as ai_error:
+            logger.error(f"{ai_provider.capitalize()} API error: {ai_error}")
+            return Response(
+                {'error': f'AI generation failed: {str(ai_error)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    except Exception as e:
+        logger.error(f"Job description generation error: {e}")
+        return Response(
+            {'error': f'Failed to generate job description: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@csrf_exempt
+@api_view(['POST'])
+def generate_questions_ai(request):
+    """
+    Generate feedback form questions using AI (server-side)
+
+    Expected POST data:
+    {
+        "topic": str,
+        "num_questions": int,
+        "question_types": list[str],
+        "include_answers": bool,
+        "custom_prompt": str (optional),
+        "aiProvider": str,
+        "aiApiKey": str,
+        "systemPrompt": str (optional)
+    }
+    """
+    try:
+        # Extract request data
+        topic = request.data.get('topic')
+        num_questions = request.data.get('num_questions', 5)
+        question_types = request.data.get('question_types', ['text', 'textarea'])
+        include_answers = request.data.get('include_answers', False)
+        custom_prompt = request.data.get('custom_prompt', '')
+        ai_provider = request.data.get('aiProvider', 'anthropic').lower()
+        ai_api_key = request.data.get('aiApiKey')
+        system_prompt = request.data.get('systemPrompt')
+
+        # Validate required fields
+        if not all([topic, ai_api_key]):
+            return Response(
+                {'error': 'Missing required fields: topic, aiApiKey'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validate provider availability
+        if ai_provider == 'anthropic' and not ANTHROPIC_AVAILABLE:
+            return Response(
+                {'error': 'Anthropic SDK not installed. Please install it: pip install anthropic'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider == 'openai' and not OPENAI_AVAILABLE:
+            return Response(
+                {'error': 'OpenAI SDK not installed. Please install it: pip install openai'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider == 'google' and not GEMINI_AVAILABLE:
+            return Response(
+                {'error': 'Google Gemini SDK not installed. Please install it: pip install google-generativeai'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider == 'perplexity' and not OPENAI_AVAILABLE:
+            return Response(
+                {'error': 'OpenAI SDK not installed (required for Perplexity). Please install it: pip install openai'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider == 'groq' and not OPENAI_AVAILABLE:
+            return Response(
+                {'error': 'OpenAI SDK not installed (required for Groq). Please install it: pip install openai'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        elif ai_provider not in ['anthropic', 'openai', 'google', 'perplexity', 'groq']:
+            return Response(
+                {'error': f'Unsupported AI provider: {ai_provider}. Supported providers: anthropic, openai, google, perplexity, groq'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Default system prompt
+        default_system_prompt = f"""You are an expert interview and feedback form designer. Generate professional, insightful questions for feedback forms.
+
+Your task is to generate {num_questions} questions about "{topic}".
+
+Requirements:
+- Create diverse, thoughtful questions
+- Make questions specific and actionable
+- Include a mix of question types if specified
+- Questions should be professional and unbiased
+- {'Provide sample answers for each question' if include_answers else 'Only provide the questions'}
+
+For question types:
+- "multiple_choice": Include an "options" array with 4-5 answer choices
+- "code": Include a "language" field (e.g., "python", "javascript", "java")
+- Other types: "text", "textarea", "audio", "video"
+
+Format your response as valid JSON with this structure:
+{{
+  "questions": [
+    {{
+      "text": "Your question here",
+      "type": "text",
+      "required": true{', "answer": "Sample answer here"' if include_answers else ''},
+      "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
+      "language": "python"
+    }}
+  ]
+}}
+
+Note: Only include "options" for multiple_choice questions, and "language" for code questions."""
+
+        final_system_prompt = system_prompt if system_prompt else default_system_prompt
+
+        # Build user prompt
+        user_prompt = f"""Generate {num_questions} professional feedback questions about "{topic}".
+
+Question requirements:
+- Topic: {topic}
+- Number of questions: {num_questions}
+- Question types: {', '.join(question_types)}
+- Include answers: {'Yes' if include_answers else 'No'}
+
+{f'Additional requirements: {custom_prompt}' if custom_prompt else ''}
+
+Please respond with valid JSON containing an array of questions."""
+
+        # Call appropriate AI provider API
+        try:
+            response_text = None
+
+            if ai_provider == 'anthropic':
+                client = Anthropic(api_key=ai_api_key)
+                message = client.messages.create(
+                    model="claude-3-haiku-20240307",
+                    max_tokens=2000,
+                    temperature=0.7,
+                    system=final_system_prompt,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": user_prompt
+                        }
+                    ]
+                )
+                response_content = message.content[0]
+                if response_content.type != 'text':
+                    raise Exception('Unexpected response type from Claude')
+                response_text = response_content.text
+
+            elif ai_provider == 'openai':
+                client = openai.OpenAI(api_key=ai_api_key)
+                completion = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": final_system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    max_tokens=2000,
+                    temperature=0.7
+                )
+                response_text = completion.choices[0].message.content
+
+            elif ai_provider == 'perplexity':
+                client = openai.OpenAI(
+                    api_key=ai_api_key,
+                    base_url="https://api.perplexity.ai"
+                )
+                completion = client.chat.completions.create(
+                    model="llama-3.1-sonar-small-128k-online",
+                    messages=[
+                        {"role": "system", "content": final_system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    max_tokens=2000,
+                    temperature=0.7
+                )
+                response_text = completion.choices[0].message.content
+
+            elif ai_provider == 'groq':
+                client = openai.OpenAI(
+                    api_key=ai_api_key,
+                    base_url="https://api.groq.com/openai/v1"
+                )
+                completion = client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=[
+                        {"role": "system", "content": final_system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    max_tokens=2000,
+                    temperature=0.7
+                )
+                response_text = completion.choices[0].message.content
+
+            elif ai_provider == 'google':
+                genai.configure(api_key=ai_api_key)
+
+                # Try models in order of preference
+                model_names = ['gemini-1.5-pro', 'gemini-1.0-pro', 'gemini-pro']
+                response_text = None
+                last_error = None
+
+                for model_name in model_names:
+                    try:
+                        model = genai.GenerativeModel(model_name)
+                        full_prompt = f"{final_system_prompt}\n\n{user_prompt}"
+
+                        # Configure safety settings to be less restrictive
+                        safety_settings = [
+                            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+                        ]
+
+                        response = model.generate_content(
+                            full_prompt,
+                            safety_settings=safety_settings
+                        )
+
+                        # Check if response was blocked
+                        if not response.text:
+                            raise Exception(f"Gemini blocked the response. Prompt feedback: {response.prompt_feedback if hasattr(response, 'prompt_feedback') else 'No feedback'}")
+
+                        response_text = response.text
+                        break  # Success, exit loop
+                    except Exception as e:
+                        last_error = e
+                        continue  # Try next model
+
+                if not response_text:
+                    raise Exception(f"All Gemini models failed. Last error: {str(last_error)}")
+
+            # Try to extract JSON from response
+            json_match = re.search(r'\{[\s\S]*\}', response_text)
+            if json_match:
+                try:
+                    parsed = json.loads(json_match.group(0))
+                    if 'questions' in parsed and isinstance(parsed['questions'], list):
+                        # Format questions properly
+                        formatted_questions = []
+                        for idx, q in enumerate(parsed['questions']):
+                            formatted_q = {
+                                'id': idx + 1,
+                                'text': q.get('text') or q.get('question', ''),
+                                'type': q.get('type', question_types[idx % len(question_types)]),
+                                'required': q.get('required', True),
+                                'ai_generated': True
+                            }
+
+                            # Add options for multiple_choice questions
+                            if formatted_q['type'] == 'multiple_choice' and 'options' in q:
+                                formatted_q['options'] = q['options']
+
+                            # Add language for code questions
+                            if formatted_q['type'] == 'code' and 'language' in q:
+                                formatted_q['language'] = q['language']
+
+                            # Add answer if requested
+                            if include_answers and 'answer' in q:
+                                formatted_q['answer'] = q['answer']
+
+                            formatted_questions.append(formatted_q)
+
+                        return Response({'questions': formatted_questions})
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Failed to parse AI JSON response: {e}")
+
+            # Fallback: create questions from text content
+            lines = [line.strip() for line in response_text.split('\n') if line.strip() and ('?' in line or 'question' in line.lower())]
+            fallback_questions = []
+            for idx, line in enumerate(lines[:num_questions]):
+                fallback_questions.append({
+                    'id': idx + 1,
+                    'text': re.sub(r'^\d+\.?\s*', '', line).strip(),
+                    'type': question_types[idx % len(question_types)],
+                    'required': True,
+                    'ai_generated': True
+                })
+
+            return Response({'questions': fallback_questions})
+
+        except Exception as ai_error:
+            logger.error(f"{ai_provider.capitalize()} API error: {ai_error}")
+            return Response(
+                {'error': f'AI generation failed: {str(ai_error)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    except Exception as e:
+        logger.error(f"Questions generation error: {e}")
+        return Response(
+            {'error': f'Failed to generate questions: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+def get_retell_agent_prompt(request):
+    """
+    Get Retell AI LLM prompt from Retell API
+
+    Query params:
+        llm_id (optional): Retell LLM ID, defaults to env var
+    """
+    try:
+        from .retell_service import get_retell_llm
+        import os
+
+        llm_id = request.query_params.get('llm_id') or os.getenv('RETELL_LLM_ID', '')
+
+        if not llm_id:
+            return Response(
+                {'error': 'No llm_id provided and RETELL_LLM_ID not set in environment'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        llm_data = get_retell_llm(llm_id)
+
+        if llm_data:
+            return Response({
+                'success': True,
+                'llm_id': llm_id,
+                'general_prompt': llm_data.get('general_prompt', ''),
+                'begin_message': llm_data.get('begin_message', ''),
+                'model': llm_data.get('model', ''),
+            })
+        else:
+            return Response(
+                {'error': 'Failed to fetch LLM from Retell API'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    except Exception as e:
+        logger.error(f"Error fetching Retell LLM: {e}")
+        return Response(
+            {'error': f'Failed to fetch Retell LLM: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+def update_retell_agent_prompt(request):
+    """
+    Update Retell AI LLM prompt via Retell API
+
+    POST body:
+    {
+        "llm_id": "llm_xxx" (optional, uses env var if not provided),
+        "general_prompt": "Your new prompt here",
+        "begin_message": "Opening message" (optional)
+    }
+    """
+    try:
+        from .retell_service import update_retell_llm_prompt
+        import os
+
+        llm_id = request.data.get('llm_id') or os.getenv('RETELL_LLM_ID', '')
+        general_prompt = request.data.get('general_prompt')
+        begin_message = request.data.get('begin_message')
+
+        if not llm_id:
+            return Response(
+                {'error': 'No llm_id provided and RETELL_LLM_ID not set in environment'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not general_prompt and not begin_message:
+            return Response(
+                {'error': 'At least one of general_prompt or begin_message must be provided'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        result = update_retell_llm_prompt(llm_id, general_prompt, begin_message)
+
+        if result:
+            return Response({
+                'success': True,
+                'message': 'LLM prompt updated successfully',
+                'llm_id': llm_id,
+                'general_prompt': result.get('general_prompt', ''),
+                'begin_message': result.get('begin_message', ''),
+            })
+        else:
+            return Response(
+                {'error': 'Failed to update LLM in Retell API'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    except Exception as e:
+        logger.error(f"Error updating Retell LLM: {e}")
+        return Response(
+            {'error': f'Failed to update Retell LLM: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+@api_view(['GET'])
+def get_email_settings(request):
+    """
+    Get current email settings from database
+    """
+    try:
+        from .models import EmailSettings
+
+        # Get the latest active email settings
+        email_settings = EmailSettings.objects.filter(is_active=True).order_by('-updated_at').first()
+
+        # Check if request needs password (for email sending)
+        include_password = request.GET.get('include_password', 'false').lower() == 'true'
+
+        if email_settings:
+            response_data = {
+                'success': True,
+                'emailUser': email_settings.email_user,
+                'emailHost': email_settings.email_host,
+                'emailPort': str(email_settings.email_port),
+            }
+            # Include password only when explicitly requested (for email sending operations)
+            if include_password:
+                response_data['emailPassword'] = email_settings.email_password
+            return Response(response_data)
+        else:
+            # Fallback to environment variables
+            response_data = {
+                'success': True,
+                'emailUser': os.getenv('EMAIL_USER', os.getenv('EMAIL_HOST_USER', '')),
+                'emailHost': os.getenv('EMAIL_HOST', 'smtp.gmail.com'),
+                'emailPort': os.getenv('EMAIL_PORT', '587'),
+            }
+            if include_password:
+                response_data['emailPassword'] = os.getenv('EMAIL_PASSWORD', os.getenv('EMAIL_HOST_PASSWORD', ''))
+            return Response(response_data)
+    except Exception as e:
+        logger.error(f"Error getting email settings: {e}")
+        return Response(
+            {'error': f'Failed to get email settings: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+def update_email_settings(request):
+    """
+    Update email settings in .env file
+    
+    POST body:
+    {
+        "emailUser": "your-email@gmail.com",
+        "emailPassword": "your-app-password",
+        "emailHost": "smtp.gmail.com",
+        "emailPort": "587"
+    }
+    """
+    try:
+        from .models import EmailSettings
+
+        email_user = request.data.get('emailUser')
+        email_password = request.data.get('emailPassword')
+        email_host = request.data.get('emailHost', 'smtp.gmail.com')
+        email_port = request.data.get('emailPort', '587')
+
+        if not email_user or not email_password:
+            return Response(
+                {'error': 'Email user and password are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Deactivate all existing settings
+        EmailSettings.objects.all().update(is_active=False)
+
+        # Create new active settings
+        email_settings = EmailSettings.objects.create(
+            email_user=email_user,
+            email_password=email_password,
+            email_host=email_host,
+            email_port=int(email_port),
+            is_active=True
+        )
+
+        logger.info(f"Email settings saved to database for {email_user}")
+
+        return Response({
+            'success': True,
+            'message': 'Email settings updated successfully',
+            'emailUser': email_user,
+            'emailHost': email_host,
+            'emailPort': email_port,
+        })
+
+    except Exception as e:
+        logger.error(f"Error updating email settings: {e}")
+        return Response(
+            {'error': f'Failed to update email settings: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@csrf_exempt
+@api_view(['POST', 'GET'])
+def execute_retell_callbacks(request):
+    """
+    Execute pending Retell AI callbacks
+    GET: Return count of pending callbacks
+    POST: Execute all pending callbacks
+
+    Returns:
+        {
+            "pending_count": 5,
+            "executed_count": 3,
+            "callbacks": [...]
+        }
+    """
+    try:
+        from .utils.retell_scheduler import execute_pending_callbacks, get_pending_callbacks_count
+
+        if request.method == 'GET':
+            # Just return the count
+            pending_count = get_pending_callbacks_count()
+            return Response({
+                'success': True,
+                'pending_count': pending_count,
+                'message': f'{pending_count} callbacks pending'
+            })
+
+        elif request.method == 'POST':
+            # Execute pending callbacks
+            executed_count = execute_pending_callbacks()
+            pending_count = get_pending_callbacks_count()
+
+            return Response({
+                'success': True,
+                'executed_count': executed_count,
+                'pending_count': pending_count,
+                'message': f'Executed {executed_count} callbacks, {pending_count} still pending'
+            })
+
+    except Exception as e:
+        logger.error(f"Error executing retell callbacks: {e}")
+        return Response(
+            {'error': f'Failed to execute callbacks: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@csrf_exempt
+@api_view(['GET'])
+def get_all_users_credentials(request):
+    """
+    Get all users with their credentials
+    Returns username and raw password for all users
+    """
+    try:
+        from django.contrib.auth.models import User
+        from .models import Candidate
+
+        users_data = []
+
+        for user in User.objects.all():
+            # Try to get role from candidate or determine from user properties
+            role = 'admin' if user.is_superuser else 'hr'
+
+            # Try to find associated candidate
+            try:
+                candidate = Candidate.objects.filter(email=user.email).first()
+                if candidate:
+                    role = candidate.role if hasattr(candidate, 'role') else role
+            except:
+                pass
+
+            users_data.append({
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'role': role,
+                'password': '********',  # Cannot retrieve hashed passwords
+                'is_active': user.is_active,
+                'is_superuser': user.is_superuser,
+            })
+
+        return Response({
+            'success': True,
+            'users': users_data,
+            'count': len(users_data)
+        })
+
+    except Exception as e:
+        logger.error(f"Error fetching users: {e}")
+        return Response(
+            {'error': f'Failed to fetch users: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@csrf_exempt
+@api_view(['POST'])
+def create_user(request):
+    """
+    Create a new user
+    Creates user with specified role (admin, hr, recruiter)
+    """
+    try:
+        from django.contrib.auth.models import User
+
+        username = request.data.get('username')
+        password = request.data.get('password')
+        email = request.data.get('email')
+        first_name = request.data.get('first_name', '')
+        last_name = request.data.get('last_name', '')
+        role = request.data.get('role', 'hr')
+
+        # Validation
+        if not username or not password:
+            return Response(
+                {'error': 'Username and password are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check if username already exists
+        if User.objects.filter(username=username).exists():
+            return Response(
+                {'error': 'Username already exists'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check if email already exists
+        if email and User.objects.filter(email=email).exists():
+            return Response(
+                {'error': 'Email already exists'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Create user
+        is_superuser = role == 'admin'
+        user = User.objects.create_user(
+            username=username,
+            password=password,
+            email=email,
+            first_name=first_name,
+            last_name=last_name,
+            is_superuser=is_superuser,
+            is_staff=is_superuser
+        )
+
+        logger.info(f"User created successfully: {username} with role {role}")
+
+        return Response({
+            'success': True,
+            'message': f'User {username} created successfully',
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'role': role,
+                'is_superuser': user.is_superuser
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Error creating user: {e}")
+        return Response(
+            {'error': f'Failed to create user: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@csrf_exempt
+@api_view(['PUT'])
+def update_user(request, user_id):
+    """
+    Update a user by ID
+    """
+    try:
+        from django.contrib.auth.models import User
+
+        # Find the user
+        user = User.objects.filter(id=user_id).first()
+
+        if not user:
+            return Response(
+                {'error': 'User not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Get update data
+        username = request.data.get('username')
+        password = request.data.get('password')
+        email = request.data.get('email')
+        first_name = request.data.get('first_name', '')
+        last_name = request.data.get('last_name', '')
+        role = request.data.get('role', 'hr')
+
+        # Update username if provided and different
+        if username and username != user.username:
+            if User.objects.filter(username=username).exists():
+                return Response(
+                    {'error': 'Username already exists'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            user.username = username
+
+        # Update password if provided
+        if password and password.strip():
+            user.set_password(password)
+
+        # Update email if provided and different
+        if email and email != user.email:
+            if User.objects.filter(email=email).exclude(id=user_id).exists():
+                return Response(
+                    {'error': 'Email already exists'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            user.email = email
+
+        # Update other fields
+        user.first_name = first_name
+        user.last_name = last_name
+
+        # Update role
+        is_superuser = role == 'admin'
+        user.is_superuser = is_superuser
+        user.is_staff = is_superuser
+
+        user.save()
+
+        logger.info(f"User updated successfully: {user.username}")
+
+        return Response({
+            'success': True,
+            'message': f'User {user.username} updated successfully',
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'role': role,
+                'is_superuser': user.is_superuser
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Error updating user: {e}")
+        return Response(
+            {'error': f'Failed to update user: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@csrf_exempt
+@api_view(['DELETE'])
+def delete_user(request, user_id):
+    """
+    Delete a user by ID
+    """
+    try:
+        from django.contrib.auth.models import User
+
+        # Find the user
+        user = User.objects.filter(id=user_id).first()
+
+        if not user:
+            return Response(
+                {'error': 'User not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        username = user.username
+        user.delete()
+
+        logger.info(f"User deleted successfully: {username}")
+
+        return Response({
+            'success': True,
+            'message': f'User {username} deleted successfully'
+        })
+
+    except Exception as e:
+        logger.error(f"Error deleting user: {e}")
+        return Response(
+            {'error': f'Failed to delete user: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
