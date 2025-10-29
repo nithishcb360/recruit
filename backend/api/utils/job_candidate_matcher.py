@@ -93,6 +93,7 @@ class JobCandidateMatcher:
         if job_data.get('experience_level'):
             text_parts.append(f"Experience Level: {job_data['experience_level']}")
 
+
         if job_data.get('job_type'):
             text_parts.append(f"Job Type: {job_data['job_type']}")
 
