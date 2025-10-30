@@ -449,7 +449,7 @@ Make the description inclusive and avoid any language that might discourage dive
       setValidationErrors(prev => ({
         ...prev,
         [field]: false
-      }));
+      })); 
     }
 
     // Handle location search
