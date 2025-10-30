@@ -291,6 +291,7 @@ export default function ClientOrganizationSettings() {
   ])
 
   // Organization settings
+  const [existingEmailSettingsId, setExistingEmailSettingsId] = useState<number | null>(null);
   const [orgSettings, setOrgSettings] = useState<OrganizationSettings>({
     general: {
       name: "Acme Corporation",
@@ -1067,14 +1068,15 @@ If candidate is not interested or has accepted another offer, thank them gracefu
         const response = await fetch('http://127.0.0.1:8000/api/email-settings/active/');
         if (response.ok) {
           const data = await response.json();
+          setExistingEmailSettingsId(data.id); // Store the ID for updates
           setOrgSettings(prev => ({
             ...prev,
             general: {
               ...prev.general,
-              emailUser: data.email || '',
+              emailUser: data.email ?? '',
               emailPassword: '••••••••', // Don't show actual password
-              emailHost: data.host || 'smtp.gmail.com',
-              emailPort: data.port?.toString() || '587',
+              emailHost: data.host ?? 'smtp.gmail.com',
+              emailPort: data.port ? String(data.port) : '587',
             }
           }));
         }
@@ -2200,9 +2202,16 @@ If candidate is not interested or has accepted another offer, thank them gracefu
                       }
 
                       try {
+                        // Determine if we're creating or updating
+                        const isUpdate = existingEmailSettingsId !== null;
+                        const url = isUpdate
+                          ? `http://127.0.0.1:8000/api/email-settings/${existingEmailSettingsId}/`
+                          : 'http://127.0.0.1:8000/api/email-settings/';
+                        const method = isUpdate ? 'PATCH' : 'POST';
+
                         // Save to backend database
-                        const response = await fetch('http://127.0.0.1:8000/api/email-settings/', {
-                          method: 'POST',
+                        const response = await fetch(url, {
+                          method: method,
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
                             email: orgSettings.general.emailUser,
@@ -2221,6 +2230,11 @@ If candidate is not interested or has accepted another offer, thank them gracefu
                         }
 
                         const data = await response.json();
+
+                        // Store the ID if this was a new creation
+                        if (!isUpdate && data.id) {
+                          setExistingEmailSettingsId(data.id);
+                        }
 
                         toast({
                           title: "✅ Success",
@@ -3251,8 +3265,15 @@ Make sure the requirements field contains properly formatted text, not JSON stru
                             className="border-purple-500 text-purple-600 hover:bg-purple-50"
                             onClick={async () => {
                               try {
-                                const response = await fetch('http://localhost:8000/api/retell/agent/prompt/')
-                                if (!response.ok) throw new Error('Failed to fetch from Retell API')
+                                const llmId = process.env.NEXT_PUBLIC_RETELL_LLM_ID || process.env.RETELL_LLM_ID;
+                                const url = llmId
+                                  ? `http://localhost:8000/api/retell/agent/prompt/?llm_id=${llmId}`
+                                  : 'http://localhost:8000/api/retell/agent/prompt/';
+                                const response = await fetch(url)
+                                if (!response.ok) {
+                                  const errorData = await response.json();
+                                  throw new Error(errorData.error || 'Failed to fetch from Retell API')
+                                }
 
                                 const data = await response.json()
                                 const newImplementations = {
@@ -3271,7 +3292,7 @@ Make sure the requirements field contains properly formatted text, not JSON stru
                               } catch (error) {
                                 toast({
                                   title: "Error",
-                                  description: "Failed to fetch prompt from Retell API",
+                                  description: error instanceof Error ? error.message : "Failed to fetch prompt from Retell API",
                                   variant: "destructive"
                                 })
                               }
@@ -3285,14 +3306,19 @@ Make sure the requirements field contains properly formatted text, not JSON stru
                             className="bg-purple-600 hover:bg-purple-700 text-white"
                             onClick={async () => {
                               try {
+                                const llmId = process.env.NEXT_PUBLIC_RETELL_LLM_ID || process.env.RETELL_LLM_ID;
                                 const response = await fetch('http://localhost:8000/api/retell/agent/prompt/update/', {
                                   method: 'POST',
                                   headers: { 'Content-Type': 'application/json' },
                                   body: JSON.stringify({
+                                    llm_id: llmId,
                                     general_prompt: orgSettings.ai.implementations.retellAgent?.prompt
                                   })
                                 })
-                                if (!response.ok) throw new Error('Failed to update Retell agent')
+                                if (!response.ok) {
+                                  const errorData = await response.json();
+                                  throw new Error(errorData.error || 'Failed to update Retell agent')
+                                }
 
                                 toast({
                                   title: "Updated Retell Agent",
@@ -3302,7 +3328,7 @@ Make sure the requirements field contains properly formatted text, not JSON stru
                               } catch (error) {
                                 toast({
                                   title: "Error",
-                                  description: "Failed to update Retell agent prompt",
+                                  description: error instanceof Error ? error.message : "Failed to update Retell agent prompt",
                                   variant: "destructive"
                                 })
                               }

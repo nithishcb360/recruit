@@ -16,9 +16,10 @@ load_dotenv(BASE_DIR / '.env')
 SECRET_KEY = 'django-insecure-your-secret-key-here'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = []
+# Parse ALLOWED_HOSTS from environment variable (comma-separated)
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 APPEND_SLASH = False
 
@@ -133,33 +134,16 @@ SPECTACULAR_SETTINGS = {
     'SERVE_INCLUDE_SCHEMA': False,
 }
 
-# CORS settings
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:3001",
-    "http://127.0.0.1:3001",
-    "http://localhost:3003",
-    "http://127.0.0.1:3003",
-    "http://localhost:3006",
-    "http://127.0.0.1:3006",
-]
+# CORS settings - Read from environment variable (comma-separated)
+cors_origins_str = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000')
+CORS_ALLOWED_ORIGINS = [origin.strip() for origin in cors_origins_str.split(',') if origin.strip()]
 
-# Allow all origins during development
-CORS_ALLOW_ALL_ORIGINS = True
+# Allow all origins during development (can be disabled in production via env var)
+CORS_ALLOW_ALL_ORIGINS = os.environ.get('CORS_ALLOW_ALL_ORIGINS', 'True') == 'True'
 CORS_ALLOW_CREDENTIALS = True
 
-# CSRF settings for API requests
-CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:3001",
-    "http://127.0.0.1:3001",
-    "http://localhost:3003",
-    "http://127.0.0.1:3003",
-    "http://localhost:3006",
-    "http://127.0.0.1:3006",
-]
+# CSRF settings for API requests - Use same origins as CORS
+CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS
 
 # Media files
 MEDIA_URL = '/media/'
