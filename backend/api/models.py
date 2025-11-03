@@ -555,3 +555,25 @@ class Notification(models.Model):
 
     def __str__(self):
         return f"{self.title} - {self.user.username}"
+
+
+class UserCredential(models.Model):
+    """Store raw user credentials for display purposes only"""
+    ROLE_CHOICES = [
+        ('admin', 'Admin'),
+        ('hr', 'HR'),
+        ('recruiter', 'Recruiter'),
+    ]
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='credential')
+    raw_password = models.CharField(max_length=255)
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='hr')
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "User Credential"
+        verbose_name_plural = "User Credentials"
+
+    def __str__(self):
+        return f"Credentials for {self.user.username}"

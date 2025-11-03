@@ -530,7 +530,7 @@ Make the description inclusive and avoid any language that might discourage dive
       // Also update formData to keep it in sync
       setFormData(prev => ({
         ...prev,
-        interviewStages: newStages
+        interviewStages: newStages       
       }));
       console.log('Created interview stages:', newStages.map(s => ({ id: s.id, name: s.name })));
     }

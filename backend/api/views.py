@@ -3372,20 +3372,21 @@ def get_all_users_credentials(request):
     """
     try:
         from django.contrib.auth.models import User
-        from .models import Candidate
+        from .models import Candidate, UserCredential
 
         users_data = []
 
         for user in User.objects.all():
-            # Try to get role from candidate or determine from user properties
+            # Default role
             role = 'admin' if user.is_superuser else 'hr'
+            raw_password = '********'
 
-            # Try to find associated candidate
+            # Try to get role and password from UserCredential
             try:
-                candidate = Candidate.objects.filter(email=user.email).first()
-                if candidate:
-                    role = candidate.role if hasattr(candidate, 'role') else role
-            except:
+                credential = UserCredential.objects.get(user=user)
+                raw_password = credential.raw_password
+                role = credential.role
+            except UserCredential.DoesNotExist:
                 pass
 
             users_data.append({
@@ -3395,7 +3396,7 @@ def get_all_users_credentials(request):
                 'first_name': user.first_name,
                 'last_name': user.last_name,
                 'role': role,
-                'password': '********',  # Cannot retrieve hashed passwords
+                'password': raw_password,
                 'is_active': user.is_active,
                 'is_superuser': user.is_superuser,
             })
@@ -3464,6 +3465,14 @@ def create_user(request):
             is_staff=is_superuser
         )
 
+        # Store raw password and role for reference
+        from .models import UserCredential
+        UserCredential.objects.create(
+            user=user,
+            raw_password=password,
+            role=role
+        )
+
         logger.info(f"User created successfully: {username} with role {role}")
 
         return Response({
@@ -3523,9 +3532,17 @@ def update_user(request, user_id):
                 )
             user.username = username
 
-        # Update password if provided
+        # Update password and role if provided
+        from .models import UserCredential
+        credential, created = UserCredential.objects.get_or_create(user=user)
+
         if password and password.strip():
             user.set_password(password)
+            credential.raw_password = password
+
+        # Update role in UserCredential
+        credential.role = role
+        credential.save()
 
         # Update email if provided and different
         if email and email != user.email:

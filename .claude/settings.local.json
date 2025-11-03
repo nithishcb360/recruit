@@ -30,7 +30,13 @@
       "Bash(python manage.py:*)",
       "Bash(python:*)",
       "Bash(d:/recruit/venv/Scripts/python.exe:*)",
-      "Bash(d:/recruit/venv/Scripts/pip.exe list)"
+      "Bash(d:/recruit/venv/Scripts/pip.exe list)",
+      "Bash(where python)",
+      "Bash(curl:*)",
+      "Bash(tasklist)",
+      "Bash(netstat:*)",
+      "Bash(taskkill:*)",
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": []

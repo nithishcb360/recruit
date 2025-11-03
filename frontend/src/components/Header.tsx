@@ -401,28 +401,6 @@ export default function Header({ onMenuClick }: HeaderProps) {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {isAdmin && (
-          <>
-            <button
-              onClick={() => setShowAddUserModal(true)}
-              aria-label="Add User"
-              className="inline-flex items-center gap-2 h-9 px-3 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium"
-              title="Add new user"
-            >
-              <UserPlus className="h-4 w-4" aria-hidden="true" />
-              <span className="hidden sm:inline">Add User</span>
-            </button>
-            <button
-              onClick={fetchAllUsers}
-              aria-label="View All Users"
-              className="inline-flex items-center gap-2 h-9 px-3 rounded-md border bg-white hover:bg-slate-50 text-sm font-medium"
-              title="View all users and credentials"
-            >
-              <Users className="h-4 w-4" aria-hidden="true" />
-              <span className="hidden sm:inline">All Users</span>
-            </button>
-          </>
-        )}
 
         <button
           aria-label="More"

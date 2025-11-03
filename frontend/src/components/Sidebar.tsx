@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import {
   LayoutDashboard,
@@ -29,17 +29,107 @@ export default function Sidebar({ isOpen = false, onToggle }: SidebarProps) {
   const pathname = usePathname()
   const { user, logout } = useAuth()
 
-  const nav = [
-    { label: "Dashboard", icon: LayoutDashboard, href: "/", active: pathname === "/" },
-    { label: "Feedback Forms", icon: FileText, href: "/forms", active: pathname === "/forms" },
-    { label: "Jobs", icon: Briefcase, href: "/jobs", active: pathname === "/jobs" },
-    { label: "Candidates", icon: Users, href: "/candidates", active: pathname === "/candidates" },
-    { label: "AI/HR Screening", icon: Brain, href: "/screening", active: pathname === "/screening" },
-    { label: "Interviews", icon: CalendarClock, href: "/interviews", active: pathname === "/interviews" },
-    { label: "Integrations", icon: Plug, href: "#" },
-    { label: "Analytics", icon: BarChart3, href: "#" },
-    { label: "Settings", icon: SettingsIcon, href: "/settings", active: pathname === "/settings" },
+  // Define all possible navigation items
+  const adminNav = [
+    { id: 'dashboard', label: "Dashboard", icon: LayoutDashboard, href: "/", active: pathname === "/" },
+    { id: 'create-user', label: "Create User", icon: User, href: "/users/create", active: pathname === "/users/create" },
+    { id: 'all-users', label: "All Users", icon: Users, href: "/users", active: pathname === "/users" },
+    { id: 'select-tabs', label: "Select Tabs", icon: FileText, href: "/select-tabs", active: pathname === "/select-tabs" },
+    { id: 'settings', label: "Settings", icon: SettingsIcon, href: "/settings", active: pathname === "/settings" },
   ]
+
+  const allHrNav = [
+    { id: 'dashboard', label: "Dashboard", icon: LayoutDashboard, href: "/", active: pathname === "/" },
+    { id: 'feedback-forms', label: "Feedback Forms", icon: FileText, href: "/forms", active: pathname === "/forms" },
+    { id: 'jobs', label: "Jobs", icon: Briefcase, href: "/jobs", active: pathname === "/jobs" },
+    { id: 'candidates', label: "Candidates", icon: Users, href: "/candidates", active: pathname === "/candidates" },
+    { id: 'screening', label: "AI/HR Screening", icon: Brain, href: "/screening", active: pathname === "/screening" },
+    { id: 'interviews', label: "Interviews", icon: CalendarClock, href: "/interviews", active: pathname === "/interviews" },
+    { id: 'integrations', label: "Integrations", icon: Plug, href: "#" },
+    { id: 'analytics', label: "Analytics", icon: BarChart3, href: "#" },
+    { id: 'settings', label: "Settings", icon: SettingsIcon, href: "/settings", active: pathname === "/settings" },
+  ]
+
+  const allRecruiterNav = [
+    { id: 'dashboard', label: "Dashboard", icon: LayoutDashboard, href: "/", active: pathname === "/" },
+    { id: 'feedback-forms', label: "Feedback Forms", icon: FileText, href: "/forms", active: pathname === "/forms" },
+    { id: 'jobs', label: "Jobs", icon: Briefcase, href: "/jobs", active: pathname === "/jobs" },
+    { id: 'candidates', label: "Candidates", icon: Users, href: "/candidates", active: pathname === "/candidates" },
+    { id: 'screening', label: "AI/HR Screening", icon: Brain, href: "/screening", active: pathname === "/screening" },
+    { id: 'interviews', label: "Interviews", icon: CalendarClock, href: "/interviews", active: pathname === "/interviews" },
+    { id: 'integrations', label: "Integrations", icon: Plug, href: "#" },
+    { id: 'analytics', label: "Analytics", icon: BarChart3, href: "#" },
+    { id: 'settings', label: "Settings", icon: SettingsIcon, href: "/settings", active: pathname === "/settings" },
+  ]
+
+  // Load tab configuration from localStorage and filter navigation
+  const getFilteredNavigation = () => {
+    if (!user) return []
+
+    if (user.role === 'admin') {
+      return adminNav
+    }
+
+    if (user.role === 'hr') {
+      if (typeof window === 'undefined') {
+        // Server-side: return default navigation
+        return allHrNav.filter(nav =>
+          ['dashboard', 'feedback-forms', 'jobs', 'candidates', 'screening', 'interviews', 'analytics', 'settings'].includes(nav.id)
+        )
+      }
+
+      try {
+        const savedConfig = localStorage.getItem('hr-tabs-config')
+        if (savedConfig) {
+          const config = JSON.parse(savedConfig)
+          const enabledTabs = config.filter((tab: any) => tab.enabled).map((tab: any) => tab.id)
+          return allHrNav.filter(nav => enabledTabs.includes(nav.id))
+        } else {
+          // Default HR navigation if no config saved
+          return allHrNav.filter(nav =>
+            ['dashboard', 'feedback-forms', 'jobs', 'candidates', 'screening', 'interviews', 'analytics', 'settings'].includes(nav.id)
+          )
+        }
+      } catch (error) {
+        console.error('Error loading HR tab config:', error)
+        return allHrNav.filter(nav =>
+          ['dashboard', 'feedback-forms', 'jobs', 'candidates', 'screening', 'interviews', 'analytics', 'settings'].includes(nav.id)
+        )
+      }
+    }
+
+    if (user.role === 'recruiter') {
+      if (typeof window === 'undefined') {
+        // Server-side: return default navigation
+        return allRecruiterNav.filter(nav =>
+          ['dashboard', 'jobs', 'candidates', 'screening', 'interviews', 'settings'].includes(nav.id)
+        )
+      }
+
+      try {
+        const savedConfig = localStorage.getItem('recruiter-tabs-config')
+        if (savedConfig) {
+          const config = JSON.parse(savedConfig)
+          const enabledTabs = config.filter((tab: any) => tab.enabled).map((tab: any) => tab.id)
+          return allRecruiterNav.filter(nav => enabledTabs.includes(nav.id))
+        } else {
+          // Default recruiter navigation if no config saved
+          return allRecruiterNav.filter(nav =>
+            ['dashboard', 'jobs', 'candidates', 'screening', 'interviews', 'settings'].includes(nav.id)
+          )
+        }
+      } catch (error) {
+        console.error('Error loading Recruiter tab config:', error)
+        return allRecruiterNav.filter(nav =>
+          ['dashboard', 'jobs', 'candidates', 'screening', 'interviews', 'settings'].includes(nav.id)
+        )
+      }
+    }
+
+    return []
+  }
+
+  const nav = getFilteredNavigation()
 
   return (
     <>

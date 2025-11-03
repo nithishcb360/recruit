@@ -148,6 +148,9 @@ CORS_ALLOW_CREDENTIALS = True
 # CSRF settings for API requests - Use same origins as CORS
 CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS
 
+# Exempt all /api/ endpoints from CSRF checks
+CSRF_EXEMPT_URLS = [r'^api/']
+
 # Media files
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
