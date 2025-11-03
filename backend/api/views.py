@@ -3622,3 +3622,81 @@ def delete_user(request, user_id):
             {'error': f'Failed to delete user: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+@csrf_exempt
+@api_view(['GET'])
+def get_all_roles(request):
+    """
+    Get all unique roles from the system
+    Returns a list of all roles stored in UserCredential
+    """
+    try:
+        from .models import UserCredential
+
+        # Get all unique roles
+        roles = UserCredential.objects.values_list('role', flat=True).distinct().order_by('role')
+        roles_list = list(roles)
+
+        logger.info(f"Retrieved {len(roles_list)} unique roles")
+
+        return Response({
+            'success': True,
+            'roles': roles_list,
+            'count': len(roles_list)
+        })
+
+    except Exception as e:
+        logger.error(f"Error fetching roles: {e}")
+        return Response(
+            {'error': f'Failed to fetch roles: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@csrf_exempt
+@api_view(['DELETE'])
+def delete_role(request, role_name):
+    """
+    Delete a role from the system
+    Updates all users with this role to 'hr' (default role)
+    Cannot delete system roles: admin, hr, recruiter, interviewer
+    """
+    try:
+        from .models import UserCredential
+
+        # Prevent deleting system roles
+        system_roles = ['admin', 'hr', 'recruiter', 'interviewer']
+        if role_name.lower() in system_roles:
+            return Response(
+                {'error': f'Cannot delete system role: {role_name}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Find all users with this role
+        users_with_role = UserCredential.objects.filter(role=role_name)
+        count = users_with_role.count()
+
+        if count == 0:
+            return Response(
+                {'error': f'Role "{role_name}" not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Update all users with this role to 'hr'
+        users_with_role.update(role='hr')
+
+        logger.info(f"Role '{role_name}' deleted. {count} users updated to 'hr' role")
+
+        return Response({
+            'success': True,
+            'message': f'Role "{role_name}" deleted successfully',
+            'users_updated': count
+        })
+
+    except Exception as e:
+        logger.error(f"Error deleting role: {e}")
+        return Response(
+            {'error': f'Failed to delete role: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

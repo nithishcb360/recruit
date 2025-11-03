@@ -4,7 +4,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 
 interface User {
   email: string
-  role: 'admin' | 'recruiter' | 'hr'
+  role: 'admin' | 'recruiter' | 'hr' | 'interviewer'
   name: string
 }
 
@@ -51,7 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (backendUser) {
           const userData = {
             email: backendUser.email || email,
-            role: backendUser.role as 'admin' | 'recruiter' | 'hr',
+            role: backendUser.role as 'admin' | 'recruiter' | 'hr' | 'interviewer',
             name: `${backendUser.first_name} ${backendUser.last_name}`.trim() || backendUser.username
           }
           setUser(userData)

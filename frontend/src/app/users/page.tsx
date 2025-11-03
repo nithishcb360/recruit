@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Users, Edit, Trash2, Eye, EyeOff, Loader2 } from "lucide-react"
+import { Users, Edit, Trash2, Eye, EyeOff, Loader2, AlertCircle } from "lucide-react"
 
 interface User {
   id: number
@@ -38,6 +38,9 @@ export default function AllUsersPage() {
   const [showEditModal, setShowEditModal] = useState(false)
   const [editingUser, setEditingUser] = useState<User | null>(null)
   const [showPassword, setShowPassword] = useState<Record<number, boolean>>({})
+  const [showCustomRole, setShowCustomRole] = useState(false)
+  const [customRole, setCustomRole] = useState('')
+  const [existingRoles, setExistingRoles] = useState<string[]>(['admin', 'hr', 'recruiter', 'interviewer'])
   const [editFormData, setEditFormData] = useState({
     username: '',
     email: '',
@@ -64,6 +67,9 @@ export default function AllUsersPage() {
       if (response.ok) {
         const data = await response.json()
         setUsers(data.users || [])
+        // Extract unique roles
+        const roles = Array.from(new Set(data.users?.map((u: any) => u.role) || [])).sort()
+        setExistingRoles(roles as string[])
       } else {
         alert('Failed to fetch users')
       }
@@ -142,6 +148,48 @@ export default function AllUsersPage() {
       ...prev,
       [userId]: !prev[userId]
     }))
+  }
+
+  const handleDeleteRole = async (roleToDelete: string) => {
+    // Prevent deleting system roles
+    if (['admin', 'hr', 'recruiter', 'interviewer'].includes(roleToDelete)) {
+      alert('Cannot delete system roles (admin, hr, recruiter, interviewer)')
+      return
+    }
+
+    const confirmed = confirm(`Are you sure you want to delete the role "${roleToDelete}"?\n\nThis will:\n- Remove the role from all dropdowns\n- Remove the role tab from Role Tabs page\n- Update all users with this role to "HR" role\n- Clear localStorage configuration for this role`)
+    if (!confirmed) return
+
+    try {
+      // Call backend API to delete role
+      const response = await fetch(`http://localhost:8000/api/admin/roles/${roleToDelete}/delete/`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+
+        // Remove from local state
+        setExistingRoles(prev => prev.filter(r => r !== roleToDelete))
+
+        // Clear localStorage configuration for this role
+        localStorage.removeItem(`${roleToDelete}-tabs-config`)
+
+        alert(`Role "${roleToDelete}" deleted successfully!\n${data.users_updated} user(s) have been updated to "HR" role.`)
+
+        // Refresh users list
+        fetchAllUsers()
+      } else {
+        const error = await response.json()
+        alert(`Error: ${error.error || 'Failed to delete role'}`)
+      }
+    } catch (error) {
+      console.error('Error deleting role:', error)
+      alert('Error deleting role. Please try again.')
+    }
   }
 
   if (isLoading) {
@@ -302,20 +350,108 @@ export default function AllUsersPage() {
 
             <div>
               <Label htmlFor="edit-role" className="text-sm font-medium text-gray-700">Role</Label>
-              <Select
-                key={editFormData.role}
-                value={editFormData.role}
-                onValueChange={(value) => setEditFormData({ ...editFormData, role: value })}
-              >
-                <SelectTrigger className="mt-1 bg-white text-black">
-                  <SelectValue placeholder="Select role" />
-                </SelectTrigger>
-                <SelectContent className="bg-white">
-                  <SelectItem value="admin" className="text-black">Admin</SelectItem>
-                  <SelectItem value="hr" className="text-black">HR</SelectItem>
-                  <SelectItem value="recruiter" className="text-black">Recruiter</SelectItem>
-                </SelectContent>
-              </Select>
+              {!showCustomRole ? (
+                <div className="space-y-2">
+                  <Select
+                    key={editFormData.role}
+                    value={editFormData.role}
+                    onValueChange={(value) => {
+                      if (value === 'custom') {
+                        setShowCustomRole(true)
+                      } else {
+                        setEditFormData({ ...editFormData, role: value })
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="mt-1 bg-white text-black">
+                      <SelectValue placeholder="Select role" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white">
+                      {existingRoles.map(role => (
+                        <SelectItem key={role} value={role} className="text-black capitalize">
+                          {role.charAt(0).toUpperCase() + role.slice(1)}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="custom" className="text-blue-600 font-semibold">+ New Role</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {editFormData.role && !['admin', 'hr', 'recruiter', 'interviewer'].includes(editFormData.role) && (
+                    <p className="text-xs text-blue-600">Custom role: {editFormData.role}</p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2 mt-1">
+                  <div className="flex gap-2">
+                    <Input
+                      value={customRole}
+                      onChange={(e) => setCustomRole(e.target.value)}
+                      placeholder="Enter custom role name"
+                      className="bg-white text-black flex-1"
+                    />
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        if (customRole.trim()) {
+                          setEditFormData({ ...editFormData, role: customRole.trim().toLowerCase() })
+                          setShowCustomRole(false)
+                          setCustomRole('')
+                        }
+                      }}
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      Add
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        setShowCustomRole(false)
+                        setCustomRole('')
+                      }}
+                      className="bg-gray-600 hover:bg-gray-700 text-white"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                  <p className="text-xs text-gray-500">Enter a custom role name and click Add</p>
+                </div>
+              )}
+
+              {/* Manage Roles Section */}
+              {!showCustomRole && existingRoles.length > 0 && (
+                <div className="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlertCircle className="h-4 w-4 text-gray-600" />
+                    <Label className="text-sm font-medium text-gray-700 mb-0">Available Roles</Label>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {existingRoles.map(role => (
+                      <div
+                        key={role}
+                        className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm ${
+                          ['admin', 'hr', 'recruiter', 'interviewer'].includes(role)
+                            ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                            : 'bg-gray-100 text-gray-800 border border-gray-300'
+                        }`}
+                      >
+                        <span className="capitalize">{role}</span>
+                        {!['admin', 'hr', 'recruiter', 'interviewer'].includes(role) && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteRole(role)}
+                            className="text-red-600 hover:text-red-800 transition-colors"
+                            title="Delete role"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">
+                    System roles (Admin, HR, Recruiter, Interviewer) cannot be deleted
+                  </p>
+                </div>
+              )}
             </div>
 
             <div>
