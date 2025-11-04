@@ -36,8 +36,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const login = async (email: string, password: string): Promise<boolean> => {
+    // First, try to authenticate with backend API
+    try {
+      const response = await fetch('http://localhost:8000/api/admin/users/credentials/')
+      if (response.ok) {
+        const data = await response.json()
+        const users = data.users || []
+
+        // Check if user exists in backend with matching credentials
+        const backendUser = users.find((u: any) =>
+          (u.email === email || u.username === email) && u.password === password
+        )
+
+        if (backendUser) {
+          const userData = {
+            email: backendUser.email || email,
+            role: backendUser.role as 'admin' | 'recruiter' | 'hr',
+            name: `${backendUser.first_name} ${backendUser.last_name}`.trim() || backendUser.username
+          }
+          setUser(userData)
+          localStorage.setItem('user', JSON.stringify(userData))
+          return true
+        }
+      }
+    } catch (error) {
+      console.error('Backend authentication failed, falling back to demo users:', error)
+    }
+
+    // Fallback to demo users if backend fails
     const demoUser = DEMO_USERS[email as keyof typeof DEMO_USERS]
-    
+
     if (demoUser && demoUser.password === password) {
       const userData = {
         email,
@@ -48,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('user', JSON.stringify(userData))
       return true
     }
-    
+
     return false
   }
 

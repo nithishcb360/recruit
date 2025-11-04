@@ -7,7 +7,13 @@
       "Bash(git -C \"D:/recruit\" status)",
       "Bash(python manage.py check:*)",
       "Bash(python manage.py shell:*)",
-      "Bash(python -c:*)"
+      "Bash(python -c:*)",
+      "Bash(where python)",
+      "Bash(curl:*)",
+      "Bash(tasklist)",
+      "Bash(netstat:*)",
+      "Bash(taskkill:*)",
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": []

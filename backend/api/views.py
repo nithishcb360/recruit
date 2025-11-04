@@ -9,7 +9,7 @@ from datetime import timedelta
 from django_filters.rest_framework import DjangoFilterBackend
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
-from .models import DashboardStats, Task, ActivityLog, Department, Job, Candidate, JobApplication, FeedbackTemplate, InterviewFlow, InterviewRound, EmailSettings
+from .models import DashboardStats, Task, ActivityLog, Department, Job, Candidate, JobApplication, FeedbackTemplate, InterviewFlow, InterviewRound, EmailSettings, UserCredential
 from .serializers import (
     DashboardStatsSerializer, TaskSerializer, TaskCreateSerializer,
     ActivityLogSerializer, DashboardOverviewSerializer,
@@ -3163,5 +3163,303 @@ def update_email_settings(request):
         logger.error(f"Error updating email settings: {e}")
         return Response(
             {'error': f'Failed to update email settings: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+def get_all_users_credentials(request):
+    """
+    Get all users with their credentials for admin display.
+    Returns username, email, role, and raw password for each user.
+    """
+    try:
+        from django.contrib.auth.models import User
+        from .models import Candidate, UserCredential
+
+        users_data = []
+
+        for user in User.objects.all():
+            # Default role
+            role = 'admin' if user.is_superuser else 'hr'
+            raw_password = '********'
+
+            # Try to get role and password from UserCredential
+            try:
+                credential = UserCredential.objects.get(user=user)
+                raw_password = credential.raw_password
+                role = credential.role
+            except UserCredential.DoesNotExist:
+                pass
+
+            users_data.append({
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'role': role,
+                'password': raw_password,
+                'is_active': user.is_active,
+                'is_superuser': user.is_superuser,
+            })
+
+        return Response({
+            'success': True,
+            'users': users_data
+        })
+
+    except Exception as e:
+        logger.error(f"Error fetching users: {e}")
+        return Response(
+            {'error': f'Failed to fetch users: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+def create_user(request):
+    """
+    Create a new user with credentials.
+
+    POST body:
+    {
+        "username": "johndoe",
+        "email": "john@example.com",
+        "password": "password123",
+        "firstName": "John",
+        "lastName": "Doe",
+        "role": "hr"
+    }
+    """
+    try:
+        from django.contrib.auth.models import User
+        from .models import UserCredential
+
+        username = request.data.get('username')
+        email = request.data.get('email')
+        password = request.data.get('password')
+        first_name = request.data.get('firstName', '')
+        last_name = request.data.get('lastName', '')
+        role = request.data.get('role', 'hr')
+
+        # Validate required fields
+        if not username or not password:
+            return Response(
+                {'error': 'Username and password are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check if user already exists
+        if User.objects.filter(username=username).exists():
+            return Response(
+                {'error': 'Username already exists'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check if email already exists
+        if email and User.objects.filter(email=email).exists():
+            return Response(
+                {'error': 'Email already exists'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Determine if user should be superuser
+        is_superuser = role == 'admin'
+
+        # Create the user
+        user = User.objects.create_user(
+            username=username,
+            email=email,
+            password=password,
+            first_name=first_name,
+            last_name=last_name,
+            is_superuser=is_superuser,
+            is_staff=is_superuser
+        )
+
+        # Store raw password and role for reference
+        from .models import UserCredential
+        UserCredential.objects.create(
+            user=user,
+            raw_password=password,
+            role=role
+        )
+
+        logger.info(f"User created successfully: {username} with role {role}")
+
+        return Response({
+            'success': True,
+            'message': 'User created successfully',
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'role': role
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Error creating user: {e}")
+        return Response(
+            {'error': f'Failed to create user: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['PUT', 'PATCH'])
+def update_user(request, user_id):
+    """
+    Update an existing user's information and credentials.
+
+    PUT/PATCH /api/users/{user_id}/
+    Body:
+    {
+        "username": "johndoe",
+        "email": "john@example.com",
+        "password": "newpassword123",
+        "firstName": "John",
+        "lastName": "Doe",
+        "role": "hr",
+        "isActive": true
+    }
+    """
+    try:
+        from django.contrib.auth.models import User
+        from .models import UserCredential
+
+        # Get the user
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response(
+                {'error': 'User not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Get data from request
+        username = request.data.get('username')
+        email = request.data.get('email')
+        password = request.data.get('password')
+        first_name = request.data.get('firstName')
+        last_name = request.data.get('lastName')
+        role = request.data.get('role', 'hr')
+        is_active = request.data.get('isActive')
+
+        # Update username if provided and different
+        if username and username != user.username:
+            # Check if new username already exists
+            if User.objects.filter(username=username).exclude(id=user_id).exists():
+                return Response(
+                    {'error': 'Username already exists'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            user.username = username
+
+        # Update password and role if provided
+        from .models import UserCredential
+        credential, created = UserCredential.objects.get_or_create(user=user)
+
+        if password and password.strip():
+            user.set_password(password)
+            credential.raw_password = password
+
+        # Update role in UserCredential
+        credential.role = role
+        credential.save()
+
+        # Update email if provided and different
+        if email and email != user.email:
+            # Check if new email already exists
+            if User.objects.filter(email=email).exclude(id=user_id).exists():
+                return Response(
+                    {'error': 'Email already exists'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            user.email = email
+
+        # Update first and last name if provided
+        if first_name is not None:
+            user.first_name = first_name
+        if last_name is not None:
+            user.last_name = last_name
+
+        # Update is_active if provided
+        if is_active is not None:
+            user.is_active = is_active
+
+        # Update superuser status based on role
+        is_superuser = role == 'admin'
+        user.is_superuser = is_superuser
+        user.is_staff = is_superuser
+
+        # Save the user
+        user.save()
+
+        logger.info(f"User updated successfully: {user.username}")
+
+        return Response({
+            'success': True,
+            'message': 'User updated successfully',
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'role': role,
+                'is_active': user.is_active
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Error updating user: {e}")
+        return Response(
+            {'error': f'Failed to update user: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['DELETE'])
+def delete_user(request, user_id):
+    """
+    Delete a user and their credentials.
+    
+    DELETE /api/users/{user_id}/delete/
+    """
+    try:
+        from django.contrib.auth.models import User
+        from .models import UserCredential
+
+        # Get the user
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response(
+                {'error': 'User not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        username = user.username
+
+        # Delete associated credential if exists
+        try:
+            credential = UserCredential.objects.get(user=user)
+            credential.delete()
+        except UserCredential.DoesNotExist:
+            pass
+
+        # Delete the user
+        user.delete()
+
+        logger.info(f"User deleted successfully: {username}")
+
+        return Response({
+            'success': True,
+            'message': 'User deleted successfully'
+        })
+
+    except Exception as e:
+        logger.error(f"Error deleting user: {e}")
+        return Response(
+            {'error': f'Failed to delete user: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )

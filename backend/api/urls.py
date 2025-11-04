@@ -35,5 +35,10 @@ urlpatterns = [
     # Email settings management
     path('settings/email/', views.get_email_settings, name='get-email-settings'),
     path('settings/email/update/', views.update_email_settings, name='update-email-settings'),
+    # User management endpoints
+    path('admin/users/credentials/', views.get_all_users_credentials, name='get-all-users'),
+    path('admin/users/create/', views.create_user, name='create-user'),
+    path('admin/users/<int:user_id>/update/', views.update_user, name='update-user'),
+    path('admin/users/<int:user_id>/delete/', views.delete_user, name='delete-user'),
     path('', include(router.urls)),
 ]
