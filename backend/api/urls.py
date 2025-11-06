@@ -40,5 +40,7 @@ urlpatterns = [
     path('admin/users/create/', views.create_user, name='create-user'),
     path('admin/users/<int:user_id>/update/', views.update_user, name='update-user'),
     path('admin/users/<int:user_id>/delete/', views.delete_user, name='delete-user'),
+    path('admin/roles/', views.get_all_roles, name='get-all-roles'),
+    path('admin/roles/<str:role_name>/delete/', views.delete_role, name='delete-role'),
     path('', include(router.urls)),
 ]

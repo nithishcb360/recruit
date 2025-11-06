@@ -34,7 +34,7 @@ export default function Sidebar({ isOpen = false, onToggle }: SidebarProps) {
     { id: 'dashboard', label: "Dashboard", icon: LayoutDashboard, href: "/", active: pathname === "/" },
     { id: 'create-user', label: "Create User", icon: User, href: "/users/create", active: pathname === "/users/create" },
     { id: 'all-users', label: "All Users", icon: Users, href: "/users", active: pathname === "/users" },
-    { id: 'select-tabs', label: "Select Tabs", icon: FileText, href: "/select-tabs", active: pathname === "/select-tabs" },
+    { id: 'select-tabs', label: "Role Tabs", icon: FileText, href: "/select-tabs", active: pathname === "/select-tabs" },
     { id: 'settings', label: "Settings", icon: SettingsIcon, href: "/settings", active: pathname === "/settings" },
   ]
 
@@ -126,7 +126,52 @@ export default function Sidebar({ isOpen = false, onToggle }: SidebarProps) {
       }
     }
 
-    return []
+    if (user.role === 'interviewer') {
+      if (typeof window === 'undefined') {
+        // Server-side: return default navigation
+        return allRecruiterNav.filter(nav =>
+          ['dashboard', 'interviews', 'settings'].includes(nav.id)
+        )
+      }
+
+      try {
+        const savedConfig = localStorage.getItem('interviewer-tabs-config')
+        if (savedConfig) {
+          const config = JSON.parse(savedConfig)
+          const enabledTabs = config.filter((tab: any) => tab.enabled).map((tab: any) => tab.id)
+          return allRecruiterNav.filter(nav => enabledTabs.includes(nav.id))
+        } else {
+          // Default interviewer navigation if no config saved
+          return allRecruiterNav.filter(nav =>
+            ['dashboard', 'interviews', 'settings'].includes(nav.id)
+          )
+        }
+      } catch (error) {
+        console.error('Error loading Interviewer tab config:', error)
+        return allRecruiterNav.filter(nav =>
+          ['dashboard', 'interviews', 'settings'].includes(nav.id)
+        )
+      }
+    }
+
+    // Handle any custom role
+    if (typeof window !== 'undefined') {
+      try {
+        const savedConfig = localStorage.getItem(`${user.role}-tabs-config`)
+        if (savedConfig) {
+          const config = JSON.parse(savedConfig)
+          const enabledTabs = config.filter((tab: any) => tab.enabled).map((tab: any) => tab.id)
+          return allRecruiterNav.filter(nav => enabledTabs.includes(nav.id))
+        }
+      } catch (error) {
+        console.error(`Error loading ${user.role} tab config:`, error)
+      }
+    }
+
+    // Default for custom roles: only dashboard and settings
+    return allRecruiterNav.filter(nav =>
+      ['dashboard', 'settings'].includes(nav.id)
+    )
   }
 
   const nav = getFilteredNavigation()
