@@ -637,7 +637,6 @@ export default function WebDeskAssessment() {
             title: "Access Restricted",
             description: accessCheck.message,
             variant: "destructive",
-            duration: 10000
           })
         }
       }
@@ -667,7 +666,6 @@ export default function WebDeskAssessment() {
         title: "Access Restricted",
         description: accessCheck.message,
         variant: "destructive",
-        duration: 10000
       })
       return
     }

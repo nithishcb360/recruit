@@ -19,7 +19,7 @@ async function fetchCallDataWithRetry(
 
     // Check if analysis is complete
     const hasAnalysis = callData.call_analysis != null;
-    const hasCustomData = hasAnalysis && callData.call_analysis.custom_analysis_data != null;
+    const hasCustomData = hasAnalysis && callData.call_analysis?.custom_analysis_data != null;
 
     console.log(`Attempt ${attempt + 1}/${maxRetries}:`, {
       hasAnalysis,
@@ -29,7 +29,7 @@ async function fetchCallDataWithRetry(
 
     // If we have custom analysis data, return immediately
     if (hasCustomData) {
-      console.log('✅ Analysis complete with custom data:', callData.call_analysis.custom_analysis_data);
+      console.log('✅ Analysis complete with custom data:', callData.call_analysis?.custom_analysis_data);
       return callData;
     }
 
@@ -49,10 +49,10 @@ async function fetchCallDataWithRetry(
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { callId: string } }
+  { params }: { params: Promise<{ callId: string }> }
 ) {
   try {
-    const { callId } = params;
+    const { callId } = await params;
 
     if (!callId) {
       return NextResponse.json(

@@ -7,7 +7,7 @@ export interface FormResponse {
   question_id: number
   response_text?: string
   response_file?: string // base64 or file path
-  response_type: 'text' | 'textarea' | 'audio' | 'video'
+  response_type: 'text' | 'textarea' | 'audio' | 'video' | 'multiple_choice' | 'code' | 'radio' | 'program'
   file_name?: string
   file_type?: string
   created_at?: string
@@ -19,7 +19,7 @@ export interface FormResponseSubmission {
   question_id: number
   response_text?: string
   response_file?: string
-  response_type: 'text' | 'textarea' | 'audio' | 'video'
+  response_type: 'text' | 'textarea' | 'audio' | 'video' | 'multiple_choice' | 'code' | 'radio' | 'program'
   file_name?: string
   file_type?: string
 }

@@ -89,6 +89,21 @@ export interface JobListItem {
   department: Department
   status: string
   created_at: string
+  // Extended fields from detailed job data
+  description?: string
+  requirements?: string
+  responsibilities?: string
+  experience_level?: string
+  experience_range?: string
+  required_skills?: string[]
+  preferred_skills?: string[]
+  job_type?: string
+  employment_type?: string
+  location?: string
+  work_type?: string
+  is_remote?: boolean
+  salary_min?: number
+  salary_max?: number
 }
 
 export interface ParsedJD {

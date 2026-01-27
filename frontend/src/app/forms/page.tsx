@@ -93,6 +93,8 @@ export default function FeedbackFormBuilder() {
   const [aiConfig, setAiConfig] = useState<{provider: string; apiKey: string; customPrompt?: string} | null>(null)
   const [customPrompt, setCustomPrompt] = useState("")
   const [isEditingPrompt, setIsEditingPrompt] = useState(false)
+  const [showApiKeyConfig, setShowApiKeyConfig] = useState(false)
+  const [apiKeyInput, setApiKeyInput] = useState("")
 
   // Helper functions for local storage
   const saveFormsToLocalStorage = (forms: FeedbackTemplate[]) => {
@@ -599,12 +601,12 @@ export default function FeedbackFormBuilder() {
       if (!question) throw new Error('Question not found')
 
       let responseData
-      if (question.type === 'text' || question.type === 'textarea' || question.type === 'radio' || question.type === 'program') {
+      if (question.type === 'text' || question.type === 'textarea' || question.type === 'multiple_choice' || question.type === 'code' || question.type === 'radio' || question.type === 'program') {
         responseData = {
           form_id: previewForm.id,
           question_id: questionId,
           response_text: response,
-          response_type: question.type as 'text' | 'textarea' | 'radio' | 'program'
+          response_type: question.type as 'text' | 'textarea' | 'multiple_choice' | 'code' | 'radio' | 'program'
         }
       } else if (question.type === 'audio' || question.type === 'video') {
         responseData = {

@@ -4,28 +4,29 @@
  */
 
 export interface ScreeningCandidateData {
-  assessment_time_taken: any
-  assigned_to: any
+  assessment_time_taken?: any
+  assigned_to?: any
   retell_call_id?: string
-  retell_interview_scheduled: any
-  retell_call_status: any
-  retell_call_summary: any
-  retell_scheduled_date: any
-  retell_scheduled_time: any
-  retell_scheduled_timezone: any
-  retell_scheduled_datetime_iso: any
-  retell_call_outcome: any
-  retell_interest_level: any
-  retell_is_qualified: any
-  retell_call_duration_ms: any
-  retell_technical_skills: boolean
-  retell_questions_asked: boolean
-  retell_user_sentiment: any
-  retell_recording_url: any
-  retell_public_log_url: any
-  retell_availability_preference: any
-  retell_additional_notes: any
-  assessment_responses: any
+  retell_interview_scheduled?: any
+  retell_call_status?: any
+  retell_call_summary?: any
+  retell_scheduled_date?: any
+  retell_scheduled_time?: any
+  retell_scheduled_timezone?: any
+  retell_scheduled_datetime_iso?: any
+  retell_call_outcome?: any
+  retell_interest_level?: any
+  retell_is_qualified?: any
+  retell_call_duration_ms?: any
+  retell_technical_skills?: string[]
+  retell_questions_asked?: string[]
+  retell_user_sentiment?: any
+  retell_recording_url?: any
+  retell_public_log_url?: any
+  retell_availability_preference?: any
+  retell_additional_notes?: any
+  retell_rejection_reason?: string
+  assessment_responses?: any
   id: number
   name: string
   email: string

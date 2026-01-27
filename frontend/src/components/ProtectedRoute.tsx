@@ -6,7 +6,7 @@ import { useEffect } from "react"
 
 interface ProtectedRouteProps {
   children: React.ReactNode
-  requiredRoles?: ('admin' | 'recruiter' | 'hr')[]
+  requiredRoles?: ('admin' | 'recruiter' | 'hr' | 'interviewer')[]
 }
 
 export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps) {

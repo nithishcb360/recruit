@@ -16,7 +16,7 @@ import CandidateNotes from "@/components/candidate-notes"
 import ResumeModal from "@/components/ResumeModal"
 import CandidateDetailsModal from "@/components/CandidateDetailsModal"
 import { UploadCloud } from "lucide-react"
-import { getJobApplications, advanceApplicationStage, rejectApplication, type JobApplication, type ApplicationFilters } from "@/lib/api/candidates"
+import { getJobApplications, advanceApplicationStage, rejectApplication, type JobApplication } from "@/lib/api/candidates"
 import { deleteCandidate } from "@/lib/api/candidates-new"
 import { getJobs, type JobListItem } from "@/lib/api/jobs"
 import { useToast } from "@/hooks/use-toast"
@@ -37,7 +37,7 @@ interface Candidate {
   location: string
   totalExperience: number
   relevantExperience: number
-  skillExperience: { skill: string; years: number }[]
+  skillExperience: { skill: string; years: number; description?: string }[]
   expectedSalary: string
   noticePeriod: string
   resumeLink: string
@@ -47,6 +47,8 @@ interface Candidate {
   feedbackSummary: string
   progress: number
   resumeText?: string
+  education?: Array<{ degree?: string; institution?: string; field_of_study?: string }>
+  certifications?: string[]
   // Enhanced job matching fields
   bestJobMatch?: {
     jobId: number
@@ -81,6 +83,10 @@ interface Candidate {
       departmentScore: number
       experienceScore: number
       locationScore: number
+    }
+    matchInsights?: {
+      strengths?: string[]
+      gaps?: string[]
     }
   }
 }
@@ -122,6 +128,30 @@ const EXPERIENCE_YEARS_MAP = {
 
 interface CandidatePipelineProps {
   selectedJobId?: number | null
+}
+
+// Module-level helper function for fetch with timeout
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs: number = 5000): Promise<Response> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    })
+
+    clearTimeout(timeoutId)
+    return response
+  } catch (error) {
+    clearTimeout(timeoutId)
+
+    // Create a clean error without exposing connection details
+    if (error instanceof Error && (error.name === 'AbortError' || error.message.includes('Failed to fetch'))) {
+      throw new Error('Backend unavailable')
+    }
+    throw error
+  }
 }
 
 // Enhanced job matching using backend semantic matching API
@@ -2045,9 +2075,18 @@ export default function CandidatePipeline({ selectedJobId = null }: CandidatePip
               {candidateForComparison.selectedJobMatch?.matchInsights && (
                 <div className="p-4 bg-green-50 rounded-lg border border-green-200">
                   <h3 className="font-semibold text-gray-900 mb-3">✨ Match Insights</h3>
-                  <p className="text-sm text-gray-700">
-                    {candidateForComparison.selectedJobMatch.matchInsights}
-                  </p>
+                  {candidateForComparison.selectedJobMatch.matchInsights.strengths && (
+                    <div className="mb-2">
+                      <span className="text-sm font-medium text-green-700">Strengths: </span>
+                      <span className="text-sm text-gray-700">{candidateForComparison.selectedJobMatch.matchInsights.strengths.join(', ')}</span>
+                    </div>
+                  )}
+                  {candidateForComparison.selectedJobMatch.matchInsights.gaps && (
+                    <div>
+                      <span className="text-sm font-medium text-orange-700">Gaps: </span>
+                      <span className="text-sm text-gray-700">{candidateForComparison.selectedJobMatch.matchInsights.gaps.join(', ')}</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -2110,7 +2149,4 @@ function getStageProgress(stage: string): number {
   return stageMap[stage] || 10
 }
 
-function fetchWithTimeout(arg0: string, arg1: { method: string; headers: { 'Content-Type': string }; body: string }, arg2: number) {
-  throw new Error("Function not implemented.")
-}
 

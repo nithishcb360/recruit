@@ -32,9 +32,7 @@ export function useAssessmentRecording() {
 
       // Request screen sharing
       const screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          mediaSource: 'screen' as MediaStreamConstraints['video'] & { mediaSource: string }
-        } as MediaTrackConstraints
+        video: true
       })
 
       // Get audio stream separately for better quality
